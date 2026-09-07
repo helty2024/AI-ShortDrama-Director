@@ -1,5 +1,9 @@
 import type { AITask, IntelligenceCommand } from '../../shared/intelligence'
 const taskNames = {
+  'character-image': '角色生图',
+  'location-image': '场景生图',
+  'prop-image': '道具生图',
+  'shot-keyframe': '镜头关键帧',
   parse: '剧本解析',
   breakdown: '制作拆解',
   characterBible: '角色 Bible 建议',
@@ -22,11 +26,12 @@ export function TaskList({
   return (
     <section aria-label="AI 任务">
       <h3>AI 任务</h3>
-      {!tasks.length && <p>暂无文本任务。</p>}
+      {!tasks.length && <p>暂无任务。</p>}
       {tasks.toReversed().map((task) => (
         <article className="task-row" key={task.id}>
           <strong>
-            {taskNames[task.input.type]} · {statuses[task.status]}
+            {taskNames[task.input.type]} · {statuses[task.status]}{' '}
+            {Math.round(task.progress * 100)}%
           </strong>
           <small>
             {' '}
@@ -53,11 +58,19 @@ export function TaskList({
           {(task.status === 'failed' || task.status === 'cancelled') && (
             <button
               onClick={() =>
-                void execute({
-                  operation: 'task.retry',
-                  projectId: task.projectId,
-                  id: task.id,
-                }).catch(() => undefined)
+                void (
+                  'request' in task.input &&
+                  !task.providerTaskId &&
+                  !window.confirm(
+                    '将重新提交图像任务；若上次提交结果未知，请先检查 ComfyUI 队列，避免重复执行。',
+                  )
+                    ? Promise.resolve()
+                    : execute({
+                        operation: 'task.retry',
+                        projectId: task.projectId,
+                        id: task.id,
+                      })
+                ).catch(() => undefined)
               }
             >
               重试任务

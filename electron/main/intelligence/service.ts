@@ -1,3 +1,4 @@
+import { DomainError } from '../database.js'
 import { IntelligenceRepository } from './repository.js'
 import { AITaskQueue } from './queue.js'
 import { confirmDraft } from './review.js'
@@ -48,6 +49,11 @@ export class IntelligenceService {
           command.bible,
         )
       case 'task.start':
+        if ('request' in command.input)
+          throw new DomainError(
+            'FORBIDDEN',
+            '图像任务必须经 Prompt Compiler 和受控配置创建',
+          )
         return this.queue.start(p, command.input)
       case 'task.cancel':
         return this.queue.cancel(p, command.id)

@@ -48,3 +48,15 @@ Project → Script → Episode → Scene；Episode → Storyboard → Shot。Sho
 revision 用于乐观并发和分析过期检测；previousVersionId 为不可变版本链预留，当前没有完整历史版本 UI。source 的 providerId/modelId/prompt/parameters 用于媒体来源描述，不得放密钥。Asset 支持 image/video/audio/document；placeholder 可以没有 uri，当前 seed 只有元数据。
 
 v2 migration 为旧实体补默认字段，保留旧 Script 原文和既有关系；旧 Scene 的 name/description/order 映射为 heading/action/sceneNumber。新增字段默认值让 Phase 1 seed 和已保存实体继续有效。导入、审核与关系更新均有事务保护；失败不留下部分正式数据。
+
+## Phase 3 视觉模型
+
+新增 src/shared/visual.ts 叶子 schema：AssetVersion、AssetSource、ImagePromptPackage、VisualReference、ImageGenerationRequest、WorkflowTemplate、ProviderSettings 与 visual command 协议。domain.ts 与 intelligence.ts 引用该叶子，无运行时循环。
+
+Asset 新增 approvedVersionId；旧 uri 在 v3 清为空，不授权访问旧外部路径，旧记录保留并等待明确导入。AssetVersion 使用独立 UUID、projectId、createdAt/updatedAt/revision、assetId、versionNumber、status、sourceType、mimeType、width/height/fileSize/hash、storageKey/thumbnailPath、provider/model/prompt/negativePrompt/generationTaskId/sourceAssetIds/metadata。
+
+Character/Location/Prop 新增 visualReferences，项为 assetId/role/primary，assetIds 同步维护。Character 四类 face/fullBody/costume/expression；Location master/angle/lighting；Prop master/detail。主参考只有一个且必须已批准。
+
+Shot 新增 approvedKeyframeAssetId 和 approvedKeyframeVersionId，后者固定审核版本，防止 Asset 提升影响已确认镜头。Prompt 参考快照同时保存 Asset 与版本 ID；新图只能生成 AssetVersion Draft。
+
+AITask 扩展四种图像 input，保存完整 ImageGenerationRequest 和 providerOptions。新增 providerTaskId、progress、outputAssetVersionIds、provider、model、costMetadata、startedAt/completedAt。节点细节只在 Provider Options 和版本 metadata，Character/Shot 不包含 ComfyUI 节点配置。原 GenerationTask 媒体草稿继续保留，真实图像执行统一由 AITask 管理。

@@ -1,3 +1,4 @@
+import { VisualPanel } from '../visual/VisualPanel'
 import { BibleEditor } from '../script/BibleEditor'
 import { ProjectTasks } from '../script/ProjectTasks'
 import type { EntityKind } from '../../shared/domain'
@@ -48,6 +49,15 @@ function EntityList({ kind }: { kind: EntityKind }) {
                   />
                 )}
                 <p>{entity.description || '暂无简介'}</p>
+                {(entity.kind === 'character' ||
+                  entity.kind === 'location' ||
+                  entity.kind === 'prop' ||
+                  entity.kind === 'shot') && (
+                  <details>
+                    <summary>视觉生产</summary>
+                    <VisualPanel entity={entity} entities={entities} />
+                  </details>
+                )}
                 {entity.kind === 'script' && (
                   <p>{entity.content || '剧本内容待填写。'}</p>
                 )}
@@ -270,15 +280,6 @@ export function GenerationPage() {
       <ProjectTasks />
       <p>上方为文本 AI 任务；下方为媒体任务草稿，本阶段不执行生图或生视频。</p>
       <EntityList kind="generationTask" />
-    </>
-  )
-}
-export function AssetsPage() {
-  return (
-    <>
-      <h1>素材库</h1>
-      <p>当前为素材元数据列表，文件导入和媒体生成尚未接入。</p>
-      <EntityList kind="asset" />
     </>
   )
 }

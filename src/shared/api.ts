@@ -1,3 +1,5 @@
+import { visualCommandSchema } from './visual.js'
+import type { VisualResult } from './visual.js'
 import { z } from 'zod'
 import { intelligenceCommandSchema } from './intelligence.js'
 import type {
@@ -14,6 +16,7 @@ import {
 import type { Entity, Project, Workspace } from './domain.js'
 
 export const requestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('visual'), command: visualCommandSchema }),
   z.strictObject({
     action: z.literal('intelligence'),
     command: intelligenceCommandSchema,
@@ -39,6 +42,7 @@ export const requestSchema = z.discriminatedUnion('action', [
 ])
 export type Request = z.infer<typeof requestSchema>
 export type ResponseData =
+  | VisualResult
   | Project
   | Project[]
   | Workspace

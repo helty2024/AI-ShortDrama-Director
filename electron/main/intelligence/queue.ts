@@ -1,3 +1,4 @@
+import type { MediaTaskExecutor } from '../visual/executor.js'
 import { metadata, DomainError } from '../database.js'
 import { IntelligenceRepository } from './repository.js'
 import { AIError, normalizeAIError } from './provider.js'
@@ -24,9 +25,15 @@ export class AITaskQueue {
   } | null = null
   private stopped = false
   private scheduled: ReturnType<typeof setTimeout> | undefined
+  private media: MediaTaskExecutor | undefined
   readonly repo: IntelligenceRepository
   readonly provider: TextGenerationProvider
-  constructor(repo: IntelligenceRepository, provider: TextGenerationProvider) {
+  constructor(
+    repo: IntelligenceRepository,
+    provider: TextGenerationProvider,
+    media?: MediaTaskExecutor,
+  ) {
+    this.media = media
     this.repo = repo
     this.provider = provider
     for (const project of repo.database.list())
@@ -34,7 +41,10 @@ export class AITaskQueue {
         if (task.status === 'running')
           repo.putTask({
             ...task,
-            status: 'failed',
+            status:
+              'request' in task.input && task.providerTaskId
+                ? 'queued'
+                : 'failed',
             error: { code: 'INTERRUPTED', message: '上次运行被中断，可以重试' },
             revision: task.revision + 1,
             updatedAt: new Date().toISOString(),
@@ -43,7 +53,7 @@ export class AITaskQueue {
     this.schedule()
   }
   private sourceRevisions(projectId: string, input: TaskInput) {
-    return input.type === 'parse'
+    return input.type === 'parse' || 'request' in input
       ? {}
       : Object.fromEntries(
           this.repo
@@ -64,6 +74,11 @@ export class AITaskQueue {
       ...metadata(),
       projectId,
       input,
+      provider: 'request' in input ? input.request.provider : null,
+      model:
+        'request' in input
+          ? String(input.request.providerOptions.templateId ?? '')
+          : null,
       status: 'queued',
       attempt: 1,
       error: null,
@@ -77,11 +92,14 @@ export class AITaskQueue {
   cancel(projectId: string, id: string) {
     const task = this.repo.task(projectId, id)
     if (!['queued', 'running'].includes(task.status)) return task
+    if ('request' in task.input && task.providerTaskId)
+      void this.media?.cancel(task).catch(() => undefined)
     if (this.active?.id === id) this.active.controller.abort()
     return this.repo.putTask({
       ...task,
       status: 'cancelled',
       error: null,
+      completedAt: new Date().toISOString(),
       revision: task.revision + 1,
       updatedAt: new Date().toISOString(),
     })
@@ -99,6 +117,9 @@ export class AITaskQueue {
       attempt: task.attempt + 1,
       error: null,
       resultIds: [],
+      progress: 0,
+      completedAt: null,
+      providerTaskId: task.status === 'cancelled' ? null : task.providerTaskId,
       sourceRevisions: this.sourceRevisions(projectId, task.input),
       revision: task.revision + 1,
       updatedAt: new Date().toISOString(),
@@ -116,9 +137,12 @@ export class AITaskQueue {
     clearTimeout(this.scheduled)
     if (this.active) {
       const { projectId, id, controller } = this.active
-      if (this.repo.database.list().some((project) => project.id === projectId))
-        this.cancel(projectId, id)
-      else controller.abort()
+      if (
+        this.repo.database.list().some((project) => project.id === projectId)
+      ) {
+        if ('request' in this.repo.task(projectId, id).input) controller.abort()
+        else this.cancel(projectId, id)
+      } else controller.abort()
     }
   }
   private schedule() {
@@ -137,9 +161,10 @@ export class AITaskQueue {
     if (!task) return
     const controller = new AbortController()
     this.active = { id: task.id, projectId: task.projectId, controller }
-    const running = this.repo.putTask({
+    this.repo.putTask({
       ...task,
       status: 'running',
+      startedAt: task.startedAt ?? new Date().toISOString(),
       revision: task.revision + 1,
       updatedAt: new Date().toISOString(),
     })
@@ -156,7 +181,26 @@ export class AITaskQueue {
               confirmedScriptId: null,
             }
           : null
-      if (task.input.type !== 'parse') {
+      let commitMedia: (() => string[]) | undefined
+      if ('request' in task.input) {
+        if (!this.media) throw new AIError('PROVIDER', '图像执行器未配置')
+        commitMedia = await this.media.execute(
+          task,
+          controller.signal,
+          (id, progress) => {
+            if (this.stopped || controller.signal.aborted) return
+            const current = this.repo.task(task.projectId, task.id)
+            if (current.status === 'running')
+              this.repo.putTask({
+                ...current,
+                providerTaskId: id,
+                progress,
+                revision: current.revision + 1,
+                updatedAt: new Date().toISOString(),
+              })
+          },
+        )
+      } else if (task.input.type !== 'parse') {
         const scenes = this.repo.selectedScenes(
           task.projectId,
           task.input.targetId,
@@ -245,10 +289,18 @@ export class AITaskQueue {
             )
         if (preview) this.repo.putImport(preview)
         for (const draft of drafts) this.repo.putDraft(draft)
+        const mediaIds = commitMedia?.() ?? []
         this.repo.putTask({
           ...current,
+          outputAssetVersionIds: mediaIds,
+          progress: 1,
+          completedAt: new Date().toISOString(),
           status: 'succeeded',
-          resultIds: preview ? [preview.id] : drafts.map((d) => d.id),
+          resultIds: commitMedia
+            ? mediaIds
+            : preview
+              ? [preview.id]
+              : drafts.map((d) => d.id),
           error: null,
           revision: current.revision + 1,
           updatedAt: new Date().toISOString(),
@@ -263,7 +315,8 @@ export class AITaskQueue {
         if (current.status !== 'cancelled') {
           const normalized = normalizeAIError(error)
           this.repo.putTask({
-            ...running,
+            ...current,
+            completedAt: new Date().toISOString(),
             status: controller.signal.aborted ? 'cancelled' : 'failed',
             error: { code: normalized.code, message: normalized.message },
             revision: current.revision + 1,

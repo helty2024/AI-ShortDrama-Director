@@ -1,4 +1,4 @@
-# TextGenerationProvider 与通用 AI 队列
+# Text / Image Provider 与通用 AI 队列
 
 ## 接口
 
@@ -39,9 +39,15 @@ OpenAI、支持该协议的本地模型服务器或其他兼容服务可复用�
 
 AITask 是供文本与后续媒体共用的任务记录，保存项目、输入类型、目标、sourceRevisions、attempt、状态、错误和结果 ID。Phase 1 GenerationTask 记录继续保留；Phase 2 不执行旧 image/video 草稿。
 队列当前全局并发为 1，每项目最多同时等待 20 项，每次批量分析最多 100 个 Scene。SQLite 保存状态，异步网络请求不阻塞 renderer。
-queued 从数据库读取；running 启动恢复时改为 failed/INTERRUPTED。正常关闭取消正在执行的任务，未运行的 queued 任务下次启动继续。失败/取消后显式重试更新源快照与 attempt，成功任务重新分析则创建新任务。
+queued 从数据库读取；文本 running 启动恢复时改为 failed/INTERRUPTED。正常关闭取消正在执行的文本任务，未运行的 queued 下次继续。图像恢复逻辑见下文。失败/取消后显式重试更新源快照与 attempt，成功任务重新分析则创建新任务。
 结果、Draft 和 succeeded 状态在同一事务中提交。取消不会改变已成功任务，重新分析不会自动忽略或覆盖历史 Draft。
 
-## 扩展
+## 图像 Provider（Phase 3）
 
-Phase 3 为 image/video 增加独立的 Provider 与输入 schema，将任务结果改为 Asset 候选版本 ID。密钥隔离、任务状态、取消/重试和人工确认原则继续复用。长轮询任务可扩展 providerTaskId 与恢复策略，避免重启后重复付费提交。
+ImageGenerationProvider 提供 id/displayName/capabilities、healthCheck、generate、cancel、normalizeError。MockImageProvider 使用确定性图片；ComfyUIImageProvider 使用本机 HTTP/WebSocket。图像业务接收标准 ImageGenerationRequest（Prompt package、宽高、seed、引用版本），ComfyUI 工作流与 URL 仅在 providerOptions 快照。
+
+复用 AITaskQueue 单 worker 与 ai_tasks 表，ImageTaskExecutor 处理异步媒体准备并返回事务提交函数；成功时一起写版本与任务结果。网络请求不自动重交。恢复时有 providerTaskId 的 running 改 queued，查询既有历史；无 ID 则 failed/INTERRUPTED，人工确认后重试。取消删除本 prompt 的队列项，不全局 interrupt；运行中的上游计算可能继续，本地丢弃迟到结果。
+
+主进程配置无图像密钥输入。本版 ComfyUI 面向本机无认证服务；未来商业 Provider 的密钥需加主进程安全存储，不能放 providerOptions 持久化请求。
+
+详见 [ComfyUI](comfyui-provider.md)、[图像任务与恢复](image-generation.md)、[Prompt Compiler](prompt-compiler.md)。视频 Provider 尚未接入。

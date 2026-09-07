@@ -1,3 +1,6 @@
+import { AssetsPage } from './features/visual/AssetsPage'
+import { ProviderSettingsPage } from './features/visual/ProviderSettingsPage'
+import './features/visual/visual.css'
 import './App.css'
 import { ScriptPage } from './features/script/ScriptPage'
 import './features/script/script.css'
@@ -10,7 +13,6 @@ import {
   PropsPage,
   StoryboardPage,
   GenerationPage,
-  AssetsPage,
 } from './features/workspace/pages'
 import { WorkspaceDialog } from './features/workspace/dialogs'
 const pages = {
@@ -22,6 +24,7 @@ const pages = {
   storyboard: StoryboardPage,
   generation: GenerationPage,
   assets: AssetsPage,
+  settings: ProviderSettingsPage,
 }
 function WorkspaceShell() {
   const { state, navigate, open, reload } = useWorkspace()
@@ -44,7 +47,7 @@ function WorkspaceShell() {
             </button>
           ))}
         </nav>
-        <small>Phase 2 · 剧本与制作拆解</small>
+        <small>Phase 3 · 视觉资产生产</small>
       </aside>
       <div className="main-shell">
         <header className="topbar">
@@ -52,16 +55,20 @@ function WorkspaceShell() {
             <strong>{state.workspace?.project.name ?? '尚未打开项目'}</strong>
             <span role="status" className="save-state">
               {state.editorStatus !== 'saved'
-                ? ({ dirty: '尚未保存', saving: '自动保存中…', error: '保存失败，修改已保留' }[state.editorStatus])
+                ? {
+                    dirty: '尚未保存',
+                    saving: '自动保存中…',
+                    error: '保存失败，修改已保留',
+                  }[state.editorStatus]
                 : state.saving
-                ? '保存中…'
-                : state.loading
-                  ? '加载中…'
-                  : state.error
-                    ? '操作失败'
-                    : state.modal && state.modal.type !== 'delete'
-                      ? '尚未保存'
-                      : '已保存到本地'}
+                  ? '保存中…'
+                  : state.loading
+                    ? '加载中…'
+                    : state.error
+                      ? '操作失败'
+                      : state.modal && state.modal.type !== 'delete'
+                        ? '尚未保存'
+                        : '已保存到本地'}
             </span>
           </div>
           <label className="switcher">
@@ -90,7 +97,11 @@ function WorkspaceShell() {
               <button onClick={() => void reload()}>重新加载</button>
             </div>
           )}
-          <Page key={(state.workspace?.project.id ?? "none") + ":" + state.editorEpoch} />
+          <Page
+            key={
+              (state.workspace?.project.id ?? 'none') + ':' + state.editorEpoch
+            }
+          />
         </main>
       </div>
       {state.modal && <WorkspaceDialog />}

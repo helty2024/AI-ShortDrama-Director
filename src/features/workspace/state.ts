@@ -14,6 +14,7 @@ export const navigation = {
   storyboard: '分镜',
   generation: '生成',
   assets: '素材库',
+  settings: '设置',
 }
 export type Module = keyof typeof navigation
 export type Modal =

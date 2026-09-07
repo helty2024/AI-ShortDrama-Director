@@ -35,15 +35,15 @@ Scene/Bible/分集重命名/排序/审核要求 expectedRevision。更新保留 
 
 输入 Scene/Episode/Script → AITaskQueue → 独立 prompts → TextGenerationProvider.generateStructured → Zod 校验 → Draft → 人工编辑/忽略/确认/合并 → Production Bible 或 Shot。
 
-Provider 仅返回数据，没有数据库写入能力。ValidatedTextProvider 提供超时、取消、有限重试和错误规范化；Mock 默认不联网，CompatibleTextProvider 使用主进程环境配置，认证信息不进入 renderer 或持久化任务。当前没有图像/视频 Provider。
+Provider 仅返回数据，没有数据库写入能力。ValidatedTextProvider 提供超时、取消、有限重试和错误规范化；Mock 默认不联网，CompatibleTextProvider 使用主进程环境配置，认证信息不进入 renderer 或持久化任务。Phase 3 增加图像 Provider；仍不接视频 Provider。
 
-队列单 worker 异步处理，每批全部成功才提交结果；执行前后验证来源 revision。取消或失效输出不写 Draft，更不会写正式实体。重启恢复 queued，遗留 running 标记为失败，等待人工重试。详见 [Provider 与任务队列](ai-provider.md)。
+队列单 worker 异步处理，每批全部成功才提交结果；执行前后验证来源 revision。取消或失效输出不写 Draft，更不会写正式实体。文本重启恢复 queued，遗留 running 标记失败；图像任务有 providerTaskId 则恢复查询，未知提交需人工重试。详见 [Provider 与任务队列](ai-provider.md)。
 
 ## 页面和状态
 
 WorkspaceProvider 使用 Context/useReducer，管理当前项目、导航、加载/保存/错误、模态框、编辑状态与丢弃编辑后的重挂载。最近项目从 lastOpenedAt 派生。Scene 编辑器本地维护结构化内容和有界撤销历史，延迟自动保存；导航和关闭保护未保存内容。Bible 同时仅允许一个编辑会话，使用显式保存。
 
-ScriptPage：左侧剧本/分集/场次树，中间结构化编辑，右侧导入、AI 分析、审核卡片和任务状态。CharactersPage/LocationsPage/PropsPage 展示与编辑 Bible；StoryboardPage 展示确认后的 Shot 与镜头计划；GenerationPage 同时展示文本任务及保留的媒体任务草稿；AssetsPage 仍为素材元数据。
+ScriptPage：左侧剧本/分集/场次树，中间结构化编辑，右侧导入、AI 分析、审核卡片和任务状态。CharactersPage/LocationsPage/PropsPage 展示与编辑 Bible，并提供参考图和视觉生成；StoryboardPage 展示确认后的 Shot 与镜头计划；GenerationPage 同时展示文本任务及保留的媒体任务草稿；AssetsPage 已提供图片网格与版本审核，ProviderSettingsPage 管理项目图像配置。
 
 新增领域草稿与原有项目管理继续走工作台服务；智能业务走类型化 intelligence service。任务快照轮询不会替换正在编辑的 Scene 本地内容。详见 [剧本智能流程](script-intelligence.md)。
 
@@ -51,4 +51,8 @@ ScriptPage：左侧剧本/分集/场次树，中间结构化编辑，右侧导�
 
 单元测试覆盖真实解析、预览、Zod、事务、revision、合并、Provider、取消/重试/错误、迁移和原有持久化关系。Electron 测试使用隔离 userData，验证安全 IPC、项目恢复以及编辑 → 导入 → 拆解审核 → 合并 → 镜头确认 → Bible 保存 → 重启恢复。
 
-Phase 3 应先完成真实素材导入、版本与来源记录，再接单一图像 Provider。沿用任务队列取消/重试协议，生成结果先作为待审核 Asset；确认后再关联正式镜头或 Bible。大型二进制放受控文件目录，不放 SQLite JSON。媒体计费、幂等、失败恢复、密钥安全存储应在真实生成接入前落实。
+Phase 3 使用 VisualService 白名单 IPC → VisualRepository / Prompt Compiler → 原 AITaskQueue 的 ImageTaskExecutor → ImageGenerationProvider → 受控存储 → AssetVersion Draft。异步文件准备完成后，版本和任务状态在同一个数据库事务提交。v3 追加 asset_versions、visual_settings、workflow_templates，v1/v2 历史文件不改。
+
+缩略图和图片通过 UUID 查库、路径校验后返回 data URL；不暴露文件路径选择参数或任意 HTTP 请求。文件已写入但 DB 失败会留下可扫描孤儿，不自动 unlink。Shot 同时记录资产 ID 与审核时固定版本，主资产提升不改变其他 Shot。详见 [资产管线](asset-pipeline.md) 与 [图像生成](image-generation.md)。
+
+Phase 4 建议先完成关键帧批量生产、工作流实机验收和版本锁定，再接视频 Provider；视频沿用异步队列、审核与来源版本追踪。

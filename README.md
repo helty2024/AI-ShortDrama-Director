@@ -2,6 +2,25 @@
 
 面向 AI 短剧创作的本地桌面工作台，基于 React + TypeScript + Electron。
 
+## Phase 3 已实现
+
+- 正式图片导入、SHA-256 去重识别、尺寸/MIME 校验、缩略图与受控本地存储。
+- Asset 多版本、审核/提升/拒绝/归档、版本对比和可追踪生成元数据。
+- Bible 多分类参考图、主参考与视觉资产生成；Shot 关键帧编译、生成、审核和固定版本绑定。
+- 独立 Prompt Compiler、可替换 ImageGenerationProvider、真实 ComfyUI HTTP/WebSocket 适配器与确定性 Mock。
+- 工作流模板导入、变量槽、Provider 设置，复用原有持久化队列处理图像任务与恢复。
+- v3 migration，保留既有项目和历史 migration；新增文件一致性、协议与端到端测试。
+
+默认 Mock Image，无需 ComfyUI 即可体验全部审核流程。真实 ComfyUI 需要设置本机 URL、兼容 Checkpoint 或导入自定义 API 工作流。当前不接真实生视频，不含视觉 AI QC、自动磁盘回收或商业 API 认证管理。
+
+## 视觉生产快速体验
+
+1. 新建或载入开发示例，进入“设置”，默认 Mock 可直接使用。
+2. 在角色/场景/道具中展开“视觉生产”，编译 Prompt、生成图片，审核卡选择目标后“批准 / Promote”。
+3. 在分镜中展开某个 Shot 的“视觉生产”，生成关键帧并确认；重新生成产生新版本，旧确认镜头不会被默默替换。
+4. 在素材库导入 PNG/JPG/WEBP，查看版本、生成信息、引用关系和双图对比。
+5. 使用 ComfyUI 时参照 [接入说明](docs/comfyui-provider.md) 配置本机模型与工作流；标准模板为文生图，图像参考需自定义工作流槽。
+
 ## Phase 2 已实现
 
 - 保留 Phase 1 项目管理、最近项目、八模块导航和开发示例。
@@ -12,7 +31,7 @@
 - 初步导演拆镜：镜头计划进入可编辑 Draft，逐项确认才创建正式 Shot。
 - 主进程文本 Provider、持久化 AI 任务队列、取消/重试/错误提示，以及 v1 → v2 数据迁移。
 
-默认 MockTextProvider，无需 API Key，可完成全部业务流程。可配置兼容结构化输出协议的文本 API，配置方法见 [AI Provider](docs/ai-provider.md)。本阶段不调用生图/生视频 Provider；素材仍是元数据，不含媒体导入、实际渲染或完整版本历史 UI。revision 用于冲突保护，不等同于版本历史。
+默认 MockTextProvider，无需 API Key，可完成全部业务流程。可配置兼容结构化输出协议的文本 API，配置方法见 [AI Provider](docs/ai-provider.md)。Phase 2 的文本流程继续保留。Phase 3 已加入图片与资产版本，剧本实体的 revision 仍用于冲突保护，不等同于完整剧本版本历史。
 
 ## 快速体验
 
@@ -38,17 +57,17 @@ npm run dev
 
 ## 命令
 
-| 命令               | 用途                                             |
-| ------------------ | ------------------------------------------------ |
-| npm run dev        | Electron + React 开发与热更新                    |
-| npm run typecheck  | 严格 TypeScript 检查                             |
-| npm run lint       | Oxlint 静态检查                                  |
-| npm run test:unit  | 领域、持久化、迁移、引用和事务测试               |
-| npm run build      | 类型检查并构建到 out/                            |
-| npm run test:smoke | 先 build，再执行独立数据库的 Electron 端到端测试 |
-| npm run preview    | 启动构建后的桌面应用                             |
-| npm run pack       | 生成当前平台未安装应用目录                       |
-| npm run dist       | 生成当前平台分发包                               |
+| 命令               | 用途                                               |
+| ------------------ | -------------------------------------------------- |
+| npm run dev        | Electron + React 开发与热更新                      |
+| npm run typecheck  | 严格 TypeScript 检查                               |
+| npm run lint       | Oxlint 静态检查                                    |
+| npm run test:unit  | 领域、持久化、迁移、引用和事务测试                 |
+| npm run build      | 类型检查并构建到 out/                              |
+| npm run test:smoke | 执行独立数据库的 Electron 端到端测试（请先 build） |
+| npm run preview    | 启动构建后的桌面应用                               |
+| npm run pack       | 生成当前平台未安装应用目录                         |
+| npm run dist       | 生成当前平台分发包                                 |
 
 开发启动脚本会清除 ELECTRON_RUN_AS_NODE。Vite 固定在 electron-vite 5 支持的 7.x 系列。
 分发使用 electron-builder；图标、签名、公证仍需在正式发布前配置。
@@ -78,8 +97,12 @@ src/components/     后续跨模块共享组件
 src/assets/ public/ 静态资源
 tests/unit/         关键业务单元测试
 tests/electron.spec.ts  桌面端到端验证
+electron/main/visual/  文件存储、图像 Provider、Prompt Compiler、版本审核、v3 migration
+src/features/visual/   素材库、生成面板、版本对比、Provider 设置
 docs/               架构和领域说明
 ```
 
 详见 [架构说明](docs/architecture.md)、[领域模型](docs/domain-model.md)、[剧本智能流程](docs/script-intelligence.md)、[AI Provider](docs/ai-provider.md)、[协作规则](AGENTS.md)。
 项目尚未指定开源许可证。
+
+视觉管线详见 [资产管线](docs/asset-pipeline.md)、[图像生成](docs/image-generation.md)、[ComfyUI](docs/comfyui-provider.md)、[Prompt Compiler](docs/prompt-compiler.md)。备份需覆盖整个 userData（数据库及 media 目录）。

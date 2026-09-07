@@ -1,3 +1,7 @@
+import { MediaStorage } from './visual/storage.js'
+import { VisualRepository } from './visual/repository.js'
+import { VisualService } from './visual/service.js'
+import { ImageTaskExecutor } from './visual/executor.js'
 import { app, BrowserWindow, session, dialog } from 'electron'
 import { IntelligenceRepository } from './intelligence/repository.js'
 import { AITaskQueue } from './intelligence/queue.js'
@@ -76,13 +80,37 @@ app
             apiKey: process.env.DIRECTOR_TEXT_API_KEY,
           })
         : new MockTextProvider()
-    queue = new AITaskQueue(repo, provider)
+    const visual = new VisualRepository(
+      repo,
+      new MediaStorage(join(app.getPath('userData'), 'media')),
+    )
+    queue = new AITaskQueue(repo, provider, new ImageTaskExecutor(visual))
     registerWorkspaceIPC(
       database,
       windows,
       rendererUrl,
       !app.isPackaged,
       new IntelligenceService(repo, queue),
+      new VisualService(visual, queue, {
+        images: async () => {
+          const result = await dialog.showOpenDialog({
+            title: '导入图片',
+            properties: ['openFile', 'multiSelections'],
+            filters: [
+              { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+            ],
+          })
+          return result.canceled ? [] : result.filePaths
+        },
+        workflow: async () => {
+          const result = await dialog.showOpenDialog({
+            title: '导入 API 格式工作流',
+            properties: ['openFile'],
+            filters: [{ name: 'ComfyUI API Workflow', extensions: ['json'] }],
+          })
+          return result.canceled ? null : (result.filePaths[0] ?? null)
+        },
+      }),
     )
     session.defaultSession.setPermissionRequestHandler(
       (_contents, _permission, callback) => callback(false),

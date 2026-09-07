@@ -1,3 +1,4 @@
+import { migrateVisual } from './visual/migration.js'
 import { migrateIntelligence } from './intelligence/migration.js'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
@@ -18,8 +19,11 @@ import type {
 } from '../../src/shared/domain.js'
 
 export class DomainError extends Error {
-  readonly code: 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN'
-  constructor(code: 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN', message: string) {
+  readonly code: 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN' | 'INVALID_INPUT'
+  constructor(
+    code: 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN' | 'INVALID_INPUT',
+    message: string,
+  ) {
     super(message)
     this.code = code
   }
@@ -41,7 +45,9 @@ export function references(entity: Entity): { id: string; kind: EntityKind }[] {
     case 'scene':
       add('episode', entity.episodeId)
       add('location', entity.locationId)
-      entity.content.dialogue.forEach(line => add('character', line.characterId))
+      entity.content.dialogue.forEach((line) =>
+        add('character', line.characterId),
+      )
       break
     case 'storyboard':
       add('episode', entity.episodeId)
@@ -49,6 +55,7 @@ export function references(entity: Entity): { id: string; kind: EntityKind }[] {
     case 'shot':
       add('storyboard', entity.storyboardId)
       add('scene', entity.sceneId)
+      add('asset', entity.approvedKeyframeAssetId)
       add('location', entity.locationId)
       entity.characterIds.forEach((id) => add('character', id))
       entity.propIds.forEach((id) => add('prop', id))
@@ -57,7 +64,11 @@ export function references(entity: Entity): { id: string; kind: EntityKind }[] {
     case 'character':
     case 'location':
     case 'prop':
-      if (entity.kind === 'prop') { entity.bible.usedByCharacterIds.forEach(id => add('character', id)); entity.bible.sceneIds.forEach(id => add('scene', id)) }
+      if (entity.kind === 'prop') {
+        entity.bible.usedByCharacterIds.forEach((id) => add('character', id))
+        entity.bible.sceneIds.forEach((id) => add('scene', id))
+      }
+      entity.visualReferences.forEach((ref) => add('asset', ref.assetId))
       entity.assetIds.forEach((id) => add('asset', id))
       break
     case 'generationTask':
@@ -86,7 +97,7 @@ export class ProjectDatabase {
   private migrate() {
     const row = this.db.prepare('PRAGMA user_version').get()
     const version = Number(row?.user_version ?? 0)
-    if (version > 2) throw new Error('数据库版本高于当前应用支持版本')
+    if (version > 3) throw new Error('数据库版本高于当前应用支持版本')
     if (version === 0)
       this.transaction(() => {
         this.db.exec(`
@@ -107,6 +118,7 @@ export class ProjectDatabase {
       `)
       })
     if (version < 2) this.transaction(() => migrateIntelligence(this.db))
+    if (version < 3) this.transaction(() => migrateVisual(this.db))
   }
   transaction<T>(operation: () => T): T {
     if (this.db.isTransaction) return operation()
@@ -120,7 +132,9 @@ export class ProjectDatabase {
       throw error
     }
   }
-  get connection() { return this.db }
+  get connection() {
+    return this.db
+  }
   close() {
     this.db.close()
   }

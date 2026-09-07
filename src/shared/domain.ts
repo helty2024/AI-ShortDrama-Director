@@ -1,3 +1,4 @@
+import { visualReferenceSchema } from './visual.js'
 import { z } from 'zod'
 import {
   sceneContentSchema,
@@ -69,6 +70,7 @@ export const sceneSchema = z.strictObject({
 export const characterSchema = z.strictObject({
   ...child,
   kind: z.literal('character'),
+  visualReferences: z.array(visualReferenceSchema).default([]),
   bible: characterBibleSchema.default(emptyCharacterBible),
   appearance: text,
   assetIds: z.array(idSchema).max(1000),
@@ -76,12 +78,14 @@ export const characterSchema = z.strictObject({
 export const locationSchema = z.strictObject({
   ...child,
   kind: z.literal('location'),
+  visualReferences: z.array(visualReferenceSchema).default([]),
   bible: locationBibleSchema.default(emptyLocationBible),
   assetIds: z.array(idSchema).max(1000),
 })
 export const propSchema = z.strictObject({
   ...child,
   kind: z.literal('prop'),
+  visualReferences: z.array(visualReferenceSchema).default([]),
   bible: propBibleSchema.default(emptyPropBible),
   assetIds: z.array(idSchema).max(1000),
 })
@@ -94,6 +98,8 @@ export const storyboardSchema = z.strictObject({
 export const shotSchema = z.strictObject({
   ...child,
   kind: z.literal('shot'),
+  approvedKeyframeAssetId: idSchema.nullable().default(null),
+  approvedKeyframeVersionId: idSchema.nullable().default(null),
   plan: shotPlanSchema.nullable().default(null),
   storyboardId: idSchema,
   sceneId: idSchema,
@@ -110,6 +116,7 @@ export const shotSchema = z.strictObject({
 export const assetSchema = z.strictObject({
   ...child,
   kind: z.literal('asset'),
+  approvedVersionId: idSchema.nullable().default(null),
   mediaType: z.enum(['image', 'video', 'audio', 'document']),
   uri: z.string().max(2000).nullable(),
   status: z.enum(['placeholder', 'ready', 'failed']),

@@ -1,3 +1,4 @@
+import { imageTaskInputSchema, imageTaskFields } from './visual.js'
 import { z } from 'zod'
 
 const id = z.uuid()
@@ -221,6 +222,7 @@ export const importPreviewSchema = z.strictObject({
   confirmedScriptId: id.nullable(),
 })
 export const taskInputSchema = z.discriminatedUnion('type', [
+  imageTaskInputSchema,
   z.strictObject({
     type: z.literal('parse'),
     name: title,
@@ -236,6 +238,7 @@ export const taskInputSchema = z.discriminatedUnion('type', [
   }),
 ])
 export const aiTaskSchema = z.strictObject({
+  ...imageTaskFields,
   ...meta,
   input: taskInputSchema,
   status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
