@@ -13,3 +13,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.cache/
+*.sqlite*
+*.db

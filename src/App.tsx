@@ -1,29 +1,103 @@
 import './App.css'
-
-const modules = [
-  { number: '01', title: '故事与剧本', description: '整理创意、人物设定与分集剧本。' },
-  { number: '02', title: '分镜与镜头', description: '规划镜头语言、画面构图与拍摄节奏。' },
-  { number: '03', title: '素材与生成', description: '组织角色、场景和 AI 生成素材。' },
-]
-export default function App() {
-  const desktop = window.desktop
+import { WorkspaceProvider } from './features/workspace/store'
+import { navigation, useWorkspace } from './features/workspace/state'
+import {
+  ProjectPage,
+  ScriptPage,
+  CharactersPage,
+  LocationsPage,
+  PropsPage,
+  StoryboardPage,
+  GenerationPage,
+  AssetsPage,
+} from './features/workspace/pages'
+import { WorkspaceDialog } from './features/workspace/dialogs'
+const pages = {
+  projects: ProjectPage,
+  scripts: ScriptPage,
+  characters: CharactersPage,
+  locations: LocationsPage,
+  props: PropsPage,
+  storyboard: StoryboardPage,
+  generation: GenerationPage,
+  assets: AssetsPage,
+}
+function WorkspaceShell() {
+  const { state, navigate, open, reload } = useWorkspace()
+  const Page = pages[state.module]
   return (
-    <main className="workspace">
-      <header><span className="brand">DIRECTOR / 导演工作台</span><span className="badge">项目骨架 · v0.1.0</span></header>
-      <section className="intro" aria-labelledby="title">
-        <p className="eyebrow">AI SHORTDRAMA DIRECTOR</p>
-        <h1 id="title">让故事，从这里开始。</h1>
-        <p className="description">面向 AI 短剧创作的桌面工作台。基础环境已就绪，接下来逐步构建剧本、分镜和素材工作流。</p>
-      </section>
-      <section className="modules" aria-label="规划中的创作模块">
-        {modules.map((module) => (
-          <article key={module.number}>
-            <span className="number">{module.number}</span>
-            <h2>{module.title}</h2><p>{module.description}</p><span className="status">待开发</span>
-          </article>
-        ))}
-      </section>
-      <footer><span className="runtime">{desktop ? '桌面环境已连接 · ' + desktop.platform : '浏览器预览模式'}</span><span>{desktop ? 'Electron ' + desktop.versions.electron : 'React + TypeScript'}</span></footer>
-    </main>
+    <div className="app-shell">
+      <aside>
+        <div className="brand">
+          DIRECTOR<span>AI 短剧工作台</span>
+        </div>
+        <nav aria-label="主导航">
+          {Object.entries(navigation).map(([key, label]) => (
+            <button
+              key={key}
+              aria-current={state.module === key ? 'page' : undefined}
+              disabled={state.loading || state.saving}
+              onClick={() => navigate(key as keyof typeof navigation)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <small>Phase 1 · 本地项目空间</small>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <div>
+            <strong>{state.workspace?.project.name ?? '尚未打开项目'}</strong>
+            <span role="status" className="save-state">
+              {state.saving
+                ? '保存中…'
+                : state.loading
+                  ? '加载中…'
+                  : state.error
+                    ? '操作失败'
+                    : state.modal && state.modal.type !== 'delete'
+                      ? '尚未保存'
+                      : '已保存到本地'}
+            </span>
+          </div>
+          <label className="switcher">
+            切换项目
+            <select
+              aria-label="切换项目"
+              disabled={state.loading || state.saving}
+              value={state.workspace?.project.id ?? ''}
+              onChange={(event) => {
+                if (event.target.value) void open(event.target.value)
+              }}
+            >
+              <option value="">选择项目</option>
+              {state.projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </header>
+        <main aria-busy={state.loading || state.saving}>
+          {state.error && !state.modal && (
+            <div role="alert" className="error">
+              {state.error}
+              <button onClick={() => void reload()}>重新加载</button>
+            </div>
+          )}
+          <Page />
+        </main>
+      </div>
+      {state.modal && <WorkspaceDialog />}
+    </div>
+  )
+}
+export default function App() {
+  return (
+    <WorkspaceProvider>
+      <WorkspaceShell />
+    </WorkspaceProvider>
   )
 }
