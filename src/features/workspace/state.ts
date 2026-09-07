@@ -1,5 +1,10 @@
 import { createContext, useContext } from 'react'
-import type { EntityKind, Project, Workspace } from '../../shared/domain'
+import type {
+  Entity,
+  EntityKind,
+  Project,
+  Workspace,
+} from '../../shared/domain'
 export const navigation = {
   projects: '项目',
   scripts: '剧本',
@@ -17,7 +22,11 @@ export type Modal =
   | { type: 'delete'; project: Project }
   | { type: 'entity'; kind: EntityKind }
   | null
+export type EditorStatus = 'saved' | 'dirty' | 'saving' | 'error'
 interface State {
+  editorStatus: EditorStatus
+  editorEpoch: number
+  editorOwner: string | null
   projects: Project[]
   workspace: Workspace | null
   module: Module
@@ -27,6 +36,9 @@ interface State {
   modal: Modal
 }
 export const initial: State = {
+  editorStatus: 'saved',
+  editorEpoch: 0,
+  editorOwner: null,
   projects: [],
   workspace: null,
   module: 'projects',
@@ -40,6 +52,9 @@ export function workspaceReducer(state: State, action: Action): State {
   return { ...state, ...action.value }
 }
 interface Store {
+  setEditorOwner: (id: string | null) => void
+  setEditorStatus: (status: EditorStatus) => void
+  acceptEntity: (entity: Entity) => void
   state: State
   navigate: (module: Module) => void
   modal: (modal: Modal) => void

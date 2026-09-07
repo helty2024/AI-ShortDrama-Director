@@ -1,4 +1,10 @@
 import { z } from 'zod'
+import { intelligenceCommandSchema } from './intelligence.js'
+import type {
+  AITask,
+  IntelligenceDraft,
+  IntelligenceSnapshot,
+} from './intelligence.js'
 import {
   draftInputSchema,
   idSchema,
@@ -8,6 +14,10 @@ import {
 import type { Entity, Project, Workspace } from './domain.js'
 
 export const requestSchema = z.discriminatedUnion('action', [
+  z.strictObject({
+    action: z.literal('intelligence'),
+    command: intelligenceCommandSchema,
+  }),
   z.strictObject({ action: z.literal('projects.list') }),
   z.strictObject({
     action: z.literal('projects.create'),
@@ -28,7 +38,15 @@ export const requestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('projects.seed') }),
 ])
 export type Request = z.infer<typeof requestSchema>
-export type ResponseData = Project | Project[] | Workspace | Entity | null
+export type ResponseData =
+  | Project
+  | Project[]
+  | Workspace
+  | Entity
+  | IntelligenceSnapshot
+  | AITask
+  | IntelligenceDraft
+  | null
 export type Result =
   | { ok: true; data: ResponseData }
   | {

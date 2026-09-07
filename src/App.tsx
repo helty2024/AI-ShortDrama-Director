@@ -1,9 +1,10 @@
 import './App.css'
+import { ScriptPage } from './features/script/ScriptPage'
+import './features/script/script.css'
 import { WorkspaceProvider } from './features/workspace/store'
 import { navigation, useWorkspace } from './features/workspace/state'
 import {
   ProjectPage,
-  ScriptPage,
   CharactersPage,
   LocationsPage,
   PropsPage,
@@ -43,14 +44,16 @@ function WorkspaceShell() {
             </button>
           ))}
         </nav>
-        <small>Phase 1 · 本地项目空间</small>
+        <small>Phase 2 · 剧本与制作拆解</small>
       </aside>
       <div className="main-shell">
         <header className="topbar">
           <div>
             <strong>{state.workspace?.project.name ?? '尚未打开项目'}</strong>
             <span role="status" className="save-state">
-              {state.saving
+              {state.editorStatus !== 'saved'
+                ? ({ dirty: '尚未保存', saving: '自动保存中…', error: '保存失败，修改已保留' }[state.editorStatus])
+                : state.saving
                 ? '保存中…'
                 : state.loading
                   ? '加载中…'
@@ -87,7 +90,7 @@ function WorkspaceShell() {
               <button onClick={() => void reload()}>重新加载</button>
             </div>
           )}
-          <Page />
+          <Page key={(state.workspace?.project.id ?? "none") + ":" + state.editorEpoch} />
         </main>
       </div>
       {state.modal && <WorkspaceDialog />}

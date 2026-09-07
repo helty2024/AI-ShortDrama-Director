@@ -5,6 +5,7 @@ import { requestSchema } from '../../src/shared/api.js'
 import type { Result } from '../../src/shared/api.js'
 import { DomainError, ProjectDatabase } from './database.js'
 import { buildSeed } from './seed.js'
+import { IntelligenceService } from './intelligence/service.js'
 
 export function isTrustedSender(
   event: IpcMainInvokeEvent,
@@ -23,6 +24,7 @@ export function registerWorkspaceIPC(
   windows: Set<number>,
   expectedUrl: string,
   allowSeed: boolean,
+  intelligence: IntelligenceService,
 ) {
   ipcMain.handle('workspace:request', (event, raw: unknown): Result => {
     if (!isTrustedSender(event, windows, expectedUrl))
@@ -30,6 +32,8 @@ export function registerWorkspaceIPC(
     try {
       const request = requestSchema.parse(raw)
       switch (request.action) {
+        case 'intelligence':
+          return { ok: true, data: intelligence.execute(request.command) }
         case 'projects.list':
           return { ok: true, data: database.list() }
         case 'projects.create':
@@ -41,6 +45,7 @@ export function registerWorkspaceIPC(
         case 'projects.update':
           return { ok: true, data: database.update(request.input) }
         case 'projects.delete':
+          intelligence.queue.cancelProject(request.id)
           return { ok: true, data: database.delete(request.id) }
         case 'workspace.get':
           return { ok: true, data: database.workspace(request.id) }

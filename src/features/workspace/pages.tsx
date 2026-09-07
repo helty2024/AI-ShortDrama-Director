@@ -1,3 +1,5 @@
+import { BibleEditor } from '../script/BibleEditor'
+import { ProjectTasks } from '../script/ProjectTasks'
 import type { EntityKind } from '../../shared/domain'
 import { useWorkspace } from './state'
 import { workspaceService } from '../../services/workspace'
@@ -36,12 +38,18 @@ function EntityList({ kind }: { kind: EntityKind }) {
             <li key={entity.id}>
               <div>
                 <strong>{entity.name}</strong>
+                {(entity.kind === 'character' ||
+                  entity.kind === 'location' ||
+                  entity.kind === 'prop') && (
+                  <BibleEditor
+                    key={entity.id + ':' + entity.revision}
+                    entity={entity}
+                    entities={entities}
+                  />
+                )}
                 <p>{entity.description || '暂无简介'}</p>
                 {entity.kind === 'script' && (
-                  <p>
-                    {entity.content ||
-                      '剧本内容待填写，拆解功能将在 Phase 2 接入。'}
-                  </p>
+                  <p>{entity.content || '剧本内容待填写。'}</p>
                 )}
                 {entity.kind === 'episode' && (
                   <p>所属剧本：{lookup(entity.scriptId)}</p>
@@ -67,6 +75,20 @@ function EntityList({ kind }: { kind: EntityKind }) {
                     道具：{entity.propIds.map(lookup).join('、') || '未关联'} ·
                     素材：{entity.assetIds.map(lookup).join('、') || '未关联'}
                   </p>
+                )}
+                {entity.kind === 'shot' && entity.plan && (
+                  <details>
+                    <summary>已确认镜头计划</summary>
+                    <p>
+                      {entity.plan.shotType} · {entity.plan.framing} ·{' '}
+                      {entity.plan.cameraAngle} · {entity.plan.cameraMovement}
+                    </p>
+                    <p>焦距建议：{entity.plan.focalLengthSuggestion}</p>
+                    <p>主体：{entity.plan.subject}</p>
+                    <p>动作：{entity.plan.action}</p>
+                    <p>情绪：{entity.plan.emotion}</p>
+                    <p>连续性：{entity.plan.continuityNotes}</p>
+                  </details>
                 )}
                 {'assetIds' in entity && entity.kind !== 'shot' && (
                   <p>
@@ -207,17 +229,6 @@ export function ProjectPage() {
     </>
   )
 }
-export function ScriptPage() {
-  return (
-    <>
-      <h1>剧本</h1>
-      <p>管理剧本、分集与场次。自动拆解将在 Phase 2 接入。</p>
-      <EntityList kind="script" />
-      <EntityList kind="episode" />
-      <EntityList kind="scene" />
-    </>
-  )
-}
 export function CharactersPage() {
   return (
     <>
@@ -256,7 +267,8 @@ export function GenerationPage() {
   return (
     <>
       <h1>生成</h1>
-      <p>当前仅管理任务草稿，不调用模型、不产生费用。</p>
+      <ProjectTasks />
+      <p>上方为文本 AI 任务；下方为媒体任务草稿，本阶段不执行生图或生视频。</p>
       <EntityList kind="generationTask" />
     </>
   )

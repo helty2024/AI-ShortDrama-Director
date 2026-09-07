@@ -1,4 +1,15 @@
 import { z } from 'zod'
+import {
+  sceneContentSchema,
+  emptyScene,
+  characterBibleSchema,
+  emptyCharacterBible,
+  locationBibleSchema,
+  emptyLocationBible,
+  propBibleSchema,
+  emptyPropBible,
+  shotPlanSchema,
+} from './intelligence.js'
 
 export const idSchema = z.uuid()
 const timestamp = z.iso.datetime()
@@ -50,6 +61,7 @@ export const episodeSchema = z.strictObject({
 export const sceneSchema = z.strictObject({
   ...child,
   kind: z.literal('scene'),
+  content: sceneContentSchema.default(emptyScene),
   episodeId: idSchema,
   locationId: idSchema.nullable(),
   order: z.number().int().nonnegative(),
@@ -57,17 +69,20 @@ export const sceneSchema = z.strictObject({
 export const characterSchema = z.strictObject({
   ...child,
   kind: z.literal('character'),
+  bible: characterBibleSchema.default(emptyCharacterBible),
   appearance: text,
   assetIds: z.array(idSchema).max(1000),
 })
 export const locationSchema = z.strictObject({
   ...child,
   kind: z.literal('location'),
+  bible: locationBibleSchema.default(emptyLocationBible),
   assetIds: z.array(idSchema).max(1000),
 })
 export const propSchema = z.strictObject({
   ...child,
   kind: z.literal('prop'),
+  bible: propBibleSchema.default(emptyPropBible),
   assetIds: z.array(idSchema).max(1000),
 })
 export const storyboardSchema = z.strictObject({
@@ -79,6 +94,7 @@ export const storyboardSchema = z.strictObject({
 export const shotSchema = z.strictObject({
   ...child,
   kind: z.literal('shot'),
+  plan: shotPlanSchema.nullable().default(null),
   storyboardId: idSchema,
   sceneId: idSchema,
   order: z.number().int().nonnegative(),

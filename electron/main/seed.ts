@@ -1,4 +1,6 @@
 import { metadata } from './database.js'
+import { emptyScene } from '../../src/shared/intelligence.js'
+import { entitySchema } from '../../src/shared/domain.js'
 import type { Entity } from '../../src/shared/domain.js'
 
 export function buildSeed(projectId: string): Entity[] {
@@ -91,5 +93,27 @@ export function buildSeed(projectId: string): Entity[] {
     ...scenes,
     board,
     ...shots,
-  ]
+  ].map((entity) =>
+    entitySchema.parse(
+      entity.kind === 'scene'
+        ? {
+            ...entity,
+            content: {
+              ...emptyScene,
+              sceneNumber: String(entity.order + 1),
+              heading: entity.name,
+              location: locations[entity.order]?.name ?? '',
+              interiorExterior: entity.order === 0 ? 'EXT' : 'INT',
+              timeOfDay: '夜',
+              characters: characters.map((c) => c.name),
+              action:
+                entity.order === 0
+                  ? '雨夜，林夏拿出旧信，陈默撑着黑伞走近。'
+                  : '周伯在旧书店里辨认旧信，三人紧张对视。',
+              notes: '保持旧信折痕与黑伞状态一致。',
+            },
+          }
+        : entity,
+    ),
+  )
 }

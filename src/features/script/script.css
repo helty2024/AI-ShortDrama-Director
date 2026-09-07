@@ -1,0 +1,156 @@
+.script-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(300px, 1fr) 310px;
+  gap: 16px;
+  align-items: start;
+}
+.script-tree,
+.scene-editor,
+.intelligence-panel {
+  background: #1a202a;
+  border: 1px solid #303a49;
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+.script-tree .actions {
+  gap: 4px;
+  margin: 6px 0 14px;
+}
+.script-tree button {
+  font-size: 12px;
+  padding: 7px 9px;
+}
+.script-tree h3 {
+  font-size: 14px;
+}
+.scene-tree-list {
+  list-style: none;
+  padding: 0;
+}
+.scene-tree-list > li > button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.scene-tree-list button[aria-current] {
+  border-color: #bce5af;
+  color: #bce5af;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.scene-editor textarea {
+  min-height: 90px;
+}
+.scene-editor .dialogue-line textarea {
+  min-height: 40px;
+}
+.scene-editor .section-heading {
+  flex-wrap: wrap;
+}
+.scene-editor .actions {
+  margin: 0;
+}
+.dialogue-line {
+  border: 1px solid #465164;
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 12px;
+}
+.muted {
+  color: #aeb8c8;
+  font-size: 12px;
+}
+.intelligence-panel {
+  font-size: 13px;
+}
+.intelligence-panel h2 {
+  margin-top: 0;
+}
+.intelligence-panel .actions {
+  gap: 6px;
+}
+.intelligence-panel button {
+  font-size: 12px;
+  padding: 8px;
+}
+.analysis-actions {
+  display: grid;
+  gap: 8px;
+}
+.draft-card,
+.task-row,
+.preview-result {
+  border: 1px solid #465164;
+  border-radius: 7px;
+  padding: 12px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.draft-card .section-heading {
+  align-items: start;
+}
+.draft-card small {
+  font-size: 11px;
+}
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.check-label input {
+  width: auto;
+  margin: 0;
+}
+details {
+  margin: 14px 0;
+}
+summary {
+  cursor: pointer;
+  color: #bce5af;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bible-editor {
+  width: 100%;
+}
+.bible-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.bible-fields textarea {
+  min-height: 60px;
+}
+.entity-list > li > div {
+  min-width: 0;
+  flex: 1;
+}
+@media (max-width: 1250px) {
+  .script-layout {
+    grid-template-columns: 170px minmax(280px, 1fr);
+  }
+  .intelligence-panel {
+    grid-column: 1 / -1;
+  }
+  .analysis-actions {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .script-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .intelligence-panel {
+    grid-column: auto;
+  }
+  .field-grid,
+  .bible-fields {
+    grid-template-columns: 1fr;
+  }
+}

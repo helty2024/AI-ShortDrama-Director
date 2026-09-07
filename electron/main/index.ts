@@ -1,4 +1,9 @@
-import { app, BrowserWindow, session } from 'electron'
+import { app, BrowserWindow, session, dialog } from 'electron'
+import { IntelligenceRepository } from './intelligence/repository.js'
+import { AITaskQueue } from './intelligence/queue.js'
+import { MockTextProvider } from './intelligence/mock-provider.js'
+import { CompatibleTextProvider } from './intelligence/provider.js'
+import { IntelligenceService } from './intelligence/service.js'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdirSync } from 'node:fs'
@@ -8,6 +13,7 @@ import { registerWorkspaceIPC } from './ipc.js'
 const directory = dirname(fileURLToPath(import.meta.url))
 const windows = new Set<number>()
 let database: ProjectDatabase | undefined
+let queue: AITaskQueue | undefined
 const rendererUrl =
   !app.isPackaged && process.env.ELECTRON_RENDERER_URL
     ? new URL(process.env.ELECTRON_RENDERER_URL).href
@@ -39,6 +45,17 @@ async function createWindow() {
   window.once('ready-to-show', () => window.show())
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
+  window.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'warning',
+      buttons: ['继续编辑', '放弃修改并离开'],
+      defaultId: 0,
+      cancelId: 0,
+      message: '当前编辑尚未保存。',
+      detail: '选择继续编辑可等待保存或处理保存错误。',
+    })
+    if (choice === 1) event.preventDefault()
+  })
   await window.loadURL(rendererUrl)
 }
 
@@ -49,7 +66,24 @@ app
     database = new ProjectDatabase(
       join(app.getPath('userData'), 'workspace.sqlite'),
     )
-    registerWorkspaceIPC(database, windows, rendererUrl, !app.isPackaged)
+    const repo = new IntelligenceRepository(database)
+    const provider =
+      process.env.DIRECTOR_TEXT_PROVIDER === 'compatible'
+        ? new CompatibleTextProvider({
+            baseUrl:
+              process.env.DIRECTOR_TEXT_BASE_URL ?? 'https://api.openai.com/v1',
+            model: process.env.DIRECTOR_TEXT_MODEL ?? '',
+            apiKey: process.env.DIRECTOR_TEXT_API_KEY,
+          })
+        : new MockTextProvider()
+    queue = new AITaskQueue(repo, provider)
+    registerWorkspaceIPC(
+      database,
+      windows,
+      rendererUrl,
+      !app.isPackaged,
+      new IntelligenceService(repo, queue),
+    )
     session.defaultSession.setPermissionRequestHandler(
       (_contents, _permission, callback) => callback(false),
     )
@@ -63,7 +97,10 @@ app
     console.error('Failed to start application:', error)
     app.exit(1)
   })
-app.on('will-quit', () => database?.close())
+app.on('will-quit', () => {
+  queue?.close()
+  database?.close()
+})
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })

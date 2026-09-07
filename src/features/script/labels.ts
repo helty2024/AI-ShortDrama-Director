@@ -1,0 +1,15 @@
+export const categoryLabels = {
+  character: '角色',
+  location: '场景',
+  prop: '道具',
+  costume: '服装',
+  makeup: '妆容',
+  vehicle: '车辆',
+  vfx: 'VFX',
+  sfx: 'SFX',
+  environment: '环境',
+  timeOfDay: '时间',
+  mood: '情绪',
+  keyAction: '关键动作',
+  continuityNote: '连续性备注',
+}

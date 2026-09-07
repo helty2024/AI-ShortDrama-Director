@@ -1,0 +1,47 @@
+# TextGenerationProvider 与通用 AI 队列
+
+## 接口
+
+主进程接口 TextGenerationProvider 提供 generateStructured<T>，接收独立 system prompt、结构化 input、Zod schema、schemaName 和 AbortSignal，返回经过 schema 校验的 T。
+ValidatedTextProvider 统一负责超时、取消、有限重试和错误规范化；CompatibleTextProvider 仅负责 HTTP 协议，MockTextProvider 负责确定性的开发演示结果。
+Prompt 位于 electron/main/intelligence/prompts.ts，带 PROMPT_VERSION，可在未来替换成 Skill/Prompt Compiler；Provider 不拼接业务提示。
+
+## 默认 Mock
+
+默认 mock-text 使用本地规则识别对白角色、地点、常见道具与制作元素，并生成三段镜头建议。无密钥可走完整确认链路，但它不等同于真实模型理解，结果卡明确显示 Mock 和来源理由。
+所有单元/桌面测试默认使用 Mock 或注入的内存 HTTP response，不调用外部模型。
+
+## 兼容文本服务
+
+可在启动 Electron 的主进程环境配置以下变量，然后运行 npm run dev 或构建后的应用：
+
+| 变量                   | 含义                                                                |
+| ---------------------- | ------------------------------------------------------------------- |
+| DIRECTOR_TEXT_PROVIDER | mock（默认）或 compatible                                           |
+| DIRECTOR_TEXT_BASE_URL | 含 /v1 的兼容 API 根地址；compatible 默认 https://api.openai.com/v1 |
+| DIRECTOR_TEXT_MODEL    | 使用服务实际支持的文本模型 ID；compatible 必填                      |
+| DIRECTOR_TEXT_API_KEY  | 可选认证密钥；云端通常必填，本地服务可不填                          |
+
+程序没有自动读取 .env；这些值由启动进程环境传入。不要添加 VITE_ 前缀，不要把密钥写入配置源码或 Bible。renderer 只看到 Provider 名称，看不到密钥/URL。
+仅允许 HTTPS，或 localhost/127.0.0.1/::1 的 HTTP；不跟随重定向，避免认证信息被转发。
+适配器发送 POST /chat/completions 和 response_format=json_schema（strict），从 choices[0].message.content 读取 JSON，再进行 Zod 校验。服务需要支持该协议与结构化输出；不支持的 API 会返回可见错误，不降级为未校验文本。
+OpenAI、支持该协议的本地模型服务器或其他兼容服务可复用适配器。尚未用真实账户密钥进行联网验收。
+
+参考：[OpenAI Structured Outputs 官方文档](https://developers.openai.com/api/docs/guides/structured-outputs)。
+
+## 错误、重试和取消
+
+单次请求默认 30 秒，最多额外重试 1 次。仅 NETWORK/RATE_LIMIT/TIMEOUT 自动重试；认证、输出无效、拒绝回答或其他 Provider 错误直接失败。重试等待同样响应取消。
+错误只返回规范化 code/message，不返回 HTTP 响应正文、堆栈或认证值。队列另外使用 INTERRUPTED/STALE_SOURCE 标记进程中断或来源变化。
+即使测试 Provider 忽略 AbortSignal，超时/取消的迟到结果也不能发布到数据库。
+
+## 持久化任务队列
+
+AITask 是供文本与后续媒体共用的任务记录，保存项目、输入类型、目标、sourceRevisions、attempt、状态、错误和结果 ID。Phase 1 GenerationTask 记录继续保留；Phase 2 不执行旧 image/video 草稿。
+队列当前全局并发为 1，每项目最多同时等待 20 项，每次批量分析最多 100 个 Scene。SQLite 保存状态，异步网络请求不阻塞 renderer。
+queued 从数据库读取；running 启动恢复时改为 failed/INTERRUPTED。正常关闭取消正在执行的任务，未运行的 queued 任务下次启动继续。失败/取消后显式重试更新源快照与 attempt，成功任务重新分析则创建新任务。
+结果、Draft 和 succeeded 状态在同一事务中提交。取消不会改变已成功任务，重新分析不会自动忽略或覆盖历史 Draft。
+
+## 扩展
+
+Phase 3 为 image/video 增加独立的 Provider 与输入 schema，将任务结果改为 Asset 候选版本 ID。密钥隔离、任务状态、取消/重试和人工确认原则继续复用。长轮询任务可扩展 providerTaskId 与恢复策略，避免重启后重复付费提交。

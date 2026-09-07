@@ -1,3 +1,4 @@
+import { migrateIntelligence } from './intelligence/migration.js'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -40,6 +41,7 @@ export function references(entity: Entity): { id: string; kind: EntityKind }[] {
     case 'scene':
       add('episode', entity.episodeId)
       add('location', entity.locationId)
+      entity.content.dialogue.forEach(line => add('character', line.characterId))
       break
     case 'storyboard':
       add('episode', entity.episodeId)
@@ -55,6 +57,7 @@ export function references(entity: Entity): { id: string; kind: EntityKind }[] {
     case 'character':
     case 'location':
     case 'prop':
+      if (entity.kind === 'prop') { entity.bible.usedByCharacterIds.forEach(id => add('character', id)); entity.bible.sceneIds.forEach(id => add('scene', id)) }
       entity.assetIds.forEach((id) => add('asset', id))
       break
     case 'generationTask':
@@ -83,7 +86,7 @@ export class ProjectDatabase {
   private migrate() {
     const row = this.db.prepare('PRAGMA user_version').get()
     const version = Number(row?.user_version ?? 0)
-    if (version > 1) throw new Error('数据库版本高于当前应用支持版本')
+    if (version > 2) throw new Error('数据库版本高于当前应用支持版本')
     if (version === 0)
       this.transaction(() => {
         this.db.exec(`
@@ -103,8 +106,9 @@ export class ProjectDatabase {
         PRAGMA user_version = 1;
       `)
       })
+    if (version < 2) this.transaction(() => migrateIntelligence(this.db))
   }
-  private transaction<T>(operation: () => T): T {
+  transaction<T>(operation: () => T): T {
     if (this.db.isTransaction) return operation()
     this.db.exec('BEGIN IMMEDIATE')
     try {
@@ -116,6 +120,7 @@ export class ProjectDatabase {
       throw error
     }
   }
+  get connection() { return this.db }
   close() {
     this.db.close()
   }
