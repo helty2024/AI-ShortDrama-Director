@@ -1,0 +1,4 @@
+:root { font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; color: #f0f2f5; background: #11141b; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 360px; }
+::selection { background: #bce5af; color: #11141b; }

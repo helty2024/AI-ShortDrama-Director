@@ -1,0 +1,40 @@
+{
+  "name": "ai-shortdrama-director",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/electron.mjs dev",
+    "typecheck": "tsc -b",
+    "build": "npm run typecheck && electron-vite build",
+    "lint": "oxlint",
+    "preview": "node scripts/electron.mjs preview",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "test:smoke": "playwright test"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.1.0",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "oxlint": "^1.79.0",
+    "typescript": "~6.0.2",
+    "vite": "^7.3.0"
+  },
+  "description": "AI short drama director desktop workspace",
+  "author": "helty2024",
+  "license": "UNLICENSED",
+  "main": "out/main/index.js",
+  "engines": {
+    "node": ">=24 <25"
+  }
+}
