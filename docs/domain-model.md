@@ -84,3 +84,12 @@ BatchPreview 持久化每个 Shot 编译后的 Prompt、Profile、分辨率、�
 ProductionSettings 保存 strict/advisory、preferredProfileId、resolution、motionComplexity 与手工报价；revision 防止设置覆盖。CostLine 一条对应一个媒体 Task 或 QC 报告，通过 Shot → Scene → Episode 归属汇总。Provider 请求/报告/版本历史不因报价设置变化重新计价。
 
 ShotProductionStatus 与 Episode/Scene Summary 全部派生。Strict 完成要求当前关键帧和视频均有新鲜、人工 accepted、无 severe issue 的 QC；Advisory 要求视频报告 accepted 或明确 ignored，若存在关键帧报告也要接受或忽略。当前模型尚未强制电影级视觉模型认证；Mock 分数不证明视觉质量。
+
+
+## Phase 6 验收与运维模型
+
+`src/shared/operations.ts` 集中定义命令、ValidationRecord、QCJob、TaskRow、About 和 OperationsSnapshot。ValidationRecord 的 kind 为 comfy/paid/recovery/manifest，含 UUID、projectId、testedAt、result 和可序列化证据；result 区分 Not validated、ready、submitted、validated、failed。Comfy 记录要求同一地址/工作流/checkpoint 的生成证据，包含节点、参考输入、保存、缩略图、导入、审核、尺寸与耗时；ready 仅证明连接和工作流检查通过。
+
+QCJob 持久化 shotId、versionId、createdAt/updatedAt、status、provider、error、reportId。任务状态与报告审核状态独立；队列取消不会接受或拒绝版本。Next Action 由既有 ShotProductionStatus 派生。
+
+v6 追加 validation_records / qc_jobs 和项目状态/版本时间/QC 镜头索引。保留 v1–v5 迁移内容。备份恢复重新映射 UUID、关系和存储键，保留媒体 hash，清除凭据引用与远程任务身份，历史结果不会自动发起云任务。

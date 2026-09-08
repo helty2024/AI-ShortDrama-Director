@@ -16,6 +16,7 @@ export const navigation = {
   generation: '生成',
   assets: '素材库',
   settings: '设置',
+  operations: '验收与维护',
 }
 export type Module = keyof typeof navigation
 export type Modal =

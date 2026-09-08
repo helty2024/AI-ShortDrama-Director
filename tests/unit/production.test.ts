@@ -677,14 +677,14 @@ test('v4 upgrades to v5 without altering images, video pins or old task provider
     const path = join(a.dir, 'workspace.sqlite'),
       raw = new DatabaseSync(path)
     raw.exec(
-      'DROP TABLE continuity_snapshots; DROP TABLE qc_reports; DROP TABLE production_preferences; DROP TABLE production_previews; DROP TABLE regeneration_plans; PRAGMA user_version=4',
+      'DROP TABLE validation_records; DROP TABLE qc_jobs; DROP INDEX tasks_project_status; DROP INDEX versions_project_created; DROP INDEX qc_project_shot; DROP TABLE continuity_snapshots; DROP TABLE qc_reports; DROP TABLE production_preferences; DROP TABLE production_previews; DROP TABLE regeneration_plans; PRAGMA user_version=4',
     )
     raw.close()
     const db = new ProjectDatabase(path)
     try {
       assert.equal(
         db.connection.prepare('PRAGMA user_version').get()?.user_version,
-        5,
+        6,
       )
       const restored = db
         .workspace(a.project.id)

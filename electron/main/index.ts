@@ -1,3 +1,5 @@
+import { MediaBroker } from './media-broker.js'
+import { protocol } from 'electron'
 import { safeStorage } from 'electron'
 import { EncryptedCredentialStore } from './video/credentials.js'
 import { MockVideoProvider, SeedanceVideoProvider } from './video/providers.js'
@@ -20,6 +22,17 @@ import { mkdirSync } from 'node:fs'
 import { ProjectDatabase } from './database.js'
 import { registerWorkspaceIPC } from './ipc.js'
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'director-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+  },
+])
 const directory = dirname(fileURLToPath(import.meta.url))
 const windows = new Set<number>()
 let database: ProjectDatabase | undefined
@@ -90,6 +103,10 @@ app
       repo,
       new MediaStorage(join(app.getPath('userData'), 'media')),
     )
+    const broker = new MediaBroker(visual)
+    visual.videoURL = (projectId, versionId) =>
+      broker.issue(projectId, versionId)
+    protocol.handle('director-media', (request) => broker.handle(request))
     const credentials = new EncryptedCredentialStore(
       join(app.getPath('userData'), 'credentials'),
       {
@@ -172,7 +189,12 @@ app
     })
   })
   .catch((error: unknown) => {
-    console.error('Failed to start application:', error)
+    void error
+    console.error('Application startup failed; details withheld')
+    dialog.showErrorBox(
+      '工作台无法启动',
+      '数据库迁移或启动失败。请保留 userData 数据，恢复经过验证的备份，或安装支持当前数据库版本的应用；不要删除数据库。',
+    )
     app.exit(1)
   })
 app.on('will-quit', () => {

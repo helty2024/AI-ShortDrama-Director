@@ -1,3 +1,4 @@
+import { MediaBroker } from '../../electron/main/media-broker.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
@@ -273,10 +274,15 @@ test('Mock video goes through submit/status/result, FFprobe, draft review and ex
     )
     s = app.repo.entity(app.project.id, shot.id)
     assert.equal(s.kind === 'shot' && s.confirmedVideoAssetVersionId, v.id)
-    assert.match(
-      await app.visual.media(app.project.id, v.id, false),
-      /^data:video\/mp4/,
+    const broker = new MediaBroker(app.visual)
+    app.visual.videoURL = (p, id) => broker.issue(p, id)
+    const url = await app.visual.media(app.project.id, v.id, false)
+    assert.match(url, /^director-media:\/\/asset\//)
+    const partial = await broker.handle(
+      new Request(url, { headers: { Range: 'bytes=0-15' } }),
     )
+    assert.equal(partial.status, 206)
+    assert.equal((await partial.arrayBuffer()).byteLength, 16)
     const file = join(app.dir, 'copy.mp4')
     await writeFile(file, await app.visual.storage.read(v.storageKey))
     assert.equal((await probeVideo(file)).duration, 1)
@@ -831,7 +837,7 @@ test('v3 to v4 migration preserves images, adds video fields and does not leak c
     const db = new ProjectDatabase(path)
     assert.equal(
       db.connection.prepare('PRAGMA user_version').get()?.user_version,
-      5,
+      6,
     )
     const migrated = JSON.parse(
       String(

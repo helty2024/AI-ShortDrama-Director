@@ -26,7 +26,7 @@ export function AssetImage({
           active &&
           typeof value === 'string' &&
           (value.startsWith('data:image/') ||
-            value.startsWith('data:video/mp4;'))
+            value.startsWith('director-media://asset/'))
         )
           setLoaded({ key, src: value, failed: false })
       })
@@ -38,7 +38,7 @@ export function AssetImage({
     }
   }, [projectId, versionId, thumbnail, key])
   const src = loaded?.key === key ? loaded.src : ''
-  if (src.startsWith('data:video/'))
+  if (src.startsWith('director-media://asset/'))
     return (
       <video
         className="asset-preview"

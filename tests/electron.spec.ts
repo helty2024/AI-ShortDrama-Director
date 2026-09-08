@@ -1,5 +1,9 @@
+import { ProjectDatabase, metadata } from '../electron/main/database.js'
+import { buildSeed } from '../electron/main/seed.js'
+import { aiTaskSchema } from '../src/shared/intelligence.js'
+import { assetVersionSchema } from '../src/shared/visual.js'
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, readdir } from 'node:fs/promises'
 import sharp from 'sharp'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -607,6 +611,7 @@ test('production board runs continuity, batch video, version-bound QC, strict co
   try {
     let page = await application.firstWindow()
     await page.getByRole('button', { name: '载入开发示例' }).click()
+    await page.getByRole('button', { name: 'Advanced', exact: true }).click()
     await page.getByRole('button', { name: '生产看板', exact: true }).click()
     await expect(
       page.getByRole('heading', { name: '生产看板', exact: true }),
@@ -723,6 +728,227 @@ test('production board runs continuity, batch video, version-bound QC, strict co
         .getByRole('article', { name: '生产镜头 雨中车站全景', exact: true })
         .getByText(/Production Complete/),
     ).toBeVisible()
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('simple production validation, task center, backup restore and diagnostics work through safe IPC', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-validation-smoke-'))
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await expect(page.getByRole('region', { name: '首次设置' })).toBeVisible()
+    await page
+      .getByRole('button', { name: '5. 进入工作台 / 暂时跳过设置' })
+      .click()
+    await page.getByRole('button', { name: '验收与维护', exact: true }).click()
+    await page.getByRole('button', { name: '创建 3 Shot 验收项目' }).click()
+    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await expect(
+      page.getByRole('button', { name: 'Advanced', exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole('article', { name: /生产镜头/ })).toHaveCount(3)
+    const card = page.getByRole('article', {
+      name: '生产镜头 雨中车站全景',
+      exact: true,
+    })
+    await expect(card.getByRole('status')).toContainText('下一步：生成关键帧')
+    await card.getByRole('button', { name: '生成关键帧', exact: true }).click()
+    await expect(card.getByRole('status')).toContainText('下一步：审核关键帧')
+    await card.getByText('关键帧 / 视频审核', { exact: true }).click()
+    await card
+      .getByRole('button', { name: '批准 / Promote', exact: true })
+      .click()
+    await expect(card.getByRole('status')).toContainText('下一步：生成视频')
+    await card.getByText('生成视频（单镜头确认）', { exact: true }).click()
+    await card
+      .getByRole('button', { name: '预览单镜头最小测试', exact: true })
+      .click()
+    await expect(
+      card.getByRole('button', { name: 'Test Submit · 确认提交' }),
+    ).toBeDisabled()
+    await card.getByRole('checkbox', { name: /允许提交这一镜头/ }).check()
+    await card.getByRole('button', { name: 'Test Submit · 确认提交' }).click()
+    await expect(card.getByRole('status')).toContainText('下一步：审核视频')
+    const media = card.locator('video').first()
+    await expect(media).toBeVisible()
+    await expect
+      .poll(() => media.evaluate((v: HTMLVideoElement) => v.readyState))
+      .toBeGreaterThan(0)
+    expect(await media.getAttribute('src')).toMatch(
+      /^director-media:\/\/asset\//,
+    )
+    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await expect(
+      page.getByRole('heading', { name: '任务中心', exact: true }),
+    ).toBeVisible()
+    await expect(page.getByText(/mock-video · succeeded/)).toBeVisible()
+    await page.getByRole('button', { name: '验收与维护', exact: true }).click()
+    await application.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [folder],
+      })
+    }, directory)
+    await page
+      .getByRole('button', { name: 'Backup Project', exact: true })
+      .click()
+    await expect(page.locator('main').getByRole('status')).toContainText(
+      'director-backup-',
+    )
+    const folder = (await readdir(directory)).find((n) =>
+      n.startsWith('director-backup-'),
+    )!
+    await application.evaluate(
+      ({ dialog }, folder) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [folder],
+        })
+      },
+      join(directory, folder),
+    )
+    await page
+      .getByRole('button', { name: 'Restore Project', exact: true })
+      .click()
+    await expect(page.locator('.topbar strong')).toContainText('恢复')
+    await page.getByRole('button', { name: '验收与维护', exact: true }).click()
+    await application.evaluate(
+      ({ dialog }, path) => {
+        dialog.showSaveDialog = async () => ({
+          canceled: false,
+          filePath: path,
+        })
+      },
+      join(directory, 'diagnostics.json'),
+    )
+    await page
+      .getByRole('button', { name: 'Export Diagnostics', exact: true })
+      .click()
+    await expect(page.locator('main').getByRole('status')).toContainText(
+      'diagnostics.json',
+    )
+    await page.screenshot({
+      path: 'test-results/production-validation.png',
+      fullPage: true,
+    })
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('large project startup, switching and paged workspaces handle the production fixture', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-performance-smoke-'))
+  const db = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+  const p = db.seed(buildSeed),
+    all = db.workspace(p.id).entities,
+    scene = all.find((e) => e.kind === 'scene')!,
+    shot = all.find((e) => e.kind === 'shot')!,
+    asset = all.find((e) => e.kind === 'asset')!
+  if (scene.kind !== 'scene' || shot.kind !== 'shot' || asset.kind !== 'asset')
+    throw Error('fixture')
+  const scenes = Array.from({ length: 18 }, (_, i) => ({
+    ...scene,
+    ...metadata(),
+    order: i + 2,
+    name: '规模场次 ' + i,
+  }))
+  db.insertEntities(p.id, scenes)
+  const sceneIds = [
+    ...all.filter((e) => e.kind === 'scene').map((e) => e.id),
+    ...scenes.map((e) => e.id),
+  ]
+  db.insertEntities(
+    p.id,
+    Array.from({ length: 94 }, (_, i) => ({
+      ...shot,
+      ...metadata(),
+      sceneId: sceneIds[i % 20],
+      order: i + 6,
+      name: '规模镜头 ' + i,
+    })),
+  )
+  db.transaction(() => {
+    for (let i = 0; i < 500; i++) {
+      const v = assetVersionSchema.parse({
+        ...metadata(),
+        projectId: p.id,
+        assetId: asset.id,
+        versionNumber: i + 1,
+        status: 'draft',
+        sourceType: 'generated',
+        mimeType: 'image/png',
+        width: 512,
+        height: 768,
+        fileSize: 1,
+        hash: 'a'.repeat(64),
+        storageKey: `${p.id}/${asset.id}/${metadata().id}.png`,
+        thumbnailPath: `${p.id}/${asset.id}/${metadata().id}-thumb.webp`,
+        provider: 'mock-image',
+        model: 'test',
+        prompt: 'fixture',
+        negativePrompt: '',
+        generationTaskId: null,
+        sourceAssetIds: [],
+        metadata: {},
+      })
+      db.connection
+        .prepare('INSERT INTO asset_versions VALUES (?,?,?,?,?,?)')
+        .run(v.id, p.id, asset.id, i + 1, v.hash, JSON.stringify(v))
+      const t = aiTaskSchema.parse({
+        ...metadata(),
+        projectId: p.id,
+        input: { type: 'breakdown', targetId: scene.id },
+        status: 'succeeded',
+        attempt: 1,
+        error: null,
+        resultIds: [],
+        sourceRevisions: {},
+      })
+      db.connection
+        .prepare('INSERT INTO ai_tasks VALUES (?,?,?)')
+        .run(t.id, p.id, JSON.stringify(t))
+    }
+  })
+  const other = db.create({
+    name: '切换目标',
+    description: '',
+    genre: '剧情',
+    aspectRatio: '9:16',
+    language: 'zh-CN',
+  })
+  db.open(p.id)
+  db.close()
+  const started = Date.now(),
+    application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await expect(page.locator('.topbar strong')).toHaveText(p.name)
+    expect(Date.now() - started).toBeLessThan(15000)
+    await page
+      .getByRole('button', { name: '5. 进入工作台 / 暂时跳过设置' })
+      .click()
+    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await expect(page.getByRole('article', { name: /生产镜头/ })).toHaveCount(
+      20,
+    )
+    await page.getByRole('button', { name: '下一页镜头' }).click()
+    await expect(page.getByRole('article', { name: /生产镜头/ })).toHaveCount(
+      20,
+    )
+    await page.getByRole('button', { name: '素材库', exact: true }).click()
+    await expect(page.locator('.asset-tile')).toHaveCount(2)
+    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await expect(page.getByText('共 500 个任务 · 第 1 页')).toBeVisible()
+    await page.getByRole('button', { name: '下一页任务' }).click()
+    await expect(page.getByText('共 500 个任务 · 第 2 页')).toBeVisible()
+    await page.getByLabel('切换项目', { exact: true }).selectOption(other.id)
+    await expect(page.locator('.topbar strong')).toHaveText('切换目标')
+    await page.getByLabel('切换项目', { exact: true }).selectOption(p.id)
+    await expect(page.getByText('共 500 个任务 · 第 1 页')).toBeVisible()
   } finally {
     await application.close()
     await rm(directory, { recursive: true, force: true })

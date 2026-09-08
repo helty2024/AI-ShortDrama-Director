@@ -228,3 +228,41 @@ dialog::backdrop {
     padding: 16px 20px;
   }
 }
+
+.paid-prompt {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+main pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+main dd {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+main dt {
+  color: #a9b4c8;
+}
+.simple-mode .production-shot {
+  margin-bottom: 18px;
+  padding: 20px;
+}
+
+.validation-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.validation-summary > div {
+  border: 1px solid #303a4b;
+  border-radius: 8px;
+  padding: 12px;
+  background: #171d27;
+}
+.validation-summary dd {
+  margin: 8px 0 0;
+  font-size: 1.2rem;
+}

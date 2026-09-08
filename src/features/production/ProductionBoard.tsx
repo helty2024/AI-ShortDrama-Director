@@ -1,3 +1,7 @@
+import { SimpleBoard } from '../operations/SimpleBoard'
+import { useSimpleMode } from '../operations/mode'
+import { LazyPanel } from '../../components/LazyPanel'
+import { nextAction } from '../../shared/operations'
 import { useIntelligence } from '../script/use-intelligence'
 import { TaskList } from '../script/TaskList'
 import { useState } from 'react'
@@ -37,6 +41,14 @@ export function CostView({ cost }: { cost: CostSummary }) {
 }
 export function ProductionBoard() {
   const { state } = useWorkspace()
+  const simple = useSimpleMode()
+  if (simple)
+    return (
+      <>
+        <h1>生产看板</h1>
+        <SimpleBoard />
+      </>
+    )
   return (
     <>
       <h1>生产看板</h1>
@@ -58,6 +70,7 @@ function Board({
   projectId: string
   entities: Entity[]
 }) {
+  const [page, setPage] = useState(0)
   const ai = useIntelligence(projectId)
   const pilot = usePilot(projectId),
     { reload, state } = useWorkspace(),
@@ -422,8 +435,24 @@ function Board({
         </article>
       )}
       {(pilot.error || message) && <p role="alert">{pilot.error || message}</p>}
+      <p>
+        镜头第 {page + 1} 页 · 共 {rows.length} 项
+      </p>
+      <button disabled={!page} onClick={() => setPage((n) => n - 1)}>
+        上一页镜头
+      </button>
+      <button
+        disabled={(page + 1) * 20 >= rows.length}
+        onClick={() => setPage((n) => n + 1)}
+      >
+        下一页镜头
+      </button>
       {s.scenes
-        .filter((scene) => rows.some((r) => r.sceneId === scene.id))
+        .filter((scene) =>
+          rows
+            .slice(page * 20, (page + 1) * 20)
+            .some((r) => r.sceneId === scene.id),
+        )
         .map((scene) => (
           <section key={scene.id}>
             <h2>
@@ -433,6 +462,7 @@ function Board({
               <CostView cost={scene.cost} />
             </p>
             {rows
+              .slice(page * 20, (page + 1) * 20)
               .filter((r) => r.sceneId === scene.id)
               .map((status) => {
                 const shot = entities.find((e) => e.id === status.shotId)
@@ -459,6 +489,7 @@ function Board({
                         {shot.name}
                       </strong>
                     </label>
+                    <p>下一步：{nextAction(status)}</p>
                     {shot.approvedKeyframeVersionId && (
                       <AssetImage
                         projectId={projectId}
@@ -491,14 +522,12 @@ function Board({
                       snapshot={s}
                       execute={pilot.execute}
                     />
-                    <details>
-                      <summary>关键帧生产与审核</summary>
+                    <LazyPanel title="关键帧生产与审核">
                       <VisualPanel entity={shot} entities={entities} />
-                    </details>
-                    <details>
-                      <summary>视频生产与审核</summary>
+                    </LazyPanel>
+                    <LazyPanel title="视频生产与审核">
                       <VideoPanel shot={shot} entities={entities} />
-                    </details>
+                    </LazyPanel>
                   </article>
                 ) : null
               })}
@@ -552,7 +581,7 @@ function Board({
     </section>
   )
 }
-function ShotTools({
+export function ShotTools({
   shot,
   entities,
   snapshot,

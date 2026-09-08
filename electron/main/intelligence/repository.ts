@@ -102,11 +102,11 @@ export class IntelligenceRepository {
     return result
   }
   task(projectId: string, id: string) {
-    const task = this.list(projectId, 'ai_tasks', aiTaskSchema).find(
-      (item) => item.id === id,
-    )
-    if (!task) throw new DomainError('NOT_FOUND', '任务不存在')
-    return task
+    const row = this.database.connection
+      .prepare('SELECT data FROM ai_tasks WHERE project_id=? AND id=?')
+      .get(projectId, id)
+    if (!row) throw new DomainError('NOT_FOUND', '任务不存在')
+    return aiTaskSchema.parse(JSON.parse(String(row.data)))
   }
   draft(projectId: string, id: string) {
     const draft = this.list(

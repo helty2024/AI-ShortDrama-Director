@@ -63,7 +63,7 @@ Phase 4 建议先完成关键帧批量生产、工作流实机验收和版本锁
 
 数据流：React VideoPanel / BatchPanel → preload 固定 workspace.request → Zod production command → 主进程 ProductionService → AITaskQueue → VideoGenerationProvider → 受控媒体目录 → FFprobe + 缩略图 → SQLite AssetVersion draft → 人工审核 → Shot 固定 version ID。
 
-SQLite 仍只在主进程，新增 production action 继续校验发送窗口、来源 URL、项目及实体引用。renderer 仅持有公开 Profile 字段与不含密钥的凭据引用/配置状态，不接触文件路径、任意网络或原始 IPC。媒体预览通过限定版本 ID 获取受控 data URI；CSP 允许本地媒体，禁止任意远端 fetch。
+SQLite 仍只在主进程，新增 production action 继续校验发送窗口、来源 URL、项目及实体引用。renderer 仅持有公开 Profile 字段与不含密钥的凭据引用/配置状态，不接触文件路径、任意网络或原始 IPC。图片预览通过限定版本 ID 获取受控 data URI，视频通过主进程签发的受控流式 URL 播放；CSP 允许本地媒体，禁止任意远端 fetch。
 
 执行器复用单工作者异步队列，不阻塞 renderer；每项目最多 20 项等待任务。视频长任务等待期间其他生成任务排队，当前不承诺多 Provider 并发调度。提交前的本地 intent 回执与提交后的远端 ID 回执先于 SQLite 进度更新；明确已知 ID 的恢复只轮询/下载，不重新 POST。视频版本与成功 Task 在同一事务提交，文件先落盘，失败遗留文件由孤儿扫描报告。
 
@@ -79,6 +79,19 @@ v5 只追加 continuity_snapshots、qc_reports、production_preferences、produc
 
 批次预览保存输入指纹与费用快照。确认前验证当前连续性、关键帧、Profile、设置，发生变化必须重新预览。确认在事务中创建聚合组并标记预览已消费，再创建独立 Task；重复确认不会重新提交整批。进程在批次准备中断时，未获得 taskId 的条目保留提示，用户核对后可重新预览未提交镜头，已有 Task 继续按 Phase 4 回执恢复。
 
-重生计划有 ready/submitting/submitted 单次执行门闩。提交前落盘 submitting，防止双击或并发请求重复创建；结果不明确时检查任务列表，不能自动无限重生。网络与视频执行仍复用 AITaskQueue；Mock QC 通过独立异步 Provider 调用完成，当前没有持久化 QC 排队/取消调度，失败由用户再次发起。
+重生计划有 ready/submitting/submitted 单次执行门闩。提交前落盘 submitting，防止双击或并发请求重复创建；结果不明确时检查任务列表，不能自动无限重生。网络与视频执行仍复用 AITaskQueue；Mock QC 通过独立异步 Provider 调用完成，Phase 6 通过 qc_jobs 持久化运行、失败、取消和报告 ID，复用主进程异步 Provider，任务中心统一取消/重试；没有另建分布式调度。
 
-当前 Resolver 按同一 Storyboard 的镜头顺序继承；生产看板会重复读取有限规模项目的元数据，适合现有桌面项目。后续大项目应对 workspace/context 缓存并按 revision 失效，不在本阶段引入分布式调度。
+当前 Resolver 按同一 Storyboard 的镜头顺序继承；Phase 6 在一次 snapshot 中只读取一次项目实体和连续性集合，版本查找使用主键限定项目查询，避免每 Shot 或每 Range 请求扫描全体版本。
+
+
+## Phase 6 运行与验收边界
+
+`operations` 为 Zod discriminated union；沿用可信主窗口、main frame、精确 URL 校验。文件路径只由主进程原生目录/保存对话框产生；renderer 没有任意文件读写接口。OperationsService 协调现有 ProductionService、ProductionIntelligenceService 和 AITaskQueue。
+
+`validation_records` 保存 Comfy、付费预览、恢复和 Manifest 记录；预览同时存输入指纹与消费状态。主进程在任何 await 提交之前落盘消费门闩，失败不会自动重试计费。恢复只允许已知远端 ID，跨应用 session 检查 ID 是否保留并保存结果版本；不宣称未知提交可以安全恢复。
+
+`qc_jobs` 负责 QC 生命周期与错误，报告仍写 `qc_reports`，并且只有人工审核改变正式审核状态。应用重启将遗留运行 QC 标记失败以便人工重试。Error Center 展示失败任务、QC/stale source、缺失凭据、Comfy 检测与已检测环境错误；数据库启动失败在 UI 之前由原生错误提示报告，保留原数据库。
+
+Simple Mode 是默认生产入口，Advanced 保存到本机 UI 偏好。隐藏生成组件使用 LazyPanel，避免关闭的面板继续创建轮询。看板每页 20 镜头、素材每页 50 项、版本每页 20 项、任务每页 50 项。当前项目汇总仍读取完整元数据集合；这不是无限数据量分页，100 / 500 / 500 是当前验证规模。
+
+备份先生成隔离 SQLite 快照并复制登记媒体，manifest 最后落盘，未完成目录不可恢复；恢复先校验完整备份再复制新 UUID 目录，数据库事务提交失败时清理新目录。凭据存储完全不参与备份。备份是单项目数据迁移格式，不是 app userData 全盘克隆。

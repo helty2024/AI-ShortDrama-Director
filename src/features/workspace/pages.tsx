@@ -1,8 +1,9 @@
+import { OperationsPage } from '../operations/OperationsPage'
+import { LazyPanel } from '../../components/LazyPanel'
 import { BatchPanel } from '../video/BatchPanel'
 import { VideoPanel } from '../video/VideoPanel'
 import { VisualPanel } from '../visual/VisualPanel'
 import { BibleEditor } from '../script/BibleEditor'
-import { ProjectTasks } from '../script/ProjectTasks'
 import type { EntityKind } from '../../shared/domain'
 import { useWorkspace } from './state'
 import { workspaceService } from '../../services/workspace'
@@ -52,19 +53,17 @@ function EntityList({ kind }: { kind: EntityKind }) {
                 )}
                 <p>{entity.description || '暂无简介'}</p>
                 {entity.kind === 'shot' && (
-                  <details>
-                    <summary>视频生产</summary>
+                  <LazyPanel title="视频生产">
                     <VideoPanel shot={entity} entities={entities} />
-                  </details>
+                  </LazyPanel>
                 )}
                 {(entity.kind === 'character' ||
                   entity.kind === 'location' ||
                   entity.kind === 'prop' ||
                   entity.kind === 'shot') && (
-                  <details>
-                    <summary>视觉生产</summary>
+                  <LazyPanel title="视觉生产">
                     <VisualPanel entity={entity} entities={entities} />
-                  </details>
+                  </LazyPanel>
                 )}
                 {entity.kind === 'script' && (
                   <p>{entity.content || '剧本内容待填写。'}</p>
@@ -286,7 +285,7 @@ export function GenerationPage() {
   return (
     <>
       <h1>生成</h1>
-      <ProjectTasks />
+      <OperationsPage tasksOnly />
       <p>上方统一追踪文本、图片和视频任务；下方保留早期媒体任务记录。</p>
       <EntityList kind="generationTask" />
     </>

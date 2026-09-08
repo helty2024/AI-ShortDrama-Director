@@ -51,6 +51,9 @@ export class MediaStorage {
       throw new DomainError('FORBIDDEN', '素材不能越过受控目录')
     return actual
   }
+  async resolveRegisteredFile(key: string) {
+    return this.ensureSafe(this.path(key))
+  }
   async read(key: string) {
     const path = await this.ensureSafe(this.path(key))
     const info = await stat(path)

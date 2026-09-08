@@ -2,6 +2,21 @@
 
 面向 AI 短剧创作的本地桌面工作台，基于 React + TypeScript + Electron。
 
+## Phase 6 · 0.6.0
+
+- 默认 Simple Mode 生产看板：Next Action、关键帧生成、图片/视频审核、单镜头视频确认、连续性与 QC；Advanced 保留高级批次、Prompt 和 Provider 操作。
+- “验收与维护”创建 1 集 / 1 场 / 3 Shot / 2 角色 / 1 地点 / 2 道具的小项目；Checklist、Summary 与 ComfyUI 验收报告持久化。
+- Paid Validation 按能力选择最短时长、最低分辨率，展示输入/首帧/费用/凭据状态，显式确认才提交。预览过期或重复提交会被拒绝。
+- 统一任务与错误中心包括 Text / Image / Video / QC。已获远端 ID 的 ComfyUI / Seedance 任务提供关闭重启验收入口。
+- MP4 使用 `director-media` 受控流式协议，支持 Range / HEAD；数据库登记和文件目录边界逐次校验。图片仍采用受控 data URI。
+- v6 增量迁移、直接版本 ID 查询、上下文读取复用、看板/素材/版本/任务分页和折叠面板延迟加载；单元测试构造 20 Scene / 100 Shot / 500 Version / 500 Task。
+- 项目备份目录包含单项目 SQLite、媒体、公开配置与工作流；恢复验证校验和，重新分配 UUID，失败回滚，凭据重新绑定。
+- 首次设置、About、构建时间/源 revision、schema 版本、FFmpeg 检测、脱敏诊断包。版本号为 0.6.0。
+
+开始：**验收与维护 → 创建 3 Shot 验收项目 → 生产看板**。真实服务验收与 Mock 功能测试分开记录。本机在 2026-09-08 检查 `127.0.0.1:8188` 不可达，ComfyUI **Not validated**；没有执行真实 Seedance 付费请求，Seedance **Not validated**。真实 3 镜头素材质量与云端恢复验收仍需配置服务后由用户运行，不能由 Mock 通过结果代替。
+
+文档：[生产验收](docs/production-validation.md) · [首次设置](docs/setup-wizard.md) · [备份恢复](docs/backup-restore.md) · [诊断包](docs/diagnostics.md) · [媒体流式播放](docs/media-streaming.md)。
+
 ## Phase 5 已实现
 
 - 独立生产看板，按 Episode → Scene → Shot 汇总关键帧、视频、QC、审核、失败和成本。

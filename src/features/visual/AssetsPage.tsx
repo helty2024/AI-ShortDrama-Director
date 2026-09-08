@@ -19,6 +19,7 @@ export function AssetsPage() {
 function Library({ projectId }: { projectId: string }) {
   const { state, reload } = useWorkspace(),
     visual = useVisual(projectId)
+  const [page, setPage] = useState(0)
   const [search, setSearch] = useState(''),
     [source, setSource] = useState(''),
     [status, setStatus] = useState(''),
@@ -86,14 +87,32 @@ function Library({ projectId }: { projectId: string }) {
       >
         导入 MP4 视频
       </button>
+      <p>
+        第 {page + 1} 页 · {rows.length} 项
+      </p>
+      <button disabled={!page} onClick={() => setPage((n) => n - 1)}>
+        上一页素材
+      </button>
+      <button
+        disabled={(page + 1) * 50 >= rows.length}
+        onClick={() => setPage((n) => n + 1)}
+      >
+        下一页素材
+      </button>
       <div className="asset-filters">
         <label>
           搜索
-          <input value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input
+            value={search}
+            onChange={(e) => (setSearch(e.target.value), setPage(0))}
+          />
         </label>
         <label>
           类型
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+          <select
+            value={type}
+            onChange={(e) => (setType(e.target.value), setPage(0))}
+          >
             <option value="">全部</option>
             {['image', 'video', 'audio', 'document'].map((t) => (
               <option key={t}>{t}</option>
@@ -102,7 +121,10 @@ function Library({ projectId }: { projectId: string }) {
         </label>
         <label>
           来源
-          <select value={source} onChange={(e) => setSource(e.target.value)}>
+          <select
+            value={source}
+            onChange={(e) => (setSource(e.target.value), setPage(0))}
+          >
             <option value="">全部</option>
             {['imported', 'generated', 'edited', 'derived', 'reference'].map(
               (s) => (
@@ -113,7 +135,10 @@ function Library({ projectId }: { projectId: string }) {
         </label>
         <label>
           状态
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select
+            value={status}
+            onChange={(e) => (setStatus(e.target.value), setPage(0))}
+          >
             <option value="">全部</option>
             {['draft', 'approved', 'rejected', 'archived'].map((s) => (
               <option key={s}>{s}</option>
@@ -132,7 +157,7 @@ function Library({ projectId }: { projectId: string }) {
         </p>
       )}
       <div className="asset-grid">
-        {rows.map((asset) => {
+        {rows.slice(page * 50, (page + 1) * 50).map((asset) => {
           const latest = versions.filter((v) => v.assetId === asset.id).at(-1),
             v = versions.find((v) => v.id === asset.approvedVersionId) ?? latest
           return (

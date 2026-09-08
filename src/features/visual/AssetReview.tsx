@@ -1,3 +1,5 @@
+import { useSimpleMode } from '../operations/mode'
+import { LazyPanel } from '../../components/LazyPanel'
 import { useState } from 'react'
 import type { Asset, Entity } from '../../shared/domain'
 import type { AssetVersion, VisualCommand } from '../../shared/visual'
@@ -19,6 +21,8 @@ export function AssetReview({
   targetId?: string
   onRegenerate?: (version: AssetVersion) => void
 }) {
+  const simple = useSimpleMode()
+  const [page, setPage] = useState(0)
   const [compare, setCompare] = useState<string[]>([]),
     [bind, setBind] = useState(targetId ?? ''),
     [error, setError] = useState(''),
@@ -88,12 +92,25 @@ export function AssetReview({
           {error}
         </p>
       )}
+      <p>
+        共 {current.length} 个版本 · 第 {page + 1} 页
+      </p>
+      <button disabled={!page} onClick={() => setPage((n) => n - 1)}>
+        上一页版本
+      </button>
+      <button
+        disabled={(page + 1) * 20 >= current.length}
+        onClick={() => setPage((n) => n + 1)}
+      >
+        下一页版本
+      </button>
       <div className="asset-version-grid">
-        {current.map((v) => (
+        {current.slice(page * 20, (page + 1) * 20).map((v) => (
           <article key={v.id} aria-label={'版本 ' + v.versionNumber}>
             <AssetImage
               projectId={asset.projectId}
               versionId={v.id}
+              thumbnail={!(simple && v.mimeType === 'video/mp4')}
               alt={asset.name + ' v' + v.versionNumber}
             />
             <strong>
@@ -109,14 +126,15 @@ export function AssetReview({
             <p>
               {v.provider ?? '本地导入'} / {v.model ?? '—'}
             </p>
-            <details>
-              <summary>生成信息与预览</summary>
-              <AssetImage
-                projectId={asset.projectId}
-                versionId={v.id}
-                thumbnail={false}
-                alt="原图预览"
-              />
+            <LazyPanel title="生成信息与预览">
+              {!(simple && v.mimeType === 'video/mp4') && (
+                <AssetImage
+                  projectId={asset.projectId}
+                  versionId={v.id}
+                  thumbnail={false}
+                  alt="原图预览"
+                />
+              )}
               <p>Prompt：{v.prompt || '—'}</p>
               <p>Negative：{v.negativePrompt || '—'}</p>
               <p>SHA-256：{v.hash}</p>
@@ -127,7 +145,7 @@ export function AssetReview({
                   2,
                 )}
               </pre>
-            </details>
+            </LazyPanel>
             <div className="actions">
               {asset.mediaType === 'video' && (
                 <button

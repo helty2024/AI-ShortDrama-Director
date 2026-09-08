@@ -1,3 +1,5 @@
+import { jobSchema } from '../../../src/shared/operations.js'
+import type { QCJob } from '../../../src/shared/operations.js'
 import { z } from 'zod'
 import { writeFile } from 'node:fs/promises'
 import { metadata, DomainError } from '../database.js'
@@ -34,6 +36,7 @@ import { productionCosts, deriveShotStatus } from './status.js'
 import { MockMediaQCProvider, planRegeneration } from './qc.js'
 import type { MediaQCProvider } from './qc.js'
 export class ProductionIntelligenceService {
+  readonly qcControllers = new Map<string, AbortController>()
   readonly production: ProductionService
   readonly queue: AITaskQueue
   private saveManifest: () => Promise<string | null>
@@ -48,6 +51,16 @@ export class ProductionIntelligenceService {
     this.queue = queue
     this.saveManifest = saveManifest
     this.qc = qc
+    this.db.connection.exec(
+      "UPDATE qc_jobs SET data=json_set(data,'$.status','failed','$.error','应用关闭导致 QC 中断，请重试') WHERE json_extract(data,'$.status') IN ('queued','running')",
+    )
+  }
+  saveJob(job: QCJob) {
+    this.db.connection
+      .prepare(
+        'INSERT INTO qc_jobs VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
+      )
+      .run(job.id, job.projectId, JSON.stringify(jobSchema.parse(job)))
   }
   get visual() {
     return this.production.visual
@@ -131,6 +144,7 @@ export class ProductionIntelligenceService {
       reports = this.reports(p),
       settings = this.settings(p),
       costLines = productionCosts(entities, tasks, reports)
+    const continuity = readContinuity(this.db, p)
     const statuses = entities
       .filter((e): e is Shot => e.kind === 'shot')
       .map((s) =>
@@ -141,7 +155,7 @@ export class ProductionIntelligenceService {
           tasks,
           reports,
           settings,
-          this.context(p, s.id).fingerprint,
+          resolveContinuity(s, entities, continuity).fingerprint,
           costLines,
         ),
       )
@@ -177,7 +191,7 @@ export class ProductionIntelligenceService {
           }
         })
     return pilotSnapshotSchema.parse({
-      continuity: readContinuity(this.db, p),
+      continuity,
       reports,
       settings,
       statuses,
@@ -276,52 +290,84 @@ export class ProductionIntelligenceService {
         return saved
       }
       case 'qc.run': {
-        const shot = this.shot(p, c.shotId),
-          version = this.visual.version(p, c.versionId)
-        if (
-          version.metadata.targetId !== shot.id &&
-          !shot.assetIds.includes(version.assetId)
-        )
-          throw new DomainError('CONFLICT', '版本不属于该镜头')
-        const context = this.context(p, shot.id),
-          output = qcOutputSchema.parse(
-            await this.qc.evaluate(
-              {
-                version,
-                shot,
-                approvedKeyframe: shot.approvedKeyframeVersionId
-                  ? this.visual.version(p, shot.approvedKeyframeVersionId)
-                  : null,
-                references: this.db
-                  .workspace(p)
-                  .entities.filter(
-                    (e) =>
-                      shot.characterIds.includes(e.id) ||
-                      shot.propIds.includes(e.id) ||
-                      e.id === shot.locationId,
-                  ),
-                continuity: context,
-                media: await this.visual.storage.read(version.storageKey),
-              },
-              new AbortController().signal,
-            ),
-          )
-        if (this.context(p, shot.id).fingerprint !== context.fingerprint)
-          throw new DomainError('CONFLICT', 'QC 期间连续性已变更，请重新运行')
-        const report = qcReportSchema.parse({
+        const controller = new AbortController()
+        const job: QCJob = {
           ...metadata(),
           projectId: p,
-          shotId: shot.id,
-          versionId: version.id,
+          shotId: c.shotId,
+          versionId: c.versionId,
+          status: 'running',
+          error: null,
           provider: this.qc.id,
-          contextFingerprint: context.fingerprint,
-          status: 'pending',
-          output,
-        })
-        this.db.connection
-          .prepare('INSERT INTO qc_reports VALUES (?,?,?,?,?)')
-          .run(report.id, p, shot.id, version.id, JSON.stringify(report))
-        return report
+          reportId: null,
+        }
+        this.saveJob(job)
+        this.qcControllers.set(job.id, controller)
+        try {
+          const shot = this.shot(p, c.shotId),
+            version = this.visual.version(p, c.versionId)
+          if (
+            version.metadata.targetId !== shot.id &&
+            !shot.assetIds.includes(version.assetId)
+          )
+            throw new DomainError('CONFLICT', '版本不属于该镜头')
+          const context = this.context(p, shot.id),
+            output = qcOutputSchema.parse(
+              await this.qc.evaluate(
+                {
+                  version,
+                  shot,
+                  approvedKeyframe: shot.approvedKeyframeVersionId
+                    ? this.visual.version(p, shot.approvedKeyframeVersionId)
+                    : null,
+                  references: this.db
+                    .workspace(p)
+                    .entities.filter(
+                      (e) =>
+                        shot.characterIds.includes(e.id) ||
+                        shot.propIds.includes(e.id) ||
+                        e.id === shot.locationId,
+                    ),
+                  continuity: context,
+                  media: await this.visual.storage.read(version.storageKey),
+                },
+                controller.signal,
+              ),
+            )
+          controller.signal.throwIfAborted()
+          if (this.context(p, shot.id).fingerprint !== context.fingerprint)
+            throw new DomainError('CONFLICT', 'QC 期间连续性已变更，请重新运行')
+          const report = qcReportSchema.parse({
+            ...metadata(),
+            projectId: p,
+            shotId: shot.id,
+            versionId: version.id,
+            provider: this.qc.id,
+            contextFingerprint: context.fingerprint,
+            status: 'pending',
+            output,
+          })
+          this.db.connection
+            .prepare('INSERT INTO qc_reports VALUES (?,?,?,?,?)')
+            .run(report.id, p, shot.id, version.id, JSON.stringify(report))
+          this.saveJob({
+            ...job,
+            status: 'succeeded',
+            updatedAt: new Date().toISOString(),
+            reportId: report.id,
+          })
+          return report
+        } catch (error) {
+          this.saveJob({
+            ...job,
+            status: controller.signal.aborted ? 'cancelled' : 'failed',
+            updatedAt: new Date().toISOString(),
+            error: 'QC 未完成，请检查素材、连续性状态后重试',
+          })
+          throw error
+        } finally {
+          this.qcControllers.delete(job.id)
+        }
       }
       case 'qc.review': {
         const report = this.reports(p).find((r) => r.id === c.id)

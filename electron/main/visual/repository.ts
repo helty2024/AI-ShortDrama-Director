@@ -46,9 +46,11 @@ export class VisualRepository {
       .map((row) => assetVersionSchema.parse(JSON.parse(String(row.data))))
   }
   version(projectId: string, id: string) {
-    const item = this.versions(projectId).find((v) => v.id === id)
-    if (!item) throw new DomainError('NOT_FOUND', '素材版本不存在')
-    return item
+    const row = this.repo.database.connection
+      .prepare('SELECT data FROM asset_versions WHERE project_id=? AND id=?')
+      .get(projectId, id)
+    if (!row) throw new DomainError('NOT_FOUND', '素材版本不存在')
+    return assetVersionSchema.parse(JSON.parse(String(row.data)))
   }
   asset(projectId: string, id: string) {
     const entity = this.repo.entity(projectId, id)
@@ -440,8 +442,14 @@ export class VisualRepository {
       return null
     })
   }
+  videoURL?: (projectId: string, versionId: string) => string
   async media(projectId: string, id: string, thumbnail: boolean) {
     const v = this.version(projectId, id)
+    if (!thumbnail && v.mimeType === 'video/mp4') {
+      if (!this.videoURL)
+        throw new DomainError('FORBIDDEN', '媒体播放服务尚未启动')
+      return this.videoURL(projectId, id)
+    }
     const bytes = await this.storage.read(
       thumbnail ? v.thumbnailPath : v.storageKey,
     )

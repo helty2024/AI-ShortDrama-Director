@@ -599,7 +599,7 @@ test('Phase 1 migration preserves UUIDs, timestamps, revisions, raw scripts and 
     const upgraded = new ProjectDatabase(path)
     assert.equal(
       upgraded.connection.prepare('PRAGMA user_version').get()?.user_version,
-      5,
+      6,
     )
     const data = upgraded.workspace(project.id).entities
     assert.deepEqual(

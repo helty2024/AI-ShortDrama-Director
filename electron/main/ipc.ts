@@ -1,3 +1,5 @@
+import { OperationsService } from './operations/service.js'
+import { app } from 'electron'
 import { ProductionService } from './video/service.js'
 import { AIError } from './intelligence/provider.js'
 import { VisualService } from './visual/service.js'
@@ -11,6 +13,7 @@ import { DomainError, ProjectDatabase } from './database.js'
 import { buildSeed } from './seed.js'
 import { IntelligenceService } from './intelligence/service.js'
 
+declare const __DIRECTOR_BUILD__: string
 export function isTrustedSender(
   event: IpcMainInvokeEvent,
   windows: Set<number>,
@@ -44,6 +47,31 @@ export function registerWorkspaceIPC(
       return r.canceled ? null : (r.filePath ?? null)
     },
   )
+  const operations = new OperationsService(pilot, {
+    version: app.getVersion(),
+    platform: process.platform,
+    build: __DIRECTOR_BUILD__,
+    directory: async (title) => {
+      const r = await dialog.showOpenDialog({
+        title,
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      return r.canceled ? null : (r.filePaths[0] ?? null)
+    },
+    save: async () => {
+      const r = await dialog.showSaveDialog({
+        title: '导出诊断包（不含剧本和素材）',
+        defaultPath: 'director-diagnostics.json',
+      })
+      return r.canceled ? null : (r.filePath ?? null)
+    },
+    restart: () => {
+      setTimeout(() => {
+        app.relaunch()
+        app.quit()
+      }, 250)
+    },
+  })
   ipcMain.handle(
     'workspace:request',
     async (event, raw: unknown): Promise<Result> => {
@@ -52,8 +80,24 @@ export function registerWorkspaceIPC(
       try {
         const request = requestSchema.parse(raw)
         switch (request.action) {
-          case 'pilot':
-            return { ok: true, data: await pilot.execute(request.command) }
+          case 'operations':
+            return {
+              ok: true,
+              data: z.json().parse(await operations.execute(request.command)),
+            }
+          case 'pilot': {
+            const data = await pilot.execute(request.command)
+            if (request.command.operation === 'manifest.export' && data)
+              operations.record({
+                id: crypto.randomUUID(),
+                projectId: request.command.projectId,
+                kind: 'manifest',
+                testedAt: new Date().toISOString(),
+                result: 'validated',
+                details: {},
+              })
+            return { ok: true, data }
+          }
           case 'production':
             return { ok: true, data: await production.execute(request.command) }
           case 'visual':
