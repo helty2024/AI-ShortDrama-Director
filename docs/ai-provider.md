@@ -51,3 +51,9 @@ ImageGenerationProvider 提供 id/displayName/capabilities、healthCheck、gener
 主进程配置无图像密钥输入。本版 ComfyUI 面向本机无认证服务；未来商业 Provider 的密钥需加主进程安全存储，不能放 providerOptions 持久化请求。
 
 详见 [ComfyUI](comfyui-provider.md)、[图像任务与恢复](image-generation.md)、[Prompt Compiler](prompt-compiler.md)。视频 Provider 尚未接入。
+
+## Phase 4 视频适配器
+
+文本、图像、视频使用独立契约。VideoGenerationProvider 是 submit → getStatus → fetchResult 的长任务接口，详见 [视频 Provider](video-provider.md)。统一 AITaskQueue 根据 input.type 路由执行器，所有生成结果均为候选版本，审批仍由业务服务执行。
+
+云视频认证通过 CredentialStore，由 Electron safeStorage 加密。公开 Profile 仅保存认证引用；请勿将文本 Provider 的旧环境配置方式误用于视频页面。当前默认 mock-video 生成真实短 MP4，不访问外网。

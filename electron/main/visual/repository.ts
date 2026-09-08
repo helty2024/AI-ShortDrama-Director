@@ -139,9 +139,20 @@ export class VisualRepository {
       | 'generationTaskId'
       | 'sourceAssetIds'
       | 'metadata'
-    >,
+    > &
+      Partial<
+        Pick<
+          AssetVersion,
+          'promptVersion' | 'sourceKeyframeVersionIds' | 'cost'
+        >
+      >,
   ) {
-    this.asset(projectId, assetId)
+    const targetAsset = this.asset(projectId, assetId)
+    if (
+      (stored.mimeType === 'video/mp4') !==
+      (targetAsset.mediaType === 'video')
+    )
+      throw new DomainError('CONFLICT', '资产媒体类型与版本不一致')
     for (const id of source.sourceAssetIds) this.asset(projectId, id)
     const versions = this.versions(projectId).filter(
       (v) => v.assetId === assetId,
@@ -248,6 +259,8 @@ export class VisualRepository {
       throw new DomainError('CONFLICT', '参考图角色无效、重复或存在多个主参考')
     for (const ref of references) {
       const asset = this.asset(projectId, ref.assetId)
+      if (asset.mediaType !== 'image')
+        throw new DomainError('CONFLICT', 'Bible 参考只能使用图片')
       if (ref.primary && !asset.approvedVersionId)
         throw new DomainError('CONFLICT', '请先审核批准主参考素材的版本')
     }
@@ -283,7 +296,10 @@ export class VisualRepository {
         status !== 'approved' &&
         (asset.approvedVersionId === id ||
           entities.some(
-            (e) => e.kind === 'shot' && e.approvedKeyframeVersionId === id,
+            (e) =>
+              e.kind === 'shot' &&
+              (e.approvedKeyframeVersionId === id ||
+                e.confirmedVideoAssetVersionId === id),
           ))
       )
         throw new DomainError(
@@ -311,8 +327,15 @@ export class VisualRepository {
           this.repo.checkRevision(target.revision, targetRevision)
           if (target.kind === 'shot')
             this.repo.updateEntity(projectId, targetId, targetRevision, {
-              approvedKeyframeAssetId: asset.id,
-              approvedKeyframeVersionId: id,
+              ...(version.mimeType === 'video/mp4'
+                ? {
+                    confirmedVideoAssetId: asset.id,
+                    confirmedVideoAssetVersionId: id,
+                  }
+                : {
+                    approvedKeyframeAssetId: asset.id,
+                    approvedKeyframeVersionId: id,
+                  }),
               assetIds: [...new Set([...target.assetIds, asset.id])],
             })
           else if (
@@ -376,7 +399,12 @@ export class VisualRepository {
           (t) =>
             'assetId' in t.input &&
             (t.input.assetId === id ||
-              t.input.request.prompt.referenceAssetIds.includes(id)),
+              ('referenceAssetIds' in t.input.request.prompt
+                ? t.input.request.prompt.referenceAssetIds.includes(id)
+                : t.input.request.referenceVersionIds.some(
+                    (versionId) =>
+                      this.version(projectId, versionId).assetId === id,
+                  ))),
         )
       )
         throw new DomainError(

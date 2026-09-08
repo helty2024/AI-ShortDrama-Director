@@ -1,3 +1,4 @@
+import { ProductionService } from './video/service.js'
 import { AIError } from './intelligence/provider.js'
 import { VisualService } from './visual/service.js'
 import { ipcMain } from 'electron'
@@ -28,6 +29,7 @@ export function registerWorkspaceIPC(
   allowSeed: boolean,
   intelligence: IntelligenceService,
   visual: VisualService,
+  production: ProductionService,
 ) {
   ipcMain.handle(
     'workspace:request',
@@ -37,6 +39,8 @@ export function registerWorkspaceIPC(
       try {
         const request = requestSchema.parse(raw)
         switch (request.action) {
+          case 'production':
+            return { ok: true, data: await production.execute(request.command) }
           case 'visual':
             return { ok: true, data: await visual.execute(request.command) }
           case 'intelligence':
@@ -74,7 +78,7 @@ export function registerWorkspaceIPC(
           return { ok: false, code: 'CONFLICT', message: error.message }
         if (error instanceof DomainError)
           return { ok: false, code: error.code, message: error.message }
-        console.error('Workspace operation failed:', error)
+        console.error('Workspace operation failed (details withheld)')
         return { ok: false, code: 'INTERNAL', message: '数据操作失败，请重试' }
       }
     },

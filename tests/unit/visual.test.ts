@@ -273,7 +273,10 @@ test('Mock image provider is deterministic and the full queue creates draft vers
         null,
       )
       if (kind === 'character') {
-        const request = 'request' in task.input ? task.input.request : null
+        const request =
+          'request' in task.input && task.input.type !== 'shot-video'
+            ? task.input.request
+            : null
         assert.ok(request)
         const provider = new MockImageProvider()
         const output = await provider.generate(request, {
@@ -508,7 +511,7 @@ test('v2 migration preserves legacy assets and adds v3 fields without inventing 
     const db = new ProjectDatabase(path)
     assert.equal(
       db.connection.prepare('PRAGMA user_version').get()?.user_version,
-      3,
+      4,
     )
     assert.equal(db.workspace(project.id).entities.length, entities.length)
     const asset = db

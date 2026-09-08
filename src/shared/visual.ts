@@ -1,3 +1,4 @@
+import { costSchema, emptyCost, persistedCostSchema } from './video.js'
 import { z } from 'zod'
 const id = z.uuid()
 const text = z.string().max(100000)
@@ -56,7 +57,13 @@ export const assetVersionSchema = z.strictObject({
   versionNumber: z.number().int().positive(),
   status: versionStatusSchema,
   sourceType: assetSourceSchema,
-  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4']),
+  duration: z.number().positive().nullable().default(null),
+  fps: z.number().positive().nullable().default(null),
+  codec: small.nullable().default(null),
+  promptVersion: small.nullable().default(null),
+  sourceKeyframeVersionIds: z.array(id).default([]),
+  cost: costSchema.default(emptyCost),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   fileSize: z.number().int().positive(),
@@ -143,7 +150,7 @@ export const imageTaskFields = {
   outputAssetVersionIds: z.array(id).default([]),
   provider: small.nullable().default(null),
   model: small.nullable().default(null),
-  costMetadata: z.record(z.string(), z.json()).default({}),
+  costMetadata: persistedCostSchema.default(emptyCost),
   startedAt: z.iso.datetime().nullable().default(null),
   completedAt: z.iso.datetime().nullable().default(null),
 }

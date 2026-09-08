@@ -1,3 +1,4 @@
+import { productionService } from '../../services/production'
 import { useState } from 'react'
 import { useWorkspace } from '../workspace/state'
 import { useVisual } from './use-visual'
@@ -53,7 +54,7 @@ function Library({ projectId }: { projectId: string }) {
       <div className="page-heading">
         <div>
           <h1>素材库</h1>
-          <p>受控图片、可追踪版本与人工审核。</p>
+          <p>受控图片和视频、可追踪版本与人工审核。</p>
         </div>
         <button
           className="primary"
@@ -72,6 +73,19 @@ function Library({ projectId }: { projectId: string }) {
           导入图片
         </button>
       </div>
+      <button
+        onClick={() =>
+          void run(async () => {
+            await productionService.command({
+              operation: 'video.import',
+              projectId,
+            })
+            await visual.refresh()
+          })
+        }
+      >
+        导入 MP4 视频
+      </button>
       <div className="asset-filters">
         <label>
           搜索
@@ -134,7 +148,7 @@ function Library({ projectId }: { projectId: string }) {
                   alt={asset.name}
                 />
               ) : (
-                <span>尚无图片版本</span>
+                <span>尚无媒体版本</span>
               )}
               <strong>{asset.name}</strong>
               <small>
@@ -155,7 +169,7 @@ function Library({ projectId }: { projectId: string }) {
           />
           <div className="actions">
             <button
-              disabled={visual.busy}
+              disabled={visual.busy || chosen.mediaType !== 'image'}
               onClick={() =>
                 void run(async () => {
                   await visual.execute({
@@ -167,11 +181,11 @@ function Library({ projectId }: { projectId: string }) {
                 })
               }
             >
-              导入新版本
+              导入图片新版本
             </button>
             <button
               className="danger"
-              disabled={visual.busy}
+              disabled={visual.busy || chosen.mediaType !== 'image'}
               onClick={() => {
                 if (
                   window.confirm(
@@ -211,7 +225,13 @@ function Library({ projectId }: { projectId: string }) {
                 ))}
             </select>
           </label>
-          {target &&
+          {chosen.mediaType === 'video' && (
+            <p>
+              请到分镜中展开对应 Shot 的视频生产，编辑 Prompt 并生成新版本。
+            </p>
+          )}
+          {chosen.mediaType === 'image' &&
+            target &&
             (target.kind === 'character' ||
               target.kind === 'location' ||
               target.kind === 'prop' ||

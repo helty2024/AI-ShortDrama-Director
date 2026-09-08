@@ -47,7 +47,7 @@ function WorkspaceShell() {
             </button>
           ))}
         </nav>
-        <small>Phase 3 · 视觉资产生产</small>
+        <small>Phase 4 · 视频与批量生产</small>
       </aside>
       <div className="main-shell">
         <header className="topbar">

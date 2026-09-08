@@ -1,3 +1,4 @@
+import { videoTaskInputSchema } from './video.js'
 import { imageTaskInputSchema, imageTaskFields } from './visual.js'
 import { z } from 'zod'
 
@@ -223,6 +224,7 @@ export const importPreviewSchema = z.strictObject({
 })
 export const taskInputSchema = z.discriminatedUnion('type', [
   imageTaskInputSchema,
+  videoTaskInputSchema,
   z.strictObject({
     type: z.literal('parse'),
     name: title,

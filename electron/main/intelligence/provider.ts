@@ -22,9 +22,9 @@ export function normalizeAIError(error: unknown): AIError {
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return new AIError(
       'INVALID_OUTPUT',
-      '文本模型输出未通过结构校验，未写入正式数据',
+      'AI 输出未通过结构校验，未写入生产结果',
     )
-  return new AIError('PROVIDER', '文本任务失败，请检查 Provider 配置或重试')
+  return new AIError('PROVIDER', 'AI 任务失败，请检查 Provider 配置或重试')
 }
 export interface StructuredRequest<T> {
   system: string

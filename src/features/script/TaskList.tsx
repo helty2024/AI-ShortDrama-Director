@@ -1,5 +1,6 @@
 import type { AITask, IntelligenceCommand } from '../../shared/intelligence'
 const taskNames = {
+  'shot-video': '镜头视频',
   'character-image': '角色生图',
   'location-image': '场景生图',
   'prop-image': '道具生图',
@@ -62,7 +63,7 @@ export function TaskList({
                   'request' in task.input &&
                   !task.providerTaskId &&
                   !window.confirm(
-                    '将重新提交图像任务；若上次提交结果未知，请先检查 ComfyUI 队列，避免重复执行。',
+                    '将重新提交媒体任务；若上次提交结果未知，请先检查 Provider 队列，避免重复执行。',
                   )
                     ? Promise.resolve()
                     : execute({

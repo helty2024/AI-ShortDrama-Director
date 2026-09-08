@@ -102,3 +102,52 @@
 .asset-tile strong {
   overflow-wrap: anywhere;
 }
+
+.video-panel,
+.production-settings,
+.batch-panel {
+  border-top: 1px solid #394355;
+  padding-top: 16px;
+  margin-top: 16px;
+  max-width: 1100px;
+  min-width: 0;
+}
+.video-panel label,
+.production-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.video-panel .check-label,
+.production-settings .check-label,
+.batch-panel .check-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.video-panel textarea {
+  min-height: 90px;
+}
+.video-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 360px;
+  overflow: auto;
+}
+.batch-panel article {
+  border: 1px solid #394355;
+  padding: 12px;
+  margin: 12px 0;
+}
+.asset-preview {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+}
+.production-settings input[type='checkbox'],
+.batch-panel input[type='checkbox'],
+.video-panel input[type='checkbox'] {
+  width: auto;
+}

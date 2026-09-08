@@ -77,7 +77,11 @@ export class AITaskQueue {
       provider: 'request' in input ? input.request.provider : null,
       model:
         'request' in input
-          ? String(input.request.providerOptions.templateId ?? '')
+          ? String(
+              input.type === 'shot-video'
+                ? input.request.profile.model
+                : (input.request.providerOptions.templateId ?? ''),
+            )
           : null,
       status: 'queued',
       attempt: 1,
@@ -119,7 +123,10 @@ export class AITaskQueue {
       resultIds: [],
       progress: 0,
       completedAt: null,
-      providerTaskId: task.status === 'cancelled' ? null : task.providerTaskId,
+      providerTaskId:
+        task.input.type !== 'shot-video' && task.status === 'cancelled'
+          ? null
+          : task.providerTaskId,
       sourceRevisions: this.sourceRevisions(projectId, task.input),
       revision: task.revision + 1,
       updatedAt: new Date().toISOString(),
@@ -291,7 +298,7 @@ export class AITaskQueue {
         for (const draft of drafts) this.repo.putDraft(draft)
         const mediaIds = commitMedia?.() ?? []
         this.repo.putTask({
-          ...current,
+          ...this.repo.task(task.projectId, task.id),
           outputAssetVersionIds: mediaIds,
           progress: 1,
           completedAt: new Date().toISOString(),

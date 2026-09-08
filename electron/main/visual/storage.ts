@@ -1,3 +1,4 @@
+import { probeVideo, videoThumbnail } from '../video/ffmpeg.js'
 import {
   mkdir,
   readFile,
@@ -16,7 +17,10 @@ export interface StoredImage {
   storageKey: string
   thumbnailPath: string
   hash: string
-  mimeType: 'image/png' | 'image/jpeg' | 'image/webp'
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'video/mp4'
+  duration?: number
+  fps?: number | null
+  codec?: string | null
   width: number
   height: number
   fileSize: number
@@ -28,7 +32,7 @@ export class MediaStorage {
   }
   private path(key: string) {
     if (
-      !/^[a-f0-9-]+\/[a-f0-9-]+\/[a-f0-9-]+(?:-thumb)?\.(png|jpg|webp)$/.test(
+      !/^[a-f0-9-]+\/[a-f0-9-]+\/[a-f0-9-]+(?:-thumb)?\.(png|jpg|webp|mp4)$/.test(
         key,
       )
     )
@@ -50,7 +54,7 @@ export class MediaStorage {
   async read(key: string) {
     const path = await this.ensureSafe(this.path(key))
     const info = await stat(path)
-    if (info.size > 30 * 1024 * 1024)
+    if (info.size > (key.endsWith('.mp4') ? 256 : 30) * 1024 * 1024)
       throw new DomainError('INVALID_INPUT', '图片超过 30 MB')
     return readFile(path)
   }
@@ -117,6 +121,39 @@ export class MediaStorage {
             : 'image/webp',
       width: metadata.width,
       height: metadata.height,
+      fileSize: bytes.length,
+    }
+  }
+  async storeVideo(
+    projectId: string,
+    assetId: string,
+    bytes: Uint8Array,
+  ): Promise<StoredImage> {
+    z.uuid().parse(projectId)
+    z.uuid().parse(assetId)
+    if (
+      bytes.length < 12 ||
+      bytes.length > 256 * 1024 * 1024 ||
+      Buffer.from(bytes.subarray(4, 8)).toString() !== 'ftyp'
+    )
+      throw new DomainError('INVALID_INPUT', '仅支持不超过 256 MB 的 MP4')
+    const folder = join(this.root, projectId, assetId)
+    await mkdir(folder, { recursive: true })
+    await this.ensureSafe(folder)
+    const token = randomUUID(),
+      storageKey = `${projectId}/${assetId}/${token}.mp4`,
+      thumbnailPath = `${projectId}/${assetId}/${token}-thumb.webp`,
+      path = this.path(storageKey)
+    await writeFile(path + '.tmp', bytes, { flag: 'wx' })
+    const metadata = await probeVideo(path + '.tmp')
+    await videoThumbnail(path + '.tmp', this.path(thumbnailPath))
+    await rename(path + '.tmp', path)
+    return {
+      ...metadata,
+      storageKey,
+      thumbnailPath,
+      mimeType: 'video/mp4',
+      hash: createHash('sha256').update(bytes).digest('hex'),
       fileSize: bytes.length,
     }
   }

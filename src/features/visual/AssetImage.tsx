@@ -11,8 +11,12 @@ export function AssetImage({
   thumbnail?: boolean
   alt: string
 }) {
-  const [src, setSrc] = useState(''),
-    [failed, setFailed] = useState(false)
+  const key = `${projectId}:${versionId}:${thumbnail}`
+  const [loaded, setLoaded] = useState<{
+    key: string
+    src: string
+    failed: boolean
+  } | null>(null)
   useEffect(() => {
     let active = true
     void visualService
@@ -21,17 +25,29 @@ export function AssetImage({
         if (
           active &&
           typeof value === 'string' &&
-          value.startsWith('data:image/')
+          (value.startsWith('data:image/') ||
+            value.startsWith('data:video/mp4;'))
         )
-          setSrc(value)
+          setLoaded({ key, src: value, failed: false })
       })
       .catch(() => {
-        if (active) setFailed(true)
+        if (active) setLoaded({ key, src: '', failed: true })
       })
     return () => {
       active = false
     }
-  }, [projectId, versionId, thumbnail])
+  }, [projectId, versionId, thumbnail, key])
+  const src = loaded?.key === key ? loaded.src : ''
+  if (src.startsWith('data:video/'))
+    return (
+      <video
+        className="asset-preview"
+        src={src}
+        controls
+        preload="metadata"
+        aria-label={alt}
+      />
+    )
   return src ? (
     <img
       className={thumbnail ? 'asset-thumbnail' : 'asset-preview'}
@@ -39,6 +55,8 @@ export function AssetImage({
       alt={alt}
     />
   ) : (
-    <span>{failed ? '图片不可用' : '读取图片…'}</span>
+    <span>
+      {loaded?.key === key && loaded.failed ? '媒体不可用' : '读取媒体…'}
+    </span>
   )
 }

@@ -1,3 +1,4 @@
+import { directionSchema, emptyDirection } from './video.js'
 import { visualReferenceSchema } from './visual.js'
 import { z } from 'zod'
 import {
@@ -98,6 +99,9 @@ export const storyboardSchema = z.strictObject({
 export const shotSchema = z.strictObject({
   ...child,
   kind: z.literal('shot'),
+  direction: directionSchema.default(emptyDirection),
+  confirmedVideoAssetId: idSchema.nullable().default(null),
+  confirmedVideoAssetVersionId: idSchema.nullable().default(null),
   approvedKeyframeAssetId: idSchema.nullable().default(null),
   approvedKeyframeVersionId: idSchema.nullable().default(null),
   plan: shotPlanSchema.nullable().default(null),

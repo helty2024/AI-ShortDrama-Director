@@ -40,7 +40,9 @@ export function VisualPanel({
     [selected, setSelected] = useState(assetOverride ?? 'auto')
   const snapshot = visual.snapshot,
     versions = snapshot?.versions ?? []
-  const generated = versions.filter((v) => v.metadata.targetId === entity.id)
+  const generated = versions.filter(
+    (v) => v.mimeType !== 'video/mp4' && v.metadata.targetId === entity.id,
+  )
   const assetId =
     assetOverride ||
     (selected === 'auto' ? (generated.at(-1)?.assetId ?? '') : selected)

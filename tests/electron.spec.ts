@@ -462,3 +462,142 @@ test('visual production imports, generates, reviews versions and pins Shot keyfr
     await rm(directory, { recursive: true, force: true })
   }
 })
+test('batch keyframes and playable video versions require explicit Shot confirmation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-video-smoke-'))
+  let application = await launch(directory)
+  try {
+    let page = await application.firstWindow()
+    await page.getByRole('button', { name: '载入开发示例' }).click()
+    await expect(page.locator('.topbar strong')).toHaveText(
+      '雨夜来信 · 示例短剧',
+    )
+    const projectId = await page.getByLabel('切换项目').inputValue()
+    const read = async () => {
+      const response = await page.evaluate(
+        (id) =>
+          window.desktop!.workspace.request({ action: 'workspace.get', id }),
+        projectId,
+      )
+      if (!response.ok) throw Error(response.message)
+      return workspaceSchema.parse(response.data)
+    }
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('button', { name: '运行 ComfyUI Diagnostics' }).click()
+    await expect(
+      page.getByText('Provider Ready', { exact: true }),
+    ).toBeVisible()
+    await page
+      .getByRole('button', { name: '测试视频 Provider', exact: true })
+      .click()
+    await expect(
+      page.getByText('Mock Video Ready：FFmpeg / FFprobe 可用', {
+        exact: true,
+      }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: '分镜', exact: true }).click()
+    await page.getByText('批量关键帧生产', { exact: true }).click()
+    const batch = page.locator('.batch-panel')
+    await batch.locator('input[type=checkbox]').nth(0).check()
+    await batch.locator('input[type=checkbox]').nth(1).check()
+    await batch
+      .getByRole('button', { name: '批量编译 Prompt', exact: true })
+      .click()
+    await expect(
+      batch.locator('summary').filter({ hasText: '· Prompt' }),
+    ).toHaveCount(2)
+    await batch
+      .getByRole('button', { name: '批量生成关键帧', exact: true })
+      .click()
+    await expect(
+      batch.getByText('2/2 成功 · 0 失败', { exact: true }),
+    ).toBeVisible()
+    const shot = page
+      .getByRole('region', { name: '镜头列表', exact: true })
+      .getByRole('listitem')
+      .first()
+    await shot.getByText('视觉生产', { exact: true }).click()
+    const image = shot.locator('.visual-panel')
+    await image.getByRole('button', { name: '批准 / Promote' }).first().click()
+    await expect(
+      image.getByRole('img', { name: '已确认关键帧', exact: true }),
+    ).toBeVisible()
+    await shot
+      .locator(':scope > div > details > summary')
+      .filter({ hasText: '视频生产' })
+      .click()
+    const video = shot.locator('.video-panel')
+    await video.getByLabel('视频时长', { exact: true }).selectOption('1')
+    await video
+      .getByRole('button', { name: '编译视频 Prompt', exact: true })
+      .click()
+    await expect(video.getByLabel('视频动作 Prompt')).not.toHaveValue('')
+    await video.getByRole('button', { name: '生成视频', exact: true }).click()
+    const first = video.getByRole('article', { name: '版本 1', exact: true })
+    await expect(first).toBeVisible({ timeout: 20000 })
+    await first.getByText('生成信息与预览', { exact: true }).click()
+    await expect
+      .poll(() =>
+        first
+          .locator('video')
+          .evaluate((element: HTMLVideoElement) => element.readyState),
+      )
+      .toBeGreaterThanOrEqual(1)
+    await first
+      .locator('video')
+      .evaluate((element: HTMLVideoElement) => element.play())
+    await expect
+      .poll(() =>
+        first
+          .locator('video')
+          .evaluate((element: HTMLVideoElement) => element.currentTime),
+      )
+      .toBeGreaterThan(0)
+    const initial = (await read()).entities.find(
+      (e) => e.kind === 'shot' && e.approvedKeyframeVersionId,
+    )
+    if (initial?.kind !== 'shot') throw Error('shot missing')
+    expect(initial.confirmedVideoAssetVersionId).toBeNull()
+    await first.getByRole('button', { name: 'Approve 视频版本' }).click()
+    expect(
+      (await read()).entities.find((e) => e.id === initial.id),
+    ).toMatchObject({ confirmedVideoAssetVersionId: null })
+    await first.getByRole('button', { name: 'Confirm for Shot' }).click()
+    await expect(video.getByText('已确认视频（固定版本）')).toBeVisible()
+    const pinned = (await read()).entities.find((e) => e.id === initial.id)
+    await first.getByRole('button', { name: 'Regenerate / 编辑后重生' }).click()
+    await video
+      .getByLabel('视频动作 Prompt')
+      .fill('开始：静止。过程：抬头看向门口。结束：保持凝视。')
+    await video.getByRole('button', { name: '生成视频', exact: true }).click()
+    const second = video.getByRole('article', { name: '版本 2', exact: true })
+    await expect(second).toBeVisible({ timeout: 20000 })
+    await first.getByLabel('对比此版本').check()
+    await second.getByLabel('对比此版本').check()
+    await expect(video.locator('.version-compare video')).toHaveCount(2)
+    expect(
+      (await read()).entities.find((e) => e.id === initial.id),
+    ).toMatchObject({
+      confirmedVideoAssetVersionId:
+        pinned?.kind === 'shot' ? pinned.confirmedVideoAssetVersionId : null,
+    })
+    await page.screenshot({
+      path: 'test-results/video-production.png',
+      fullPage: true,
+    })
+    await application.close()
+    application = await launch(directory)
+    page = await application.firstWindow()
+    await expect(page.locator('.topbar strong')).toHaveText(
+      '雨夜来信 · 示例短剧',
+    )
+    expect(
+      (await read()).entities.find((e) => e.id === initial.id),
+    ).toMatchObject({
+      confirmedVideoAssetVersionId:
+        pinned?.kind === 'shot' ? pinned.confirmedVideoAssetVersionId : null,
+    })
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

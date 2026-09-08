@@ -1,3 +1,5 @@
+import { BatchPanel } from '../video/BatchPanel'
+import { VideoPanel } from '../video/VideoPanel'
 import { VisualPanel } from '../visual/VisualPanel'
 import { BibleEditor } from '../script/BibleEditor'
 import { ProjectTasks } from '../script/ProjectTasks'
@@ -49,6 +51,12 @@ function EntityList({ kind }: { kind: EntityKind }) {
                   />
                 )}
                 <p>{entity.description || '暂无简介'}</p>
+                {entity.kind === 'shot' && (
+                  <details>
+                    <summary>视频生产</summary>
+                    <VideoPanel shot={entity} entities={entities} />
+                  </details>
+                )}
                 {(entity.kind === 'character' ||
                   entity.kind === 'location' ||
                   entity.kind === 'prop' ||
@@ -268,6 +276,7 @@ export function StoryboardPage() {
   return (
     <>
       <h1>分镜</h1>
+      <BatchPanel />
       <EntityList kind="storyboard" />
       <EntityList kind="shot" />
     </>
@@ -278,7 +287,7 @@ export function GenerationPage() {
     <>
       <h1>生成</h1>
       <ProjectTasks />
-      <p>上方为文本 AI 任务；下方为媒体任务草稿，本阶段不执行生图或生视频。</p>
+      <p>上方统一追踪文本、图片和视频任务；下方保留早期媒体任务记录。</p>
       <EntityList kind="generationTask" />
     </>
   )

@@ -27,3 +27,7 @@ POST /queue 的 delete 只取消本任务排队项。本版不使用全局 /inte
 已用本地模拟 HTTP/WebSocket 服务验证提交、上传、进度、历史、下载、取消、恢复和错误。本次没有连接用户真实 ComfyUI、具体 Checkpoint 或自定义节点做实机出图验收；Mock 完整闭环可直接体验，真实环境需上述配置。
 
 协议依据：[ComfyUI Server Routes](https://docs.comfy.org/development/comfyui-server/comms_routes)、[ComfyUI Server Messages](https://docs.comfy.org/development/comfyui-server/comms_messages)。
+
+## Phase 4 Diagnostics
+
+新增可达性、Checkpoint、缺失节点、必需输入、工作流变量及输出检查，以及 Provider Ready 和单镜头 Test Generation。详见 [生产批次与实机准备](production-batch.md)。Ready 是预检结果，仍需实际执行测试确认 GPU 与模型运行能力。

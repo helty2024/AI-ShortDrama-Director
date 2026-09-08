@@ -1,3 +1,9 @@
+import { safeStorage } from 'electron'
+import { EncryptedCredentialStore } from './video/credentials.js'
+import { MockVideoProvider, SeedanceVideoProvider } from './video/providers.js'
+import { VideoTaskExecutor, ProductionMediaExecutor } from './video/executor.js'
+import type { VideoFactory } from './video/executor.js'
+import { ProductionService } from './video/service.js'
 import { MediaStorage } from './visual/storage.js'
 import { VisualRepository } from './visual/repository.js'
 import { VisualService } from './visual/service.js'
@@ -84,31 +90,75 @@ app
       repo,
       new MediaStorage(join(app.getPath('userData'), 'media')),
     )
-    queue = new AITaskQueue(repo, provider, new ImageTaskExecutor(visual))
+    const credentials = new EncryptedCredentialStore(
+      join(app.getPath('userData'), 'credentials'),
+      {
+        available: () =>
+          safeStorage.isEncryptionAvailable() &&
+          (process.platform !== 'linux' ||
+            safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+        encrypt: (value) => safeStorage.encryptString(value),
+        decrypt: (value) => safeStorage.decryptString(value),
+      },
+    )
+    const videoFactory: VideoFactory = (profile) =>
+      profile.provider === 'mock-video'
+        ? new MockVideoProvider(
+            join(app.getPath('userData'), 'video-work'),
+            profile.capabilities,
+          )
+        : new SeedanceVideoProvider(profile, credentials)
+    queue = new AITaskQueue(
+      repo,
+      provider,
+      new ProductionMediaExecutor(
+        new ImageTaskExecutor(visual),
+        new VideoTaskExecutor(visual, videoFactory),
+      ),
+    )
+    const images = new VisualService(visual, queue, {
+      images: async () => {
+        const result = await dialog.showOpenDialog({
+          title: '导入图片',
+          properties: ['openFile', 'multiSelections'],
+          filters: [
+            { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+          ],
+        })
+        return result.canceled ? [] : result.filePaths
+      },
+      workflow: async () => {
+        const result = await dialog.showOpenDialog({
+          title: '导入 API 格式工作流',
+          properties: ['openFile'],
+          filters: [{ name: 'ComfyUI API Workflow', extensions: ['json'] }],
+        })
+        return result.canceled ? null : (result.filePaths[0] ?? null)
+      },
+    })
     registerWorkspaceIPC(
       database,
       windows,
       rendererUrl,
       !app.isPackaged,
       new IntelligenceService(repo, queue),
-      new VisualService(visual, queue, {
-        images: async () => {
-          const result = await dialog.showOpenDialog({
-            title: '导入图片',
-            properties: ['openFile', 'multiSelections'],
-            filters: [
-              { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
-            ],
-          })
-          return result.canceled ? [] : result.filePaths
-        },
-        workflow: async () => {
-          const result = await dialog.showOpenDialog({
-            title: '导入 API 格式工作流',
+      images,
+      new ProductionService(visual, images, queue, credentials, videoFactory, {
+        credential: async () => {
+          const r = await dialog.showOpenDialog({
+            title: '导入 API Key 文本（仅主进程读取并加密）',
             properties: ['openFile'],
-            filters: [{ name: 'ComfyUI API Workflow', extensions: ['json'] }],
+            filters: [{ name: 'Key 文本', extensions: ['txt', 'key'] }],
           })
-          return result.canceled ? null : (result.filePaths[0] ?? null)
+          return r.canceled ? null : (r.filePaths[0] ?? null)
+        },
+        video: async () => {
+          const r = await dialog.showOpenDialog({
+            title: '导入 MP4 视频',
+            properties: ['openFile'],
+            filters: [{ name: 'MP4', extensions: ['mp4'] }],
+          })
+          return r.canceled ? null : (r.filePaths[0] ?? null)
         },
       }),
     )

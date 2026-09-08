@@ -2,6 +2,22 @@
 
 面向 AI 短剧创作的本地桌面工作台，基于 React + TypeScript + Electron。
 
+## Phase 4 已实现
+
+- ComfyUI 生产诊断：可达性、Checkpoint、节点、输入槽和输出节点检查，Provider Ready 与测试生成。
+- Storyboard 多选、Scene / Episode 范围筛选、缺少关键帧选择、独立任务批次及失败重试。
+- 导演动作编辑、独立 Video Prompt Compiler、已确认首帧与规则式连续性。
+- 长任务 VideoGenerationProvider、FFmpeg 确定性 Mock MP4、Seedance / Ark-compatible 适配器。
+- 主进程系统加密凭据、远端任务恢复和持久化提交回执，阻止不明提交自动重复计费。
+- MP4 导入、FFprobe 元数据、视频多版本播放/A/B 审核、明确 Confirm for Shot 固定正式版本。
+- v4 migration 保留历史图片、项目与 v1/v2/v3 migration；成本字段未知时为空。
+
+先安装 FFmpeg（含 FFprobe，需 libx264 与 WebP 编码支持）并加入 PATH，或设置主进程环境变量 `DIRECTOR_FFMPEG` / `DIRECTOR_FFPROBE` 为可执行文件路径。默认 Mock 无需付费 API。本次已验证本地 Mock MP4 与模拟 HTTP 协议，未执行真实 Seedance 付费请求；默认本机 ComfyUI 地址未连通，须启动并通过诊断后使用。
+
+快速流程：分镜 → 批量关键帧生产 → 批准并绑定关键帧 → Shot 视频生产 → 编译/编辑动作 Prompt → 生成视频 → 播放、Approve → Confirm for Shot。下一次生成保持正式视频不变。
+
+详见 [视频生成](docs/video-generation.md)、[Provider](docs/video-provider.md)、[Seedance 配置](docs/seedance-provider.md)、[生产批次](docs/production-batch.md)、[凭据安全](docs/credentials.md)。批量视频与暂停/继续当前仅预留，尚无剪辑时间线。
+
 ## Phase 3 已实现
 
 - 正式图片导入、SHA-256 去重识别、尺寸/MIME 校验、缩略图与受控本地存储。
@@ -11,7 +27,7 @@
 - 工作流模板导入、变量槽、Provider 设置，复用原有持久化队列处理图像任务与恢复。
 - v3 migration，保留既有项目和历史 migration；新增文件一致性、协议与端到端测试。
 
-默认 Mock Image，无需 ComfyUI 即可体验全部审核流程。真实 ComfyUI 需要设置本机 URL、兼容 Checkpoint 或导入自定义 API 工作流。当前不接真实生视频，不含视觉 AI QC、自动磁盘回收或商业 API 认证管理。
+默认 Mock Image，无需 ComfyUI 即可体验全部审核流程。真实 ComfyUI 需要设置本机 URL、兼容 Checkpoint 或导入自定义 API 工作流。Phase 4 已加入视频 Provider、安全凭据和人工视频审核；不含视觉 AI QC、自动磁盘回收和成片剪辑。
 
 ## 视觉生产快速体验
 

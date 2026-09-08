@@ -16,3 +16,8 @@ Thumbs.db
 .cache/
 *.sqlite*
 *.db
+
+credentials/
+video-receipts/
+*.key
+*.secret

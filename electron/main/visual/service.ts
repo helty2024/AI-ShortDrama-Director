@@ -1,3 +1,4 @@
+import { diagnoseComfy } from './diagnostics.js'
 import { readFile, stat } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
 import { randomInt } from 'node:crypto'
@@ -131,6 +132,14 @@ export class VisualService {
           .templates(p)
           .find((t) => t.id === settings.templateId)
         if (!template) throw new DomainError('CONFLICT', '工作流不存在')
+        if (c.provider === 'comfyui') {
+          const diagnostics = await diagnoseComfy(
+            { ...settings, provider: 'comfyui' },
+            template,
+          )
+          if (!diagnostics.ready)
+            throw new DomainError('CONFLICT', diagnostics.errors.join('；'))
+        }
         const referenceVersionIds = prompt.referenceAssetIds.map((id) => {
           const asset = this.visual.asset(p, id)
           const previous = prompt.providerHints.previousKeyframeVersionId

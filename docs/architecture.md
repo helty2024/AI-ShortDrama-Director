@@ -56,3 +56,15 @@ Phase 3 使用 VisualService 白名单 IPC → VisualRepository / Prompt Compile
 缩略图和图片通过 UUID 查库、路径校验后返回 data URL；不暴露文件路径选择参数或任意 HTTP 请求。文件已写入但 DB 失败会留下可扫描孤儿，不自动 unlink。Shot 同时记录资产 ID 与审核时固定版本，主资产提升不改变其他 Shot。详见 [资产管线](asset-pipeline.md) 与 [图像生成](image-generation.md)。
 
 Phase 4 建议先完成关键帧批量生产、工作流实机验收和版本锁定，再接视频 Provider；视频沿用异步队列、审核与来源版本追踪。
+
+## Phase 4 视频生产
+
+新增 `electron/main/video/`：compiler 纯规则编译；providers 长任务协议；executor 负责提交回执、轮询、下载和提交回调；service 负责项目范围校验、Profile 与批次；credentials 封装系统加密；ffmpeg 封装无 shell 子进程；migration 增量 v4。
+
+数据流：React VideoPanel / BatchPanel → preload 固定 workspace.request → Zod production command → 主进程 ProductionService → AITaskQueue → VideoGenerationProvider → 受控媒体目录 → FFprobe + 缩略图 → SQLite AssetVersion draft → 人工审核 → Shot 固定 version ID。
+
+SQLite 仍只在主进程，新增 production action 继续校验发送窗口、来源 URL、项目及实体引用。renderer 仅持有公开 Profile 字段与不含密钥的凭据引用/配置状态，不接触文件路径、任意网络或原始 IPC。媒体预览通过限定版本 ID 获取受控 data URI；CSP 允许本地媒体，禁止任意远端 fetch。
+
+执行器复用单工作者异步队列，不阻塞 renderer；每项目最多 20 项等待任务。视频长任务等待期间其他生成任务排队，当前不承诺多 Provider 并发调度。提交前的本地 intent 回执与提交后的远端 ID 回执先于 SQLite 进度更新；明确已知 ID 的恢复只轮询/下载，不重新 POST。视频版本与成功 Task 在同一事务提交，文件先落盘，失败遗留文件由孤儿扫描报告。
+
+后续 Phase 5 可增加成片装配与导出：只读取 Shot.confirmedVideoAssetVersionId 构造有顺序的镜头清单；不复用 draft 或 Asset 最新版本替代确认版本。

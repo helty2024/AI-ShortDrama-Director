@@ -26,7 +26,8 @@ export class ImageTaskExecutor implements MediaTaskExecutor {
     this.factory = factory
   }
   private provider(task: AITask) {
-    if (!('request' in task.input)) throw new AIError('PROVIDER', '非图像任务')
+    if (!('request' in task.input) || task.input.type === 'shot-video')
+      throw new AIError('PROVIDER', '非图像任务')
     return this.factory(
       task.input.request.provider,
       String(task.input.request.providerOptions.baseUrl ?? ''),
@@ -41,7 +42,8 @@ export class ImageTaskExecutor implements MediaTaskExecutor {
     signal: AbortSignal,
     update: (id: string, progress: number) => void,
   ) {
-    if (!('request' in task.input)) throw new AIError('PROVIDER', '非图像任务')
+    if (!('request' in task.input) || task.input.type === 'shot-video')
+      throw new AIError('PROVIDER', '非图像任务')
     const input = task.input,
       request = input.request
     this.visual.asset(task.projectId, input.assetId)

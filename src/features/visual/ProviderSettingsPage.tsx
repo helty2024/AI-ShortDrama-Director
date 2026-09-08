@@ -1,3 +1,4 @@
+import { ProductionSettings } from '../video/ProductionSettings'
 import { useState } from 'react'
 import { useWorkspace } from '../workspace/state'
 import { useVisual } from './use-visual'
@@ -39,6 +40,7 @@ function Settings({ projectId }: { projectId: string }) {
           execute={visual.execute}
         />
       )}
+      <ProductionSettings projectId={projectId} />
     </>
   )
 }

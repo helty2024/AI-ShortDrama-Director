@@ -24,11 +24,17 @@ export function AssetReview({
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false)
   const current = versions.filter((v) => v.assetId === asset.id).toReversed()
-  const review = async (v: AssetVersion, status: AssetVersion['status']) => {
+  const review = async (
+    v: AssetVersion,
+    status: AssetVersion['status'],
+    bindTarget = true,
+  ) => {
     setBusy(true)
     setError('')
     try {
-      const target = entities.find((e) => e.id === bind)
+      const target = bindTarget
+        ? entities.find((e) => e.id === bind)
+        : undefined
       await execute({
         operation: 'version.review',
         projectId: asset.projectId,
@@ -65,7 +71,10 @@ export function AssetReview({
           <option value="">只提升资产主版本</option>
           {entities
             .filter((e) =>
-              ['character', 'location', 'prop', 'shot'].includes(e.kind),
+              (asset.mediaType === 'video'
+                ? ['shot']
+                : ['character', 'location', 'prop', 'shot']
+              ).includes(e.kind),
             )
             .map((e) => (
               <option key={e.id} value={e.id}>
@@ -91,6 +100,9 @@ export function AssetReview({
               v{v.versionNumber} · {v.status}
             </strong>
             <p>
+              {v.duration
+                ? `${v.duration.toFixed(1)} 秒 / ${v.fps ?? '—'} fps / ${v.codec ?? '—'} · `
+                : ''}
               {v.sourceType} · {v.width}×{v.height} ·{' '}
               {Math.round(v.fileSize / 1024)} KB
             </p>
@@ -108,14 +120,30 @@ export function AssetReview({
               <p>Prompt：{v.prompt || '—'}</p>
               <p>Negative：{v.negativePrompt || '—'}</p>
               <p>SHA-256：{v.hash}</p>
-              <pre>{JSON.stringify(v.metadata, null, 2)}</pre>
+              <pre>
+                {JSON.stringify(
+                  { metadata: v.metadata, cost: v.cost },
+                  null,
+                  2,
+                )}
+              </pre>
             </details>
             <div className="actions">
+              {asset.mediaType === 'video' && (
+                <button
+                  disabled={busy}
+                  onClick={() => void review(v, 'approved', false)}
+                >
+                  Approve 视频版本
+                </button>
+              )}
               <button
-                disabled={busy}
+                disabled={busy || (asset.mediaType === 'video' && !bind)}
                 onClick={() => void review(v, 'approved')}
               >
-                批准 / Promote
+                {asset.mediaType === 'video'
+                  ? 'Confirm for Shot'
+                  : '批准 / Promote'}
               </button>
               <button
                 disabled={busy || v.id === asset.approvedVersionId}

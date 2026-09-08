@@ -60,3 +60,15 @@ Character/Location/Prop 新增 visualReferences，项为 assetId/role/primary，
 Shot 新增 approvedKeyframeAssetId 和 approvedKeyframeVersionId，后者固定审核版本，防止 Asset 提升影响已确认镜头。Prompt 参考快照同时保存 Asset 与版本 ID；新图只能生成 AssetVersion Draft。
 
 AITask 扩展四种图像 input，保存完整 ImageGenerationRequest 和 providerOptions。新增 providerTaskId、progress、outputAssetVersionIds、provider、model、costMetadata、startedAt/completedAt。节点细节只在 Provider Options 和版本 metadata，Character/Shot 不包含 ComfyUI 节点配置。原 GenerationTask 媒体草稿继续保留，真实图像执行统一由 AITask 管理。
+
+## Phase 4 视频与批次
+
+`src/shared/video.ts` 为独立叶子 schema，集中定义 ShotDirection、VideoPromptPackage、VideoProfile、VideoGenerationRequest、ProviderDiagnostics、BatchGenerationGroup 和 CostMetadata。domain / visual / intelligence 引用叶子，Provider 网络实现只在主进程。
+
+Shot.direction：startState、action、endState、subjectMovement、cameraMovement、performance、environmentMotion、speed、continuityNotes；时长沿用 durationSeconds。confirmedVideoAssetId 与 confirmedVideoAssetVersionId 引用同项目视频资产和审核版本。导演保存使用 expectedRevision。
+
+Asset 仍以 kind=asset + mediaType=video 区分媒体，不另造重复实体。AssetVersion MIME 扩展 video/mp4，增加 duration/fps/codec、promptVersion、sourceKeyframeVersionIds 和 cost；其 UUID、hash、存储键及原始文件仍不可变。Approve 设置资产主版本；Confirm 显式固定 Shot 视频，生成新的 draft 不改正式引用。
+
+AITask.input 增加 shot-video，保存 Prompt、Profile、参数、关键帧版本和 credentialRef 快照，绝无 Key；providerTaskId 负责恢复。costMetadata 与 AssetVersion.cost 包含 provider/model/duration/resolution/estimatedCost/actualCost/currency/billingMetadata，未知价格为 null，不能解释为免费。
+
+BatchGenerationGroup 具有稳定 id、projectId、createdAt/updatedAt、kind、status 和每 Shot 的 taskId 或准备错误。它聚合任务状态，不持有资产审核权。v4 新建 video_profiles / production_batches，解析旧实体、版本和 Task 以补默认值，原始图片文件不移动；历史 migration 未修改。
