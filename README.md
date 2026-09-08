@@ -2,6 +2,22 @@
 
 面向 AI 短剧创作的本地桌面工作台，基于 React + TypeScript + Electron。
 
+## Phase 5 已实现
+
+- 独立生产看板，按 Episode → Scene → Shot 汇总关键帧、视频、QC、审核、失败和成本。
+- 结构化 Character / Prop / Location 连续性快照，场次初始状态、镜头继承、剧情动作更新、revision 冲突保护。
+- 图片与视频编译器共享规则式 Continuity Resolver，剧情状态优先于 Bible 可变字段，保留基础身份。
+- MediaQCProvider 抽象与确定性 Mock QC；报告绑定具体版本，人工接受、忽略、拒绝、单次重生规划。
+- Strict / Advisory QC 完成定义，连续性指纹变化让旧 QC 失效，状态不重复持久化。
+- 批量视频编译、Provider 与费用预览、明确确认、独立任务、失败重试和按能力取消。
+- 规则式 Router 与能力矩阵，按币种区分预计 / 实际 / 未知成本，支持手工每秒报价。
+- JSON Production Manifest 导出固定确认版本、受控媒体引用、顺序、Prompt / Provider / QC / 成本。
+- v5 增量迁移保留 v1–v4 项目、图片、视频和远端任务 ID。
+
+生产入口：**生产看板** → 编辑连续性 → 生成并确认关键帧 → 批量视频预览与费用确认 → 视频审核 → QC → 人工确认 → 导出分集 Manifest。默认 Mock QC 不调用视觉模型，评分只是元数据/连续性规则的确定性测试结果；没有执行真实付费 QC 或额外云生成。
+
+详见 [连续性](docs/continuity-engine.md)、[QC](docs/media-qc.md)、[Router](docs/model-router.md)、[生产看板](docs/production-board.md)、[成本](docs/cost-tracking.md)、[Manifest](docs/production-manifest.md)。本项目到确认的素材结束，不提供时间线、粗剪、转场、字幕、音乐、音频混合或成片编码。
+
 ## Phase 4 已实现
 
 - ComfyUI 生产诊断：可达性、Checkpoint、节点、输入槽和输出节点检查，Provider Ready 与测试生成。
@@ -16,7 +32,7 @@
 
 快速流程：分镜 → 批量关键帧生产 → 批准并绑定关键帧 → Shot 视频生产 → 编译/编辑动作 Prompt → 生成视频 → 播放、Approve → Confirm for Shot。下一次生成保持正式视频不变。
 
-详见 [视频生成](docs/video-generation.md)、[Provider](docs/video-provider.md)、[Seedance 配置](docs/seedance-provider.md)、[生产批次](docs/production-batch.md)、[凭据安全](docs/credentials.md)。批量视频与暂停/继续当前仅预留，尚无剪辑时间线。
+详见 [视频生成](docs/video-generation.md)、[Provider](docs/video-provider.md)、[Seedance 配置](docs/seedance-provider.md)、[生产批次](docs/production-batch.md)、[凭据安全](docs/credentials.md)。Phase 5 已开放批量视频预览与确认；暂停/继续仍预留，尚无剪辑时间线。
 
 ## Phase 3 已实现
 

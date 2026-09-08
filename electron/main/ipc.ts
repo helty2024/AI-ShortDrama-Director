@@ -1,7 +1,8 @@
 import { ProductionService } from './video/service.js'
 import { AIError } from './intelligence/provider.js'
 import { VisualService } from './visual/service.js'
-import { ipcMain } from 'electron'
+import { ipcMain, dialog } from 'electron'
+import { ProductionIntelligenceService } from './production/service.js'
 import type { IpcMainInvokeEvent } from 'electron'
 import { z } from 'zod'
 import { requestSchema } from '../../src/shared/api.js'
@@ -31,6 +32,18 @@ export function registerWorkspaceIPC(
   visual: VisualService,
   production: ProductionService,
 ) {
+  const pilot = new ProductionIntelligenceService(
+    production,
+    intelligence.queue,
+    async () => {
+      const r = await dialog.showSaveDialog({
+        title: '导出 Production Manifest',
+        defaultPath: 'production-manifest.json',
+        filters: [{ name: 'Production Manifest', extensions: ['json'] }],
+      })
+      return r.canceled ? null : (r.filePath ?? null)
+    },
+  )
   ipcMain.handle(
     'workspace:request',
     async (event, raw: unknown): Promise<Result> => {
@@ -39,6 +52,8 @@ export function registerWorkspaceIPC(
       try {
         const request = requestSchema.parse(raw)
         switch (request.action) {
+          case 'pilot':
+            return { ok: true, data: await pilot.execute(request.command) }
           case 'production':
             return { ok: true, data: await production.execute(request.command) }
           case 'visual':

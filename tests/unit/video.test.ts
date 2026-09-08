@@ -782,16 +782,14 @@ test('v3 to v4 migration preserves images, adds video fields and does not leak c
       resultIds: [],
       sourceRevisions: {},
     })
-    raw
-      .prepare('INSERT INTO ai_tasks VALUES (?,?,?)')
-      .run(
-        legacyTask.id,
-        p.id,
-        JSON.stringify({
-          ...legacyTask,
-          costMetadata: { tokens: 71, vendorNote: 'legacy' },
-        }),
-      )
+    raw.prepare('INSERT INTO ai_tasks VALUES (?,?,?)').run(
+      legacyTask.id,
+      p.id,
+      JSON.stringify({
+        ...legacyTask,
+        costMetadata: { tokens: 71, vendorNote: 'legacy' },
+      }),
+    )
     const asset = buildSeed(p.id).find((e) => e.kind === 'asset')!
     // Choose the ID actually in the old database; buildSeed uses fresh UUIDs.
     const assetRow = raw
@@ -833,7 +831,7 @@ test('v3 to v4 migration preserves images, adds video fields and does not leak c
     const db = new ProjectDatabase(path)
     assert.equal(
       db.connection.prepare('PRAGMA user_version').get()?.user_version,
-      4,
+      5,
     )
     const migrated = JSON.parse(
       String(

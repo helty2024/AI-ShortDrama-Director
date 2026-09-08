@@ -78,7 +78,7 @@ test('migrations are repeatable and persistence survives reopening', () => {
     assert.ok(second.list()[0]?.lastOpenedAt)
     second.close()
     const raw = new DatabaseSync(path)
-    assert.equal(raw.prepare('PRAGMA user_version').get()?.user_version, 4)
+    assert.equal(raw.prepare('PRAGMA user_version').get()?.user_version, 5)
     raw.close()
   } finally {
     rmSync(directory, { recursive: true, force: true })

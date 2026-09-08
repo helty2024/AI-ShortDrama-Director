@@ -1,3 +1,9 @@
+import {
+  readContinuity,
+  resolveContinuity,
+  continuityEntities,
+  continuityText,
+} from '../production/continuity.js'
 import { randomUUID } from 'node:crypto'
 import { metadata, DomainError } from '../database.js'
 import { IntelligenceRepository } from '../intelligence/repository.js'
@@ -114,13 +120,29 @@ export class VisualRepository {
         return compileLocationPrompt(target, style)
       case 'prop':
         return compilePropPrompt(target, style)
-      case 'shot':
-        return compileShotKeyframePrompt(
+      case 'shot': {
+        const entities = this.repo.database.workspace(projectId).entities,
+          context = resolveContinuity(
+            target,
+            entities,
+            readContinuity(this.repo.database, projectId),
+          )
+        const prompt = compileShotKeyframePrompt(
           target,
-          this.repo.database.workspace(projectId).entities,
+          continuityEntities(entities, context),
           style,
           previousShot,
         )
+        return {
+          ...prompt,
+          positivePrompt:
+            prompt.positivePrompt + '\n' + continuityText(context),
+          providerHints: {
+            ...prompt.providerHints,
+            continuityFingerprint: context.fingerprint,
+          },
+        }
+      }
       default:
         throw new DomainError('CONFLICT', '只支持 Bible 或 Shot 生图')
     }

@@ -511,7 +511,7 @@ test('v2 migration preserves legacy assets and adds v3 fields without inventing 
     const db = new ProjectDatabase(path)
     assert.equal(
       db.connection.prepare('PRAGMA user_version').get()?.user_version,
-      4,
+      5,
     )
     assert.equal(db.workspace(project.id).entities.length, entities.length)
     const asset = db

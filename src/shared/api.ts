@@ -1,3 +1,5 @@
+import { pilotCommandSchema } from './production.js'
+import type { PilotResult } from './production.js'
 import { productionCommandSchema } from './video.js'
 import type { ProductionResult } from './video.js'
 import { visualCommandSchema } from './visual.js'
@@ -18,6 +20,7 @@ import {
 import type { Entity, Project, Workspace } from './domain.js'
 
 export const requestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('pilot'), command: pilotCommandSchema }),
   z.strictObject({
     action: z.literal('production'),
     command: productionCommandSchema,
@@ -48,6 +51,7 @@ export const requestSchema = z.discriminatedUnion('action', [
 ])
 export type Request = z.infer<typeof requestSchema>
 export type ResponseData =
+  | PilotResult
   | ProductionResult
   | VisualResult
   | Project

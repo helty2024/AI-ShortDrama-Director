@@ -135,11 +135,16 @@ export class VideoTaskExecutor implements MediaTaskExecutor {
             : []),
         ]
         const cost = costSchema.parse({
+          ...this.visual.repo.task(task.projectId, task.id).costMetadata,
           provider: request.provider,
           model: request.profile.model,
           duration: stored.duration,
           resolution: request.resolution,
-          billingMetadata: status.billing ?? {},
+          billingMetadata: {
+            ...this.visual.repo.task(task.projectId, task.id).costMetadata
+              .billingMetadata,
+            ...status.billing,
+          },
         })
         return () => {
           const old = this.visual
@@ -169,6 +174,8 @@ export class VideoTaskExecutor implements MediaTaskExecutor {
               cost,
               metadata: {
                 targetId: input.targetId,
+                continuityFingerprint:
+                  p.providerHints.continuityFingerprint ?? null,
                 videoPrompt: p,
                 providerTaskId: id!,
                 resolution: request.resolution,

@@ -1,3 +1,4 @@
+import { ProductionBoard } from './features/production/ProductionBoard'
 import { AssetsPage } from './features/visual/AssetsPage'
 import { ProviderSettingsPage } from './features/visual/ProviderSettingsPage'
 import './features/visual/visual.css'
@@ -17,6 +18,7 @@ import {
 import { WorkspaceDialog } from './features/workspace/dialogs'
 const pages = {
   projects: ProjectPage,
+  production: ProductionBoard,
   scripts: ScriptPage,
   characters: CharactersPage,
   locations: LocationsPage,
@@ -47,7 +49,7 @@ function WorkspaceShell() {
             </button>
           ))}
         </nav>
-        <small>Phase 4 · 视频与批量生产</small>
+        <small>Phase 5 · 生产智能与 QC</small>
       </aside>
       <div className="main-shell">
         <header className="topbar">

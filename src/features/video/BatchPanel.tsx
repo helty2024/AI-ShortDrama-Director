@@ -162,7 +162,7 @@ function Batch({ projectId }: { projectId: string }) {
         >
           批量生成关键帧
         </button>
-        <button disabled>批量视频：成本确认后续开放</button>
+        <button disabled>批量视频请前往生产看板</button>
         <button disabled>暂停 / 继续（预留）</button>
       </div>
       {production.error && (

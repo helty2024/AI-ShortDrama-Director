@@ -13,3 +13,7 @@
 Provider Ready 表示静态诊断通过，不代表 GPU 内存足够或模型加载成功。选一个测试 Shot，点击一键 Test Generation，之后到生成页查看任务及报错，审核结果后才能作为关键帧。
 
 本次开发机已有 FFmpeg/FFprobe，但默认 `http://127.0.0.1:8188` 未连通。已验证 Mock 和 Comfy HTTP/WebSocket 替身，真实 Comfy GPU 出图未验证。启动 ComfyUI 后重新诊断并做单镜头测试。
+
+## Phase 5 更新
+
+批量视频入口已在独立“生产看板”实现，替代上文 Phase 4 的预留状态；支持编译/路由/费用预览、确认、独立任务、失败重试和按能力取消。详见 [生产看板](production-board.md)。暂停/继续仍预留，整集选择单批上限为 20。

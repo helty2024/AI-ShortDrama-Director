@@ -12,6 +12,7 @@ export const navigation = {
   locations: '场景',
   props: '道具',
   storyboard: '分镜',
+  production: '生产看板',
   generation: '生成',
   assets: '素材库',
   settings: '设置',

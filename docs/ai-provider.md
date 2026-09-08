@@ -57,3 +57,9 @@ ImageGenerationProvider 提供 id/displayName/capabilities、healthCheck、gener
 文本、图像、视频使用独立契约。VideoGenerationProvider 是 submit → getStatus → fetchResult 的长任务接口，详见 [视频 Provider](video-provider.md)。统一 AITaskQueue 根据 input.type 路由执行器，所有生成结果均为候选版本，审批仍由业务服务执行。
 
 云视频认证通过 CredentialStore，由 Electron safeStorage 加密。公开 Profile 仅保存认证引用；请勿将文本 Provider 的旧环境配置方式误用于视频页面。当前默认 mock-video 生成真实短 MP4，不访问外网。
+
+## Phase 5 QC 与路由
+
+MediaQCProvider 与 TextGenerationProvider / ImageGenerationProvider / VideoGenerationProvider 分离。当前实现为 MockMediaQCProvider，规则校验元数据/连续性并返回 Zod QCOutput；不接真实视觉 API，也不上传图片到外部。
+
+Generation Router 只推荐可用且满足能力的 Profile，不替用户提交。路由偏好、时长、分辨率、参考需求与报价可解释。未来 Vision API 可注入主进程 QC Provider 并复用 CredentialStore，必须在增加真实实现时验证 HTTPS、媒体上限、MIME、响应 schema 与错误脱敏。

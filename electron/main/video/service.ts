@@ -1,3 +1,10 @@
+import { aiTaskSchema } from '../../../src/shared/intelligence.js'
+import {
+  readContinuity,
+  resolveContinuity,
+  continuityEntities,
+  continuityText,
+} from '../production/continuity.js'
 import { readFile, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -48,6 +55,39 @@ export class ProductionService {
     this.credentials = credentials
     this.factory = factory
     this.picker = picker
+  }
+  async generateImage(
+    projectId: string,
+    targetId: string,
+    assetId: string,
+    instructions: string,
+    newSeed: boolean,
+  ) {
+    const base = this.visual.compile(projectId, targetId, true)
+    const t = aiTaskSchema.parse(
+      await this.images.execute({
+        operation: 'generate',
+        projectId,
+        targetId,
+        assetId,
+        provider: this.visual.settings(projectId).provider,
+        positivePrompt: base.positivePrompt + '\n' + instructions,
+        negativePrompt: null,
+        previousShot: true,
+      }),
+    )
+    if (newSeed && 'request' in t.input && t.input.type !== 'shot-video')
+      return this.visual.repo.putTask({
+        ...t,
+        input: {
+          ...t.input,
+          request: {
+            ...t.input.request,
+            seed: (t.input.request.seed + 1) % 2147483647,
+          },
+        },
+      })
+    return t
   }
   profiles(projectId: string) {
     this.visual.repo.database.get(projectId)
@@ -242,14 +282,21 @@ export class ProductionService {
           if (end.mimeType === 'video/mp4' || end.status !== 'approved')
             throw new DomainError('CONFLICT', '尾帧须为已批准图片')
         }
-        const prompt = compileShotVideoPrompt(
+        const context = resolveContinuity(
           shot,
           entities,
+          readContinuity(this.visual.repo.database, p),
+        )
+        const prompt = compileShotVideoPrompt(
+          shot,
+          continuityEntities(entities, context),
           profile,
           this.visual.repo.database.get(p).aspectRatio,
           c.duration,
           c.endFrameVersionId,
         )
+        prompt.continuity += '\n' + continuityText(context)
+        prompt.providerHints.continuityFingerprint = context.fingerprint
         if (c.actionOverride !== null) prompt.action = c.actionOverride
         if (c.operation === 'video.compile') return prompt
         if (profile.provider === 'seedance' && !c.costAccepted)

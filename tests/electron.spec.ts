@@ -601,3 +601,130 @@ test('batch keyframes and playable video versions require explicit Shot confirma
     await rm(directory, { recursive: true, force: true })
   }
 })
+test('production board runs continuity, batch video, version-bound QC, strict completion and manifest export', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-production-smoke-'))
+  let application = await launch(directory)
+  try {
+    let page = await application.firstWindow()
+    await page.getByRole('button', { name: '载入开发示例' }).click()
+    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await expect(
+      page.getByRole('heading', { name: '生产看板', exact: true }),
+    ).toBeVisible()
+    await page
+      .getByText('项目生产设置与 Provider 能力', { exact: true })
+      .click()
+    await page.getByLabel('QC 完成标准').selectOption('strict')
+    await page
+      .getByRole('button', { name: '保存生产设置', exact: true })
+      .click()
+    const card = page.getByRole('article', {
+      name: '生产镜头 雨中车站全景',
+      exact: true,
+    })
+    await card
+      .getByRole('button', { name: '读取 / 编辑连续性', exact: true })
+      .click()
+    const editor = card.getByRole('form', { name: '连续性编辑' })
+    await editor
+      .getByLabel('服装', { exact: true })
+      .first()
+      .fill('雨后湿红外套')
+    await editor.getByLabel('修改来源').selectOption('plot')
+    await editor
+      .getByRole('button', { name: '保存连续性', exact: true })
+      .click()
+    await expect(editor.getByText('连续性已保存，后续镜头将继承')).toBeVisible()
+    await card.getByText('关键帧生产与审核', { exact: true }).click()
+    const image = card.locator('.visual-panel')
+    await image.getByRole('button', { name: '编译并编辑 Prompt' }).click()
+    await expect(image.getByLabel('正向 Prompt')).toHaveValue(/雨后湿红外套/)
+    await image.getByRole('button', { name: '生成关键帧', exact: true }).click()
+    await image.getByRole('button', { name: '批准 / Promote' }).click()
+    await card.getByText('Visual / Video QC', { exact: true }).click()
+    await card
+      .getByRole('button', { name: '运行 Mock QC', exact: true })
+      .click()
+    await card
+      .getByRole('button', { name: 'Accept QC', exact: true })
+      .first()
+      .click()
+    await page
+      .getByRole('button', { name: '仅选可生产视频', exact: true })
+      .click()
+    await page
+      .getByRole('button', { name: '预览批量视频生产', exact: true })
+      .click()
+    const preview = page.getByRole('article', {
+      name: '批量视频预览',
+      exact: true,
+    })
+    await expect(
+      preview.getByRole('button', { name: '确认开始批量视频生产' }),
+    ).toBeDisabled()
+    await preview.getByRole('checkbox').check()
+    await preview.getByRole('button', { name: '确认开始批量视频生产' }).click()
+    await card.getByText('视频生产与审核', { exact: true }).click()
+    const video = card.locator('.video-panel')
+    const version = video.getByRole('article', { name: '版本 1', exact: true })
+    await expect(version).toBeVisible({ timeout: 20000 })
+    await expect(card.getByLabel('QC 素材版本').locator('option')).toHaveCount(
+      2,
+    )
+    const videoId = await card
+      .getByLabel('QC 素材版本')
+      .locator('option')
+      .filter({ hasText: 'video/mp4' })
+      .getAttribute('value')
+    await card.getByLabel('QC 素材版本').selectOption(videoId!)
+    await card
+      .getByRole('button', { name: '运行 Mock QC', exact: true })
+      .click()
+    await card
+      .getByRole('button', { name: 'Accept QC', exact: true })
+      .first()
+      .click()
+    await version
+      .getByRole('button', { name: 'Approve 视频版本', exact: true })
+      .click()
+    await version
+      .getByRole('button', { name: 'Confirm for Shot', exact: true })
+      .click()
+    await expect(
+      card.getByText(
+        /Keyframe: confirmed · Video: confirmed · QC: passed · Production Complete/,
+      ),
+    ).toBeVisible()
+    const path = join(directory, 'production.json')
+    await application.evaluate(({ dialog }, path) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
+    }, path)
+    await page.getByRole('button', { name: /导出.*Manifest/ }).click()
+    await expect(page.getByRole('alert')).toContainText(
+      'Production Manifest 已导出',
+    )
+    const fs = await import('node:fs/promises')
+    const manifest = JSON.parse(await fs.readFile(path, 'utf8')) as {
+      shots: { confirmedVideoAssetVersionId: string | null }[]
+    }
+    expect(
+      manifest.shots.filter((s) => s.confirmedVideoAssetVersionId),
+    ).toHaveLength(1)
+    await page.screenshot({
+      path: 'test-results/production-board.png',
+      fullPage: true,
+    })
+    await application.close()
+    application = await launch(directory)
+    page = await application.firstWindow()
+    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await expect(
+      page
+        .getByRole('article', { name: '生产镜头 雨中车站全景', exact: true })
+        .getByText(/Production Complete/),
+    ).toBeVisible()
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

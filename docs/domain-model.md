@@ -72,3 +72,15 @@ Asset 仍以 kind=asset + mediaType=video 区分媒体，不另造重复实体�
 AITask.input 增加 shot-video，保存 Prompt、Profile、参数、关键帧版本和 credentialRef 快照，绝无 Key；providerTaskId 负责恢复。costMetadata 与 AssetVersion.cost 包含 provider/model/duration/resolution/estimatedCost/actualCost/currency/billingMetadata，未知价格为 null，不能解释为免费。
 
 BatchGenerationGroup 具有稳定 id、projectId、createdAt/updatedAt、kind、status 和每 Shot 的 taskId 或准备错误。它聚合任务状态，不持有资产审核权。v4 新建 video_profiles / production_batches，解析旧实体、版本和 Task 以补默认值，原始图片文件不移动；历史 migration 未修改。
+
+## Phase 5 领域扩展
+
+ContinuitySnapshot 具有 UUID、projectId、targetId（Scene 或 Shot）、source（manual/plot）、createdAt/updatedAt/revision 和结构化 state。CharacterContinuity 保存 costume/hairstyle/makeup、injuries 数组、carriedProps ID 数组、physicalState/emotionalState/position/notes；PropContinuity 保存 holderCharacterId/state/location/visible/notes；LocationContinuity 保存 timeOfDay/lighting/weather/environmentState/damage/notes。
+
+QCReport 具有稳定 ID、shotId、versionId、Provider、连续性指纹、九类评分、issues/suggestions、审核状态和 revision。状态 pending/accepted/ignored/rejected 属于报告；只有用户选择 Reject version 才调用资产拒绝事务。报告不会因 Asset 主版本变化改绑。
+
+BatchPreview 持久化每个 Shot 编译后的 Prompt、Profile、分辨率、预计区间、币种、错误和输入指纹，以及 submittedGroupId。RegenerationPlan 绑定 reportId/versionId/shotId，保存具体策略、换 Seed 选择、一次性执行状态和新 taskId。不同计划可以由用户明确再次创建，但没有自动循环。
+
+ProductionSettings 保存 strict/advisory、preferredProfileId、resolution、motionComplexity 与手工报价；revision 防止设置覆盖。CostLine 一条对应一个媒体 Task 或 QC 报告，通过 Shot → Scene → Episode 归属汇总。Provider 请求/报告/版本历史不因报价设置变化重新计价。
+
+ShotProductionStatus 与 Episode/Scene Summary 全部派生。Strict 完成要求当前关键帧和视频均有新鲜、人工 accepted、无 severe issue 的 QC；Advisory 要求视频报告 accepted 或明确 ignored，若存在关键帧报告也要接受或忽略。当前模型尚未强制电影级视觉模型认证；Mock 分数不证明视觉质量。

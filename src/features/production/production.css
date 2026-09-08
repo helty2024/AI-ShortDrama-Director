@@ -1,0 +1,52 @@
+.production-board article {
+  border: 1px solid #394355;
+  padding: 16px;
+  margin: 14px 0;
+  border-radius: 8px;
+}
+.production-board label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.production-board .check-label {
+  flex-direction: row;
+  align-items: center;
+}
+.production-board input[type='checkbox'] {
+  width: auto;
+}
+.production-board table {
+  display: block;
+  overflow: auto;
+  width: 100%;
+  border-collapse: collapse;
+}
+.production-board th,
+.production-board td {
+  border: 1px solid #394355;
+  padding: 8px;
+  text-align: left;
+  min-width: 90px;
+}
+.production-board pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.production-board button {
+  margin: 4px;
+}
+.production-board fieldset {
+  border: 1px solid #394355;
+  margin: 12px 0;
+  min-width: 0;
+}
+.production-board details {
+  margin: 12px 0;
+}
+.production-board .asset-thumbnail {
+  max-width: 240px;
+}

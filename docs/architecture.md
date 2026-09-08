@@ -68,3 +68,17 @@ SQLite 仍只在主进程，新增 production action 继续校验发送窗口、
 执行器复用单工作者异步队列，不阻塞 renderer；每项目最多 20 项等待任务。视频长任务等待期间其他生成任务排队，当前不承诺多 Provider 并发调度。提交前的本地 intent 回执与提交后的远端 ID 回执先于 SQLite 进度更新；明确已知 ID 的恢复只轮询/下载，不重新 POST。视频版本与成功 Task 在同一事务提交，文件先落盘，失败遗留文件由孤儿扫描报告。
 
 后续 Phase 5 可增加成片装配与导出：只读取 Shot.confirmedVideoAssetVersionId 构造有顺序的镜头清单；不复用 draft 或 Asset 最新版本替代确认版本。
+
+## Phase 5 Production Intelligence
+
+`src/shared/production.ts` 定义连续性、QC、生产设置、成本行/汇总、批次预览和重生计划的 Zod schema。`electron/main/production/` 分离 continuity（解析）、router（能力/成本）、status（派生状态）、qc（Provider/策略）、service（事务与流程）和 migration。
+
+React ProductionBoard → 固定 preload → 严格 `pilot` IPC → ProductionIntelligenceService。只有主进程接触 SQLite、受控媒体和系统 Manifest 保存对话框；QC Provider 在主进程收到按版本 ID 读取的内容。主进程只返回结构化报告和公开生产设置，不返回任意文件访问能力。
+
+v5 只追加 continuity_snapshots、qc_reports、production_preferences、production_previews、regeneration_plans；历史 v1–v4 migration 未改动。场次/镜头连续性和 QC 的来源对象删除通过外键级联；生产设置只持久化 QC 模式、路由偏好和报价。看板状态、分集摘要和成本汇总实时推导，不再另存完成布尔值。
+
+批次预览保存输入指纹与费用快照。确认前验证当前连续性、关键帧、Profile、设置，发生变化必须重新预览。确认在事务中创建聚合组并标记预览已消费，再创建独立 Task；重复确认不会重新提交整批。进程在批次准备中断时，未获得 taskId 的条目保留提示，用户核对后可重新预览未提交镜头，已有 Task 继续按 Phase 4 回执恢复。
+
+重生计划有 ready/submitting/submitted 单次执行门闩。提交前落盘 submitting，防止双击或并发请求重复创建；结果不明确时检查任务列表，不能自动无限重生。网络与视频执行仍复用 AITaskQueue；Mock QC 通过独立异步 Provider 调用完成，当前没有持久化 QC 排队/取消调度，失败由用户再次发起。
+
+当前 Resolver 按同一 Storyboard 的镜头顺序继承；生产看板会重复读取有限规模项目的元数据，适合现有桌面项目。后续大项目应对 workspace/context 缓存并按 revision 失效，不在本阶段引入分布式调度。

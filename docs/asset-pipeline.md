@@ -39,3 +39,9 @@ Shot 保存 approvedKeyframeAssetId 与 approvedKeyframeVersionId：前者是正
 生成视频使用相同受控存储并保存 SHA-256、源关键帧版本、模型、Prompt 版本和费用元数据。原始路径/临时下载 URL 不进入业务资产。媒体详情提供原生 video 播放和两个版本 A/B；支持批准、拒绝、归档。用户通过 Confirm for Shot 绑定版本，后续生成绝不替换该固定引用。已被确认引用的版本不能随意拒绝或归档。
 
 文件系统与 SQLite 不具备跨系统原子事务：先验证文件，再事务写版本/成功状态，失败时只可能遗留未引用文件。孤儿扫描继续只报告。当前播放器整段读取受控 MP4 为 data URI，256 MB 上限下仍会占用较多内存；后续大素材应改受控流式协议。
+
+## Phase 5 QC 绑定
+
+生成图片和视频版本 metadata 保存 continuityFingerprint。QCReport 固定引用 versionId，并保存本次解析的连续性指纹。修改剧情状态后原报告仍保留，但不能作为当前完成依据；用户重新 QC，旧文件与确认版本不会自动删除、拒绝或替换。
+
+Manifest 读取 confirmedVideoAssetVersionId，不读取最新 draft，也不受 Asset 主版本提升影响。导出仅写 JSON，不复制视频、不重新编码。

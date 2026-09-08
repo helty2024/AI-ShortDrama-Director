@@ -89,6 +89,8 @@ export class ImageTaskExecutor implements MediaTaskExecutor {
           metadata: {
             ...image.metadata,
             targetId: input.targetId,
+            continuityFingerprint:
+              request.prompt.providerHints.continuityFingerprint ?? null,
             promptPackage: request.prompt,
             referenceVersionIds: request.referenceVersionIds,
           },
