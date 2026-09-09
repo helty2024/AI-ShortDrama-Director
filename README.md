@@ -117,7 +117,40 @@ npm run dev
 | npm run dist       | 生成当前平台分发包                                 |
 
 开发启动脚本会清除 ELECTRON_RUN_AS_NODE。Vite 固定在 electron-vite 5 支持的 7.x 系列。
-分发使用 electron-builder；图标、签名、公证仍需在正式发布前配置。
+分发使用 electron-builder；Windows 0.6.0 已配置 NSIS 安装包及临时应用图标，当前未代码签名。
+
+## Windows Installation
+
+运行 `release/AI-ShortDrama-Director-Setup-0.6.0-x64.exe`。安装到当前用户，无需管理员权限，默认创建开始菜单和桌面快捷方式；安装结束后通过快捷方式启动。当前未签名，Windows SmartScreen 可能显示未知发布者。仅运行你确认来源的安装包。
+
+## First Launch
+
+首次启动自动创建本地目录并迁移 SQLite，进入 Setup Wizard / 项目工作台。可新建项目并先使用 Mock；无需 ComfyUI、Seedance Key 或外部 Node.js。`验收与维护 → About / 检查环境` 显示版本 0.6.0。
+
+## FFmpeg Requirement
+
+第一版**不捆绑 FFmpeg / FFprobe**，使用系统 PATH，也支持主进程环境变量 `DIRECTOR_FFMPEG` / `DIRECTOR_FFPROBE` 指向工具绝对路径。请同时安装两者，验证 `ffmpeg -version` 和 `ffprobe -version` 后重新启动应用。启动检测失败会显示提示，不阻止项目、文本或图片工作；视频处理（包括 Mock 视频）需要这两个工具。
+
+## User Data Location
+
+Windows 固定使用 `%APPDATA%\ai-shortdrama-director`，不随正式显示名称或安装目录变化。数据库为 `workspace.sqlite`，媒体、缩略图、加密凭据和视频临时文件也在此目录内；备份应覆盖整个目录。用户主动导出的备份和诊断包保存在系统文件对话框选择的位置。
+
+## Uninstall & Data Retention
+
+在 Windows 设置的“已安装的应用”中卸载 AI ShortDrama Director。卸载删除程序与快捷方式，**默认保留项目和 userData**。后续安装相同 appId 的版本继续使用同一数据目录；升级前先备份，数据库迁移后不保证旧版本可打开。不提供自动升级服务。
+
+## Build Windows Installer
+
+在 Windows x64、Node.js 24 环境中执行 `npm ci`，然后：
+
+```powershell
+npm run build       # 编译到 out
+npm run pack        # 当前平台 unpacked 应用
+npm run dist        # 当前平台安装包
+npm run dist:win    # Windows x64 NSIS，禁止自动发布
+```
+
+主要交付物：`release/AI-ShortDrama-Director-Setup-0.6.0-x64.exe`；未安装目录：`release/win-unpacked`。图标可用 `node scripts/create-icons.mjs` 重新生成。构建工具首次使用可能需要网络下载，离线缓存配置、验证命令、签名与升级策略见 [Windows 发布说明](docs/windows-release.md)。
 
 ## 数据存储与测试隔离
 

@@ -15,7 +15,7 @@ export async function runMediaTool(
       args,
       {
         windowsHide: true,
-        timeout: 120000,
+        timeout: args[0] === '-version' ? 5000 : 120000,
         maxBuffer: 2 * 1024 * 1024,
         signal,
       },

@@ -1,16 +1,38 @@
 appId: com.aishortdrama.director
 productName: AI ShortDrama Director
+artifactName: AI-ShortDrama-Director-Setup-${version}-${arch}.${ext}
 directories:
   output: release
+  buildResources: build
 files:
   - out/**/*
   - package.json
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+electronDist: node_modules/electron/dist
 asar: true
 asarUnpack:
   - node_modules/@img/**/*
   - node_modules/sharp/**/*
 win:
-  target: nsis
+  signExecutable: false
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  requestedExecutionLevel: asInvoker
+# Future signing: provide CSC_LINK and CSC_KEY_PASSWORD through a secure build environment.
+# No certificate or password belongs in this file or the repository.
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AI ShortDrama Director
+  uninstallDisplayName: AI ShortDrama Director
+  deleteAppDataOnUninstall: false
+  runAfterFinish: false
 mac:
   target: dmg
 linux:

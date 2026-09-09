@@ -1,3 +1,4 @@
+import { MediaEnvironmentNotice } from './features/operations/MediaEnvironmentNotice'
 import { useState } from 'react'
 import { SimpleModeContext } from './features/operations/mode'
 import {
@@ -122,6 +123,7 @@ function WorkspaceShell() {
                 <button onClick={() => void reload()}>重新加载</button>
               </div>
             )}
+            <MediaEnvironmentNotice />
             <SetupWizard />
             <Page
               key={

@@ -41,12 +41,18 @@ const rendererUrl =
   !app.isPackaged && process.env.ELECTRON_RENDERER_URL
     ? new URL(process.env.ELECTRON_RENDERER_URL).href
     : pathToFileURL(join(directory, '../renderer/index.html')).href
+// Stable across development, installation and future product-name changes.
+app.setPath('userData', join(app.getPath('appData'), 'ai-shortdrama-director'))
+app.setAppUserModelId('com.aishortdrama.director')
 // A test harness can isolate the entire userData directory; renderer never chooses a path.
 if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA)
   app.setPath('userData', process.env.DIRECTOR_TEST_USER_DATA)
 
 async function createWindow() {
   const window = new BrowserWindow({
+    icon: app.isPackaged
+      ? join(process.resourcesPath, 'icon.png')
+      : join(directory, '../../build/icon.png'),
     width: 1280,
     height: 820,
     minWidth: 900,
@@ -86,6 +92,7 @@ app
   .whenReady()
   .then(async () => {
     mkdirSync(app.getPath('userData'), { recursive: true })
+    app.setAppLogsPath(join(app.getPath('userData'), 'logs'))
     database = new ProjectDatabase(
       join(app.getPath('userData'), 'workspace.sqlite'),
     )
