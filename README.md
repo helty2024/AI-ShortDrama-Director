@@ -8,6 +8,12 @@
 
 正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。
 
+07-01 已新增独立契约：`src/shared/tools.ts`、`capabilities/`、`routing.ts`、`generation.ts` 和 `electron/main/tools/`。九个生命周期动作与八种版本化能力均有类型/schema；新增 27 项纯契约测试。尚未接入应用调用、Routing 算法、模拟服务或数据库。package version 保持 0.6.0。
+
+契约 v1 的文本结构化能力限于有名的 string/number/boolean 字段，媒体转码限于视频，场景能力仅为预演/静帧渲染输入输出；后续扩展须升级能力契约，不使用任意 JSON 配置。图片最多 8 张参考图，具体工具可声明更小上限；工具约束检查和输入/输出关联检查由后续 validate/Broker 执行。金额以整数微单位及币种表达，未知费用/耗时独立标记。结果只返回受控 handle，不返回任意路径或 URL。
+
+`requestFingerprint` 是主进程纯函数：Zod 校验后按对象键排序进行 SHA-256，数组顺序保留；包含能力输入、来源 revision、工具/模型、版本和必要的路由语义。排除时间戳、随机运行/决策 ID、UI 状态和密钥。决策 ID 变化单独使预检/授权引用失效，不通过加入随机 ID 破坏语义哈希稳定性。27 项新增测试不启动 HTTP 服务，也不证明未来 adapter 的预检已无副作用；该行为验收属于 07-02。
+
 ## Phase 6 · 0.6.0
 
 - 默认 Simple Mode 生产看板：Next Action、关键帧生成、图片/视频审核、单镜头视频确认、连续性与 QC；Advanced 保留高级批次、Prompt 和 Provider 操作。

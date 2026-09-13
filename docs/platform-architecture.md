@@ -127,7 +127,7 @@ Validate 返回 valid、结构化 issues（字段、原因、严重程度）、�
 
 Estimate 是不可变快照，至少包含 id、projectId、routingDecisionId、requestFingerprint、estimatedCost、currency、durationRange、mayCharge、basis、createdAt、expiresAt。费用或耗时无法确定必须显式 unknown，不能填 0；0 只表示有依据的零费用。金额使用确定精度表达；本地计算成本不能虚构成某种货币。耗时区间不是完成保证。
 
-requestFingerprint 由主进程对规范化的能力及版本、来源 revision、素材版本、工具/模型、最终 Prompt、参数、seed 和 RoutingDecision 身份生成，不含密钥。输入、模型、参数或 RoutingDecision 改变后，validate / estimate 必须失效并重做。队列等待后，submit 前再次核对权限、依赖和有效期。
+requestFingerprint 由主进程对规范化的能力及版本、来源 revision、素材版本、工具/模型、最终 Prompt、参数、seed 和必要的路由语义输入生成，不含密钥、时间戳、随机运行/决策 UUID 或 UI 状态。按 07-01 明确要求，RoutingDecision 身份作为独立引用检查，不进入语义哈希：即使语义相同的重新决策产生相同指纹，决策 ID 改变仍使旧预检与授权失效。输入、模型、参数改变后必须重新计算指纹并执行 validate / estimate；队列等待后，submit 前再次核对权限、依赖和有效期。
 
 预检不生成、不下载模型、不静默上传素材到未授权服务。如果服务没有无生成副作用的估价能力，返回 unknown。网络查询隐私许可与费用授权是不同权限。
 
