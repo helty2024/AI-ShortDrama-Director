@@ -2,6 +2,12 @@
 
 面向 AI 短剧创作的本地桌面工作台，基于 React + TypeScript + Electron。
 
+## 产品方向与目标架构
+
+产品主线为 **故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**，通过简单 UI 面向普通创作者。生成描述放在折叠区，PromptPackage 保留在内部。后台通过统一 Tool Protocol、validate / estimate、RoutingPolicy 和 GenerationRecord，按第三方 Image API → Video API → ComfyUI → Blender 顺序验证可替换工具；无限画布作为 Creator UI 的 ViewExtension。
+
+正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。
+
 ## Phase 6 · 0.6.0
 
 - 默认 Simple Mode 生产看板：Next Action、关键帧生成、图片/视频审核、单镜头视频确认、连续性与 QC；Advanced 保留高级批次、Prompt 和 Provider 操作。

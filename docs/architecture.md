@@ -1,5 +1,7 @@
 # 架构
 
+> 本文记录 0.6.0 及其历次演进实现；阶段内的“后续”描述属于当时计划，不代表最新产品范围。最新批准基线为 [Architecture Baseline v2](platform-architecture.md)，文件级迁移步骤见 [Implementation Roadmap v2](implementation-roadmap-v2.md)。批准实施不等于已落地，现有数据和运行逻辑保持不变。
+
 ## 进程边界与数据流
 
 React 页面 → renderer service → window.desktop.workspace.request → preload 固定 workspace:request 通道 → 主进程 Zod 参数校验 → ProjectDatabase / IntelligenceService → SQLite。
