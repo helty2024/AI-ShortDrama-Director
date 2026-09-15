@@ -39,6 +39,8 @@ import {
   regenerationPlanSchema,
 } from '../../../src/shared/production.js'
 import { jobSchema } from '../../../src/shared/operations.js'
+import { provenanceTables } from '../../../src/shared/provenance.js'
+import { GenerationRepository } from '../generation/repository.js'
 const tables: Record<string, z.ZodType> = {
   projects: projectSchema,
   entities: entitySchema,
@@ -57,6 +59,7 @@ const tables: Record<string, z.ZodType> = {
   production_previews: batchPreviewSchema,
   regeneration_plans: regenerationPlanSchema,
   qc_jobs: jobSchema,
+  ...provenanceTables,
 }
 // Omit transient paid previews and recovery capabilities. Never export the global settings/credential store.
 export function publicCopy(value: unknown, field = ''): unknown {
@@ -65,7 +68,7 @@ export function publicCopy(value: unknown, field = ''): unknown {
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [
         k,
-        /credentialRef/i.test(k)
+        /credentialRef/i.test(k) || k === 'approvalId'
           ? null
           : /api.?key|authorization|password|secret|access.?token|encrypted/i.test(
                 k,
@@ -109,7 +112,7 @@ type Row = Record<string, string | number | null>
 function rows(db: DatabaseSync, table: string, projectId: string): Row[] {
   return db
     .prepare(
-      `SELECT * FROM ${table} WHERE ${table === 'projects' ? 'id' : 'project_id'}=?`,
+      `SELECT ${table in provenanceTables ? 'id,project_id,data' : '*'} FROM ${table} WHERE ${table === 'projects' ? 'id' : 'project_id'}=?`,
     )
     .all(projectId)
     .map((row) => {
@@ -140,12 +143,14 @@ function insert(db: DatabaseSync, table: string, row: Row) {
     `INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`,
   ).run(...Object.values(row))
 }
-const manifestSchema = z.strictObject({
-  format: z.literal(1),
+const manifestFields = {
   projectId: z.uuid(),
-  schema: z.literal(6),
   files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
-})
+}
+const manifestSchema = z.discriminatedUnion('format', [
+  z.strictObject({ ...manifestFields, format: z.literal(1), schema: z.literal(6) }),
+  z.strictObject({ ...manifestFields, format: z.literal(2), schema: z.literal(7) }),
+])
 export async function backupProject(
   visual: VisualRepository,
   p: string,
@@ -153,6 +158,7 @@ export async function backupProject(
 ) {
   const db = visual.repo.database
   db.get(p)
+  new GenerationRepository(db).validateProject(p)
   if (
     db.connection
       .prepare(
@@ -215,7 +221,7 @@ export async function backupProject(
     }
   await writeFile(
     join(folder, 'manifest.json'),
-    JSON.stringify({ format: 1, projectId: p, schema: 6, files }, null, 2),
+    JSON.stringify({ format: 2, projectId: p, schema: 7, files }, null, 2),
     { flag: 'wx' },
   )
   return folder
@@ -249,11 +255,12 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
   })
   const data: Record<string, Row[]> = {}
   try {
-    if (Number(source.prepare('PRAGMA user_version').get()?.user_version) !== 6)
+    if (Number(source.prepare('PRAGMA user_version').get()?.user_version) !== manifest.schema)
       throw new Error('Unsupported backup schema')
     if (source.prepare('SELECT id FROM projects').all().length !== 1)
       throw new Error('One project required')
     for (const table of [...Object.keys(tables), 'entity_refs']) {
+      if (manifest.schema === 6 && table in provenanceTables) { data[table] = []; continue }
       if (
         source.prepare('SELECT type FROM sqlite_master WHERE name=?').get(table)
           ?.type !== 'table'
@@ -368,6 +375,7 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
             )
           )
             throw new Error('Invalid restored relationship')
+      new GenerationRepository(visual.repo.database).validateProject(projectId)
     })
     return visual.repo.database.get(projectId)
   } catch (error) {

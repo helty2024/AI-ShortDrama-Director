@@ -141,7 +141,7 @@ export const generationRecordSchema = z
     completedAt: z.iso.datetime().nullable(),
     actualDuration: z.number().nonnegative().nullable(),
     outputAssetVersionIds: z.array(z.uuid()).max(100),
-    outcome: z.enum(['pending', 'succeeded', 'failed', 'cancelled', 'unknown']),
+    outcome: z.enum(['pending', 'succeeded', 'failed', 'cancelled', 'unknown', 'unknown-submission', 'malformed-output', 'other']),
   })
   .superRefine((v, ctx) => {
     const issue = (message: string) => ctx.addIssue({ code: 'custom', message })

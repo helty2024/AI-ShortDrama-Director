@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
+import { removeEmptyV7 } from '../fixtures/provenance.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import sharp from 'sharp'
 import { ProjectDatabase, metadata } from '../../electron/main/database.js'
@@ -676,6 +677,7 @@ test('v4 upgrades to v5 without altering images, video pins or old task provider
     a.db.close()
     const path = join(a.dir, 'workspace.sqlite'),
       raw = new DatabaseSync(path)
+    removeEmptyV7(raw)
     raw.exec(
       'DROP TABLE validation_records; DROP TABLE qc_jobs; DROP INDEX tasks_project_status; DROP INDEX versions_project_created; DROP INDEX qc_project_shot; DROP TABLE continuity_snapshots; DROP TABLE qc_reports; DROP TABLE production_preferences; DROP TABLE production_previews; DROP TABLE regeneration_plans; PRAGMA user_version=4',
     )
@@ -684,7 +686,7 @@ test('v4 upgrades to v5 without altering images, video pins or old task provider
     try {
       assert.equal(
         db.connection.prepare('PRAGMA user_version').get()?.user_version,
-        6,
+        7,
       )
       const restored = db
         .workspace(a.project.id)

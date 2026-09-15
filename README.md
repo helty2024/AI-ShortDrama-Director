@@ -14,6 +14,8 @@
 
 07-03 新增独立的 [Tool Registry / Routing / Broker Preflight](docs/tool-routing-preflight.md)：受信注册、纯 FIXED/AUTO 决策、无生成副作用预检、不可变审计快照、内存 ownership 与宿主输出签发。新增 30 项行为测试；可执行 `npx tsx --test tests/unit/routing.test.ts tests/unit/tool-broker.test.ts`。尚未连接旧生产入口或实现 submit、持久化、付费授权；内存状态不提供重启恢复。
 
+07-04 新增 [Generation Provenance 持久化](docs/generation-provenance.md)：追加 SQLite v7，保存路由、估价、Prompt、生成尝试、多输出、导入来源及 Task 关联；输入快照不可变，失败历史保留。备份升级为 format 2/schema 7，继续支持旧 format 1/schema 6。新增 21 项测试；没有接入真实生成、费用授权或新 UI/IPC，应用版本保持 0.6.0。
+
 契约 v1 的文本结构化能力限于有名的 string/number/boolean 字段，媒体转码限于视频，场景能力仅为预演/静帧渲染输入输出；后续扩展须升级能力契约，不使用任意 JSON 配置。图片最多 8 张参考图，具体工具可声明更小上限；工具约束检查和输入/输出关联检查由后续 validate/Broker 执行。金额以整数微单位及币种表达，未知费用/耗时独立标记。结果只返回受控 handle，不返回任意路径或 URL。
 
 `requestFingerprint` 是主进程纯函数：Zod 校验后按对象键排序进行 SHA-256，数组顺序保留；包含能力输入、来源 revision、工具/模型、版本和必要的路由语义。排除时间戳、随机运行/决策 ID、UI 状态和密钥。决策 ID 变化单独使预检/授权引用失效，不通过加入随机 ID 破坏语义哈希稳定性。27 项新增测试不启动 HTTP 服务，也不证明未来 adapter 的预检已无副作用；该行为验收属于 07-02。

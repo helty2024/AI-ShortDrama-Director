@@ -93,3 +93,9 @@ ShotProductionStatus 与 Episode/Scene Summary 全部派生。Strict 完成要�
 QCJob 持久化 shotId、versionId、createdAt/updatedAt、status、provider、error、reportId。任务状态与报告审核状态独立；队列取消不会接受或拒绝版本。Next Action 由既有 ShotProductionStatus 派生。
 
 v6 追加 validation_records / qc_jobs 和项目状态/版本时间/QC 镜头索引。保留 v1–v5 迁移内容。备份恢复重新映射 UUID、关系和存储键，保留媒体 hash，清除凭据引用与远程任务身份，历史结果不会自动发起云任务。
+
+## 07-04 生成来源
+
+v7 新增 RoutingDecision、GenerationEstimate、PromptPackage、GenerationRecord、GenerationOutput、ImportProvenance 和 TaskGenerationLink 的持久化。共享 schema 见 `src/shared/provenance.ts`。Record 绑定项目、目标、冻结的来源 revision/输入版本、Prompt/Decision/Estimate、工具/模型和参数；输出列表由关联表派生，支持 0:N 版本。输入不可改，结局、时间和实际费用可补齐；unknown-submission 与 malformed-output 独立保留。
+
+旧 Task 没有 Record 合法；导入不创建 Record。新路径 Task/Record 一对一，重试和重新生成新增父子记录。approvalId 当前必须为 null。数据库与 Repository 双层阻止跨项目关系，项目整体删除以外保留来源历史。完整规则与备份格式见 [生成来源持久化](generation-provenance.md)。

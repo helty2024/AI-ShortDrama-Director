@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { removeEmptyV7 } from '../fixtures/provenance.js'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -490,6 +491,7 @@ test('v5 database appends v6 indexes and preserves UUID and prior data on reopen
   app.queue.close()
   try {
     const before = app.db.workspace(app.project.id)
+    removeEmptyV7(app.db.connection)
     app.db.connection.exec(
       'DROP TABLE validation_records; DROP TABLE qc_jobs; DROP INDEX tasks_project_status; DROP INDEX versions_project_created; DROP INDEX qc_project_shot; PRAGMA user_version=5',
     )
@@ -498,7 +500,7 @@ test('v5 database appends v6 indexes and preserves UUID and prior data on reopen
     try {
       assert.equal(
         next.connection.prepare('PRAGMA user_version').get()?.user_version,
-        6,
+        7,
       )
       assert.deepEqual(next.workspace(app.project.id), before)
     } finally {

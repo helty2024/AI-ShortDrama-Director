@@ -97,3 +97,7 @@ v5 只追加 continuity_snapshots、qc_reports、production_preferences、produc
 Simple Mode 是默认生产入口，Advanced 保存到本机 UI 偏好。隐藏生成组件使用 LazyPanel，避免关闭的面板继续创建轮询。看板每页 20 镜头、素材每页 50 项、版本每页 20 项、任务每页 50 项。当前项目汇总仍读取完整元数据集合；这不是无限数据量分页，100 / 500 / 500 是当前验证规模。
 
 备份先生成隔离 SQLite 快照并复制登记媒体，manifest 最后落盘，未完成目录不可恢复；恢复先校验完整备份再复制新 UUID 目录，数据库事务提交失败时清理新目录。凭据存储完全不参与备份。备份是单项目数据迁移格式，不是 app userData 全盘克隆。
+
+## 07-04 来源持久化
+
+`generation/{migration,repository,service}.ts` 追加 v7 并负责不可变来源快照、Task 一对一关联、多输出和独立导入记录。完成结局、输出与 AITask 最终状态在同一事务提交；原 Provider/Executor/Router 不变。新表不向旧记录回填猜测来源。备份 format 2 包含来源，旧 format 1 仍可恢复。没有新增 UI/IPC、授权表或调度器，详见 [Generation Provenance](generation-provenance.md)。
