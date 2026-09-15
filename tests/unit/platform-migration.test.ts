@@ -20,7 +20,7 @@ test('real v6 upgrades without changing old rows, remote IDs, revisions or confi
     const before = snapshot(raw); raw.close()
     for (let attempt = 0; attempt < 2; attempt++) {
       const db = new ProjectDatabase(path)
-      assert.equal(db.connection.prepare('PRAGMA user_version').get()!.user_version, 7)
+      assert.equal(db.connection.prepare('PRAGMA user_version').get()!.user_version, 8)
       assert.deepEqual(snapshot(db.connection), before)
       for (const table of Object.keys(provenanceTables)) assert.equal(db.connection.prepare(`SELECT count(*) n FROM ${table}`).get()!.n, 0)
       assert.equal(new GenerationRepository(db).findByTask(legacy.project.id, legacy.task.id), null)

@@ -1,4 +1,5 @@
-import { migrateGeneration, PROVENANCE_SCHEMA_VERSION } from './generation/migration.js'
+import { migrateApproval, APPROVAL_SCHEMA_VERSION } from './generation/approval-migration.js'
+import { migrateGeneration } from './generation/migration.js'
 import { migrateOperations } from './operations/migration.js'
 import { migrateProduction } from './production/migration.js'
 import { migrateVideo } from './video/migration.js'
@@ -102,7 +103,7 @@ export class ProjectDatabase {
   private migrate() {
     const row = this.db.prepare('PRAGMA user_version').get()
     const version = Number(row?.user_version ?? 0)
-    if (version > PROVENANCE_SCHEMA_VERSION) throw new Error('数据库版本高于当前应用支持版本')
+    if (version > APPROVAL_SCHEMA_VERSION) throw new Error('数据库版本高于当前应用支持版本')
     if (version === 0)
       this.transaction(() => {
         this.db.exec(`
@@ -128,6 +129,11 @@ export class ProjectDatabase {
     if (version < 5) this.transaction(() => migrateProduction(this.db))
     if (version < 6) this.transaction(() => migrateOperations(this.db))
     if (version < 7) this.transaction(() => migrateGeneration(this.db))
+    if (version < 8) {
+      this.db.exec('PRAGMA foreign_keys=OFF')
+      try { this.transaction(() => migrateApproval(this.db)) }
+      finally { this.db.exec('PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON') }
+    }
   }
   transaction<T>(operation: () => T): T {
     if (this.db.isTransaction) return operation()

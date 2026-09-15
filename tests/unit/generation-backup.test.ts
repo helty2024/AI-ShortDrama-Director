@@ -1,3 +1,4 @@
+import { migrateGeneration } from '../../electron/main/generation/migration.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
@@ -29,7 +30,7 @@ test('v7 backup restores all provenance identities, multiple outputs and separat
     await media(visual.storage.root, f.versions)
     const folder = await backupProject(visual, f.project.id, dir)
     const manifest = JSON.parse(await readFile(join(folder, 'manifest.json'), 'utf8'))
-    assert.equal(manifest.format, 2); assert.equal(manifest.schema, 7)
+    assert.equal(manifest.format, 3); assert.equal(manifest.schema, 8)
     const restored = await restoreProject(visual, folder)
     assert.notEqual(restored.id, f.project.id)
     const records = f.repository.list('generation_records', restored.id)
@@ -50,15 +51,16 @@ test('v7 backup restores all provenance identities, multiple outputs and separat
   } finally { f.db.close(); await rm(dir, { recursive: true, force: true }) }
 })
 
-test('old format-1 v6 backup restores into v7 without inventing provenance', async () => {
+for (const schema of [6, 7]) test(`old v${schema} backup restores into v8 without inventing provenance`, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'old-provenance-backup-')), folder = join(dir, 'old'), db = new ProjectDatabase(':memory:')
   try {
     await mkdir(folder)
     const legacy = createV6(join(folder, 'project.sqlite'))
+    if (schema === 7) { const raw = new DatabaseSync(join(folder, 'project.sqlite')); raw.exec('BEGIN IMMEDIATE'); migrateGeneration(raw); raw.exec('COMMIT'); raw.close() }
     await media(join(folder, 'media'), [legacy.version])
     const files: Record<string, string> = { 'project.sqlite': hash(await readFile(join(folder, 'project.sqlite'))) }
     for (const key of [legacy.version.storageKey, legacy.version.thumbnailPath]) files[`media/${key}`] = hash(mediaBytes)
-    await writeFile(join(folder, 'manifest.json'), JSON.stringify({ format: 1, schema: 6, projectId: legacy.project.id, files }))
+    await writeFile(join(folder, 'manifest.json'), JSON.stringify({ format: schema === 6 ? 1 : 2, schema, projectId: legacy.project.id, files }))
     const visual = new VisualRepository(new IntelligenceRepository(db), new MediaStorage(join(dir, 'restored-media')))
     const project = await restoreProject(visual, folder), repo = new GenerationRepository(db)
     assert.equal(repo.list('generation_records', project.id).length, 0)

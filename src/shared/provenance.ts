@@ -21,7 +21,7 @@ export const provenancePromptSchema = z.strictObject({
 }).refine(v => (v.skillId === null) === (v.skillVersion === null), 'Skill version must be paired')
 export const persistedRecordSchema = generationRecordSchema.safeExtend({
   targetObjectType: targetType,
-  approvalId: z.null(),
+  approvalId: z.uuid().nullable(),
 })
 // Output IDs are a read projection only. The association table is the sole stored source.
 export const storedRecordSchema = z.preprocess(value => value && typeof value === 'object' ? { ...value, outputAssetVersionIds: [] } : value, persistedRecordSchema).transform(({ outputAssetVersionIds: _outputs, ...record }) => record)

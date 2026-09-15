@@ -1,3 +1,5 @@
+import { approvalTables } from '../../../src/shared/approval.js'
+import { approvalHistoryCopy, validateApprovalHistory } from '../generation/approval-history.js'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID, createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -60,6 +62,7 @@ const tables: Record<string, z.ZodType> = {
   regeneration_plans: regenerationPlanSchema,
   qc_jobs: jobSchema,
   ...provenanceTables,
+  ...approvalTables,
 }
 // Omit transient paid previews and recovery capabilities. Never export the global settings/credential store.
 export function publicCopy(value: unknown, field = ''): unknown {
@@ -112,7 +115,7 @@ type Row = Record<string, string | number | null>
 function rows(db: DatabaseSync, table: string, projectId: string): Row[] {
   return db
     .prepare(
-      `SELECT ${table in provenanceTables ? 'id,project_id,data' : '*'} FROM ${table} WHERE ${table === 'projects' ? 'id' : 'project_id'}=?`,
+      `SELECT ${table in provenanceTables || table in approvalTables ? 'id,project_id,data' : '*'} FROM ${table} WHERE ${table === 'projects' ? 'id' : 'project_id'}=?`,
     )
     .all(projectId)
     .map((row) => {
@@ -150,6 +153,7 @@ const manifestFields = {
 const manifestSchema = z.discriminatedUnion('format', [
   z.strictObject({ ...manifestFields, format: z.literal(1), schema: z.literal(6) }),
   z.strictObject({ ...manifestFields, format: z.literal(2), schema: z.literal(7) }),
+  z.strictObject({ ...manifestFields, format: z.literal(3), schema: z.literal(8) }),
 ])
 export async function backupProject(
   visual: VisualRepository,
@@ -159,6 +163,7 @@ export async function backupProject(
   const db = visual.repo.database
   db.get(p)
   new GenerationRepository(db).validateProject(p)
+  validateApprovalHistory(db, p)
   if (
     db.connection
       .prepare(
@@ -183,7 +188,7 @@ export async function backupProject(
       for (const [table, schema] of Object.entries(tables))
         for (const row of captured[table]!) {
           row.data = JSON.stringify(
-            schema.parse(publicCopy(JSON.parse(String(row.data)))),
+            schema.parse(approvalHistoryCopy(table, JSON.parse(String(row.data)), publicCopy(JSON.parse(String(row.data))))),
           )
           insert(snapshot.connection, table, row)
         }
@@ -221,7 +226,7 @@ export async function backupProject(
     }
   await writeFile(
     join(folder, 'manifest.json'),
-    JSON.stringify({ format: 2, projectId: p, schema: 7, files }, null, 2),
+    JSON.stringify({ format: 3, projectId: p, schema: 8, files }, null, 2),
     { flag: 'wx' },
   )
   return folder
@@ -260,7 +265,7 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
     if (source.prepare('SELECT id FROM projects').all().length !== 1)
       throw new Error('One project required')
     for (const table of [...Object.keys(tables), 'entity_refs']) {
-      if (manifest.schema === 6 && table in provenanceTables) { data[table] = []; continue }
+      if ((manifest.schema === 6 && table in provenanceTables) || (manifest.schema < 8 && table in approvalTables)) { data[table] = []; continue }
       if (
         source.prepare('SELECT type FROM sqlite_master WHERE name=?').get(table)
           ?.type !== 'table'
@@ -342,7 +347,7 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
           for (const [key, value] of Object.entries(original))
             row[key] = typeof value === 'string' ? remap(value) : value
           if (tables[table]) {
-            let parsed = publicCopy(JSON.parse(String(row.data)))
+            let parsed = approvalHistoryCopy(table, JSON.parse(String(row.data)), publicCopy(JSON.parse(String(row.data))))
             if (table === 'ai_tasks') {
               const task = aiTaskSchema.parse(parsed)
               if (['queued', 'running'].includes(task.status)) {
@@ -376,6 +381,7 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
           )
             throw new Error('Invalid restored relationship')
       new GenerationRepository(visual.repo.database).validateProject(projectId)
+      validateApprovalHistory(visual.repo.database, projectId)
     })
     return visual.repo.database.get(projectId)
   } catch (error) {

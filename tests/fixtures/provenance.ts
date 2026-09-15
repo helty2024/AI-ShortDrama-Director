@@ -36,7 +36,8 @@ export async function generationFixture(db = new ProjectDatabase(':memory:')) {
   const tool = new MockSyncImageTool(), registry = new ToolRegistry(); registry.register(tool)
   const input = { prompt: 'positivePrompt' in prompt.compiledPrompt ? prompt.compiledPrompt.positivePrompt : '', negativePrompt: '', resolution: { width: 1024, height: 1024 }, aspectRatio: '1:1', seed: 42, count: 4, outputMime: 'image/png' }
   const request = brokerRequestSchema.parse({ projectId: project.id, requestId: task.id, snapshot: { capability: 'image.generate', contractVersion: '1.0.0', input }, policy: { version: '1.0.0', selection: { mode: 'AUTO' }, hardConstraints: { locality: 'either', allowAssetUpload: true, budget: null, requiredAvailability: 'available', availableMemoryMB: null, availableGpuMemoryMB: null, networkAvailable: true }, preferences: { order: [], quality: { status: 'unknown' } }, unknown: { cost: 'allow', duration: 'allow', quality: 'allow', resources: 'allow' } } })
-  const preflight = await new ToolBroker(registry).preflight(request, new AbortController().signal)
+  const broker = new ToolBroker(registry)
+  const preflight = await broker.preflight(request, new AbortController().signal)
   if (!preflight.ready) throw new Error('Fixture preflight failed')
   const decision = repository.create('routing_decisions', preflight.routingDecision)
   const estimate = repository.create('generation_estimates', preflight.estimate)
@@ -45,7 +46,7 @@ export async function generationFixture(db = new ProjectDatabase(':memory:')) {
   versions[4].sourceType = 'imported'
   for (const v of versions) insertVersion(db.connection, v)
   const outputs = versions.slice(0, 4).map((v, i) => ({ id: randomUUID(), projectId: project.id, generationRecordId: record.id, assetVersionId: v.id, outputIndex: i, role: 'candidate', createdAt: task.createdAt }))
-  return { db, project, target, asset, repository, service, task, prompt, decision, estimate, record, versions, outputs }
+  return { db, project, target, asset, repository, service, task, prompt, decision, estimate, record, versions, outputs, broker, request, preflight }
 }
 
 /** Real v6 schema produced by the published migrations, not a relabelled v7 database. */
@@ -74,6 +75,7 @@ export function createV6(path: string) {
 
 // Only existing downgrade-style tests need to remove newly added empty v7 structures.
 export function removeEmptyV7(db: DatabaseSync) {
+  for (const table of ['approval_reservations','approval_items','generation_approvals']) db.exec('DROP TABLE IF EXISTS ' + table)
   for (const table of ['generation_outputs', 'import_provenance', 'task_generation_links', 'generation_records', 'prompt_packages', 'generation_estimates', 'routing_decisions']) db.exec(`DROP TABLE ${table}`)
   for (const trigger of ['version_provenance_retention', 'source_provenance_retention']) db.exec(`DROP TRIGGER ${trigger}`)
   db.exec('DROP INDEX tasks_scope_id; DROP INDEX versions_scope_id;')

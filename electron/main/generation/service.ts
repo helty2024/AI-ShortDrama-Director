@@ -34,6 +34,7 @@ export class GenerationService {
   failAttempt(projectId: string, id: string, outcome: Exclude<ProvenanceRecord['outcome'], 'pending' | 'succeeded'>) { return this.finish(projectId, id, outcome, [], null) }
   private finish(projectId: string, id: string, outcome: ProvenanceRecord['outcome'], outputs: GenerationOutput[], actualCost: ProvenanceRecord['actualCost']) {
     const current = this.repository.getRecord(projectId, id), now = new Date().toISOString()
+    actualCost ??= current.actualCost
     return this.repository.finish(projectId, id, { startedAt: current.startedAt, completedAt: now, updatedAt: now, actualDuration: current.startedAt ? Math.max(0, (Date.parse(now) - Date.parse(current.startedAt)) / 1000) : null, actualCost, costStatus: actualCost ? 'known' : 'unknown', currency: actualCost?.currency ?? current.currency, outcome }, outputs)
   }
   history(projectId: string, targetId: string) { return this.repository.history(projectId, targetId) }

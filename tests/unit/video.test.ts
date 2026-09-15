@@ -837,7 +837,7 @@ test('v3 to v4 migration preserves images, adds video fields and does not leak c
     const db = new ProjectDatabase(path)
     assert.equal(
       db.connection.prepare('PRAGMA user_version').get()?.user_version,
-      7,
+      8,
     )
     const migrated = JSON.parse(
       String(

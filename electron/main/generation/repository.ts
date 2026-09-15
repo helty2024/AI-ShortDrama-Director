@@ -1,3 +1,4 @@
+import { checkApprovalBinding } from './approval-binding.js'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { DomainError, type ProjectDatabase } from '../database.js'
@@ -51,6 +52,7 @@ export class GenerationRepository {
       const item = this.parse(provenanceTables[table] as unknown as z.ZodType<Item<T>>, raw)
       this.database.get(item.projectId)
       this.check(table, item)
+      if (table === 'generation_records') checkApprovalBinding(this.database, persistedRecordSchema.parse({ ...provenanceTables.generation_records.parse(item), outputAssetVersionIds: [] }), true)
       this.database.connection.prepare(`INSERT INTO ${table}(id,project_id,data) VALUES (?,?,?)`).run(item.id, item.projectId, JSON.stringify(item))
       return immutable(item)
     })
@@ -94,6 +96,7 @@ export class GenerationRepository {
     }
   }
   checkRecord(record: ProvenanceRecord): void {
+    checkApprovalBinding(this.database, record, false)
     const p = record.projectId
     const target = this.entity(p, record.targetObjectId), task = this.task(p, record.taskId)
     if (target.kind !== record.targetObjectType) throw new DomainError('CONFLICT', '生成目标类型不匹配')
@@ -163,6 +166,7 @@ export class GenerationRepository {
       if (patch.outcome !== 'succeeded' && outputs.length) throw new DomainError('CONFLICT', '失败尝试不能登记成功输出')
       const next = this.parse(persistedRecordSchema, { ...before, ...patch })
       if (!next.completedAt || (before.startedAt !== null && next.startedAt !== before.startedAt)) throw new DomainError('CONFLICT', '执行时间只能补齐，不能重写开始时间')
+      checkApprovalBinding(this.database, next, false)
       const stored = provenanceTables.generation_records.parse(next)
       this.database.connection.prepare('UPDATE generation_records SET data=? WHERE project_id=? AND id=?').run(JSON.stringify(stored), projectId, recordId)
       if (outputs.length) this.attachOutputs(projectId, recordId, outputs)
@@ -184,6 +188,7 @@ export class GenerationRepository {
       if (patch.startedAt !== undefined && (before.startedAt !== null || before.outcome !== 'pending')) throw new DomainError('CONFLICT', '开始时间已经确定')
       if (patch.actualCost !== undefined && (patch.actualCost === null || before.actualCost !== null)) throw new DomainError('CONFLICT', '实际费用只能首次补齐')
       const next = this.parse(persistedRecordSchema, { ...before, ...patch, updatedAt: new Date().toISOString(), ...(patch.actualCost ? { actualCost: patch.actualCost, currency: patch.actualCost.currency, costStatus: 'known' } : {}) })
+      checkApprovalBinding(this.database, next, false)
       this.database.connection.prepare('UPDATE generation_records SET data=? WHERE project_id=? AND id=?').run(JSON.stringify(provenanceTables.generation_records.parse(next)), projectId, recordId)
       return this.getRecord(projectId, recordId)
     })
