@@ -102,7 +102,7 @@ export class GenerationRepository {
     if (target.kind !== record.targetObjectType) throw new DomainError('CONFLICT', '生成目标类型不匹配')
     if ('targetId' in task.input && task.input.targetId !== target.id) throw new DomainError('CONFLICT', '任务目标不匹配')
     const decision = this.get('routing_decisions', p, record.routingDecisionId), estimate = this.get('generation_estimates', p, record.estimateId)
-    if (decision.selectedToolId !== record.toolId || decision.selectedToolVersion !== record.toolVersion || decision.selectedModel !== record.modelId || decision.requestedCapability !== record.generationType || estimate.routingDecisionId !== decision.id || estimate.requestFingerprint !== record.requestFingerprint || JSON.stringify(estimate.cost) !== JSON.stringify(record.estimatedCost)) throw new DomainError('CONFLICT', '执行尝试与预检快照不一致')
+    if ((estimate.currency !== undefined && estimate.currency !== record.currency) || decision.selectedToolId !== record.toolId || decision.selectedToolVersion !== record.toolVersion || decision.selectedModel !== record.modelId || decision.requestedCapability !== record.generationType || estimate.routingDecisionId !== decision.id || estimate.requestFingerprint !== record.requestFingerprint || JSON.stringify(estimate.cost) !== JSON.stringify(record.estimatedCost)) throw new DomainError('CONFLICT', '执行尝试与预检快照不一致')
     for (const id of record.inputAssetVersionIds) this.version(p, id)
     const input = record.parameters.input
     const refs = 'references' in input ? input.references.map(v => v.assetVersionId) : 'firstFrameAssetVersionId' in input ? [input.firstFrameAssetVersionId, ...(input.lastFrameAssetVersionId ? [input.lastFrameAssetVersionId] : [])] : []

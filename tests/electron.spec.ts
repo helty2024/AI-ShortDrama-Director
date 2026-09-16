@@ -1,3 +1,4 @@
+import { imageServer } from './fixtures/image-http.js'
 import { ProjectDatabase, metadata } from '../electron/main/database.js'
 import { buildSeed } from '../electron/main/seed.js'
 import { aiTaskSchema } from '../src/shared/intelligence.js'
@@ -10,12 +11,14 @@ import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
 
-async function launch(directory: string) {
+async function launch(directory: string, imageFixtureOrigin?: string) {
   const environment: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env))
     if (value !== undefined) environment[key] = value
   delete environment.ELECTRON_RUN_AS_NODE
   delete environment.ELECTRON_RENDERER_URL
+  delete environment.DIRECTOR_TEST_IMAGE_ORIGIN
+  if(imageFixtureOrigin)environment.DIRECTOR_TEST_IMAGE_ORIGIN=imageFixtureOrigin
   environment.DIRECTOR_TEST_USER_DATA = directory
   environment.DIRECTOR_TEXT_PROVIDER = 'mock'
   return electron.launch({ args: ['.'], env: environment })
@@ -953,4 +956,38 @@ test('large project startup, switching and paged workspaces handle the productio
     await application.close()
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+test('Image API desktop preview requires explicit confirmation and review before adoption',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'director-image-api-ui-')),server=await imageServer()
+  let application=await launch(directory,server.origin)
+  try{
+    let page=await application.firstWindow()
+    await page.getByRole('button',{name:'载入开发示例'}).click()
+    await page.getByRole('button',{name:'生成',exact:true}).click()
+    const panel=page.getByRole('region',{name:'图像 API 生成'})
+    await panel.getByLabel('API 生成目标').selectOption({index:1})
+    await panel.getByLabel('图片数量').selectOption('4')
+    await panel.getByLabel('宽',{exact:true}).fill('32');await panel.getByLabel('高',{exact:true}).fill('32')
+    await panel.getByLabel('允许所选参考图上传云端').check()
+    expect(server.counts.submit).toBe(0)
+    await panel.getByRole('button',{name:'预览图像生成'}).click()
+    await expect(panel.getByRole('region',{name:'图像生成确认'})).toBeVisible()
+    expect(server.counts.submit).toBe(0)
+    const confirm=panel.getByRole('button',{name:'确认生成（可能收费）'})
+    await expect(confirm).toBeDisabled()
+    await panel.getByLabel('最大授权微金额').fill('20')
+    await panel.getByLabel('我明确允许未知估价，并授权上述费用上限').check()
+    await confirm.click()
+    await expect.poll(()=>server.counts.submit).toBe(1)
+    await expect.poll(async()=>{await panel.getByRole('button',{name:'刷新生成结果'}).click();return panel.locator('article').count()}).toBe(4)
+    await panel.getByRole('button',{name:'审核并采用到目标'}).first().click()
+    await expect(panel.getByText('v1 · approved',{exact:true})).toBeVisible()
+    const denied=await page.evaluate(()=>window.desktop!.workspace.request({action:'imageApi',command:{op:'preview',endpoint:'file:///secret',input:{}}} as never))
+    expect(denied.ok).toBe(false)
+    await application.close();application=await launch(directory,server.origin);page=await application.firstWindow()
+    await page.getByRole('button',{name:'生成',exact:true}).click()
+    await expect(page.getByRole('region',{name:'图像 API 生成'}).getByText('v1 · approved',{exact:true})).toBeVisible()
+    expect(server.counts.submit).toBe(1)
+  }finally{await application.close();await server.close();await rm(directory,{recursive:true,force:true})}
 })

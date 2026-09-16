@@ -1,3 +1,7 @@
+import { ImageApiAdapter } from './tools/adapters/image-api.js'
+import { ImageHttpTransport } from './tools/adapters/image-http.js'
+import { ImageGenerationService } from './generation/image-service.js'
+import { loadImageProfiles, imageAdapters, importImageProfile } from './generation/image-profiles.js'
 import { MediaBroker } from './media-broker.js'
 import { protocol } from 'electron'
 import { safeStorage } from 'electron'
@@ -160,6 +164,15 @@ app
         return result.canceled ? null : (result.filePaths[0] ?? null)
       },
     })
+    const imageProfilePath=join(app.getPath('userData'),'image-api-profiles.json')
+    const imageApi=new ImageGenerationService(visual,imageAdapters(await loadImageProfiles(imageProfilePath),credentials))
+    // Test composition only: isolated userData + unpackaged app + exact loopback origin.
+    // Never derives a real endpoint/key from a test flag or registers this in packaged builds.
+    if(!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_IMAGE_ORIGIN){
+      const u=new URL(process.env.DIRECTOR_TEST_IMAGE_ORIGIN)
+      if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||u.href!==u.origin+'/')throw new Error('Invalid HTTP fixture origin')
+      imageApi.register(new ImageApiAdapter({toolId:'reference.fixture',displayName:'本地 HTTP Fixture（不收费）',endpoint:u.origin+'/generate',modelId:'reference-v1',credentialRef:null,supportedCapabilities:['image.generate','image.referenceGenerate'],supportedResolutions:[{width:32,height:32}],supportedAspectRatios:['1:1'],maxReferences:8,maxOutputCount:4,currency:'USD',estimateSupport:'unknown',cancelSupport:false,recoverSupport:false},async()=>'DIRECTOR_HTTP_FIXTURE_ONLY',new ImageHttpTransport({fixtureOrigin:u.origin})))
+    }
     registerWorkspaceIPC(
       database,
       windows,
@@ -185,6 +198,14 @@ app
           return r.canceled ? null : (r.filePaths[0] ?? null)
         },
       }),
+      imageApi,
+      async () => {
+        const profile=await dialog.showOpenDialog({title:'导入 Image API Reference Profile',properties:['openFile'],filters:[{name:'Profile JSON',extensions:['json']}]})
+        if(profile.canceled||!profile.filePaths[0])return null
+        const key=await dialog.showOpenDialog({title:'导入 API Key（主进程加密保存）',properties:['openFile'],filters:[{name:'Key 文本',extensions:['txt','key']}]})
+        if(key.canceled||!key.filePaths[0])return null
+        return importImageProfile(imageProfilePath,profile.filePaths[0],key.filePaths[0],credentials,imageApi)
+      },
     )
     session.defaultSession.setPermissionRequestHandler(
       (_contents, _permission, callback) => callback(false),

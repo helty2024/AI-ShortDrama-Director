@@ -207,6 +207,13 @@ export class ToolBroker {
     } else throw boundaryError('output-not-issued')
     return output as CapabilityOutput<C>
   }
+  bindAccepted(ctx: ToolExecutionContext, id: string, raw: ToolTaskHandle): void {
+    const execution=this.own(ctx,id),handle=this.validResponse(toolTaskHandleSchema,raw)
+    if(execution.handle||handle.toolId!==execution.entry.descriptor.id||handle.toolVersion!==execution.entry.descriptor.version)throw boundaryError('ownership-mismatch')
+    const key=`${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}`
+    if(this.externalOwners.has(key))throw boundaryError('ownership-mismatch')
+    execution.handle=handle;this.externalOwners.set(key,id)
+  }
   async status(ctx: ToolExecutionContext, id: string, handle: ToolTaskHandle, signal: AbortSignal) {
     const e = this.own(ctx, id, handle)
     return this.validResponse(toolTaskStatusSchema, await this.call(signal, s => e.entry.adapter.status(handle, s)))

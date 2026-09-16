@@ -38,7 +38,7 @@ export class AITaskQueue {
     this.provider = provider
     for (const project of repo.database.list())
       for (const task of repo.list(project.id, 'ai_tasks', aiTaskSchema)) {
-        if (task.status === 'running')
+        if (task.status === 'running' && task.input.type !== 'image-api')
           repo.putTask({
             ...task,
             status:
@@ -65,6 +65,7 @@ export class AITaskQueue {
     if (this.stopped) throw new DomainError('CONFLICT', '任务队列已关闭')
     this.repo.database.get(projectId)
     const input = taskInputSchema.parse(raw)
+    if (input.type === 'image-api') throw new DomainError('FORBIDDEN', '请通过图像 API 预览与确认入口创建新尝试')
     const pending = this.repo
       .list(projectId, 'ai_tasks', aiTaskSchema)
       .filter((t) => t.status === 'queued' || t.status === 'running')
@@ -95,6 +96,7 @@ export class AITaskQueue {
   }
   cancel(projectId: string, id: string) {
     const task = this.repo.task(projectId, id)
+    if (task.input.type === 'image-api') throw new DomainError('CONFLICT', '图像 API 任务必须核对来源与费用后通过新预览处理，不能原地取消或重试')
     if (!['queued', 'running'].includes(task.status)) return task
     if ('request' in task.input && task.providerTaskId)
       void this.media?.cancel(task).catch(() => undefined)
@@ -110,6 +112,7 @@ export class AITaskQueue {
   }
   retry(projectId: string, id: string) {
     const task = this.repo.task(projectId, id)
+    if (task.input.type === 'image-api') throw new DomainError('CONFLICT', '图像 API 任务必须核对来源与费用后通过新预览处理，不能原地取消或重试')
     if (
       !['failed', 'cancelled'].includes(task.status) ||
       this.active?.id === id
@@ -136,7 +139,7 @@ export class AITaskQueue {
   }
   cancelProject(projectId: string) {
     for (const task of this.repo.list(projectId, 'ai_tasks', aiTaskSchema))
-      if (task.status === 'queued' || task.status === 'running')
+      if ((task.status === 'queued' || task.status === 'running') && task.input.type !== 'image-api')
         this.cancel(projectId, task.id)
   }
   close() {
@@ -164,7 +167,7 @@ export class AITaskQueue {
     const task = this.repo.database
       .list()
       .flatMap((p) => this.repo.list(p.id, 'ai_tasks', aiTaskSchema))
-      .find((t) => t.status === 'queued')
+      .find((t) => t.status === 'queued' && t.input.type !== 'image-api')
     if (!task) return
     const controller = new AbortController()
     this.active = { id: task.id, projectId: task.projectId, controller }
@@ -207,7 +210,7 @@ export class AITaskQueue {
               })
           },
         )
-      } else if (task.input.type !== 'parse') {
+      } else if (task.input.type !== 'parse' && task.input.type !== 'image-api') {
         const scenes = this.repo.selectedScenes(
           task.projectId,
           task.input.targetId,

@@ -1,3 +1,4 @@
+import { imageApiCommandSchema } from './image-api.js'
 import { operationsCommandSchema } from './operations.js'
 import { pilotCommandSchema } from './production.js'
 import type { PilotResult } from './production.js'
@@ -21,6 +22,7 @@ import {
 import type { Entity, Project, Workspace } from './domain.js'
 
 export const requestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('imageApi'), command: imageApiCommandSchema }),
   z.strictObject({
     action: z.literal('operations'),
     command: operationsCommandSchema,

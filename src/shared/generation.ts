@@ -38,6 +38,8 @@ export const generationEstimateSchema = z
     routingDecisionId: z.uuid().nullable(),
     requestFingerprint: requestFingerprintSchema,
     cost: estimatedCostSchema,
+    // Older quotes omit this; new unknown-price quotes still declare their billing currency.
+    currency: currencySchema.optional(),
     estimatedDurationRange: estimatedDurationSchema,
     billingRisk: z.enum(['free', 'may-charge', 'unknown']),
     basis: z.string().min(1).max(1000),
@@ -45,6 +47,7 @@ export const generationEstimateSchema = z
     validUntil: z.iso.datetime(),
   })
   .superRefine((v, ctx) => {
+    if (v.currency && v.cost.status === 'known' && v.currency !== v.cost.estimatedCost.currency) ctx.addIssue({ code: 'custom', message: 'Quote currency mismatch' })
     if (Date.parse(v.validUntil) <= Date.parse(v.createdAt))
       ctx.addIssue({
         code: 'custom',

@@ -223,6 +223,7 @@ export const importPreviewSchema = z.strictObject({
   confirmedScriptId: id.nullable(),
 })
 export const taskInputSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('image-api'), targetId: id }),
   imageTaskInputSchema,
   videoTaskInputSchema,
   z.strictObject({

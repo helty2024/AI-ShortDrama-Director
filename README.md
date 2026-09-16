@@ -18,6 +18,8 @@
 
 07-05 新增 [Generation Approval / Budget Reservation](docs/generation-approval.md)：SQLite v8，独立单次/批次授权、总池与单项预算原子预留、未知提交持续持有、实际费用一致结算。备份升级为 format 3/schema 8，旧 v6/v7 备份仍可恢复，恢复授权仅为不可执行历史。主进程私有服务已建立；旧生成入口仍为 legacy path，尚未统一接入新授权。package version 仍为 0.6.0。
 
+07-06 新增 [Third-party Image API Production Path](docs/image-api-tool.md)：Reference Adapter、有限制的 HTTPS transport、生成页最小 Preview/Confirm/Result 入口，串起 Broker → Approval/Reservation → Task/Record → 候选版本 → 人工采用。本地 HTTP 与桌面流程使用无费用 fixture 验证；未指定或验证真实供应商，未执行真实付费生图。旧 Provider 保持兼容，schema v8 / package 0.6.0 不变。
+
 契约 v1 的文本结构化能力限于有名的 string/number/boolean 字段，媒体转码限于视频，场景能力仅为预演/静帧渲染输入输出；后续扩展须升级能力契约，不使用任意 JSON 配置。图片最多 8 张参考图，具体工具可声明更小上限；工具约束检查和输入/输出关联检查由后续 validate/Broker 执行。金额以整数微单位及币种表达，未知费用/耗时独立标记。结果只返回受控 handle，不返回任意路径或 URL。
 
 `requestFingerprint` 是主进程纯函数：Zod 校验后按对象键排序进行 SHA-256，数组顺序保留；包含能力输入、来源 revision、工具/模型、版本和必要的路由语义。排除时间戳、随机运行/决策 ID、UI 状态和密钥。决策 ID 变化单独使预检/授权引用失效，不通过加入随机 ID 破坏语义哈希稳定性。27 项新增测试不启动 HTTP 服务，也不证明未来 adapter 的预检已无副作用；该行为验收属于 07-02。
