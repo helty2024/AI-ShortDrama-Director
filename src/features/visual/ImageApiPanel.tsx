@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import {
   imageApiCommandSchema,
+  imageConnectivitySchema,
   type ImageApiCommand,
   type ImageApiPreview,
 } from '../../shared/image-api'
@@ -66,6 +67,7 @@ function ImageApiSession() {
   const [versions, setVersions] = useState<AssetVersion[]>([]),
     [refs, setRefs] = useState<string[]>([]),
     [result, setResult] = useState<z.infer<typeof querySchema> | null>(null)
+  const [connectivity, setConnectivity] = useState('')
   const act = async (f: () => Promise<void>) => {
     setBusy(true)
     setError('')
@@ -114,7 +116,7 @@ function ImageApiSession() {
   const chosen = entities.find((e) => e.id === target)
   return (
     <section aria-label="图像 API 生成">
-      <h2>图像 API · Reference 协议</h2>
+      <h2>图像 API</h2>
       <p>
         真实供应商未验证。预览不会上传素材或产生生成请求；只有确认后才允许提交。
       </p>
@@ -137,6 +139,20 @@ function ImageApiSession() {
           尚未配置。此协议不代表任何供应商兼容，请参阅 docs/image-api-tool.md。
         </p>
       ) : null}
+      <button
+        disabled={busy || !tool}
+        onClick={() =>
+          void act(async () => {
+            const report = imageConnectivitySchema.parse(
+              await command({ op: 'probe', toolId: tool }),
+            )
+            setConnectivity(report.message)
+          })
+        }
+      >
+        检测连接与模型（不生成）
+      </button>
+      {connectivity ? <p role="status">{connectivity}</p> : null}
       <fieldset disabled={busy} onChange={() => setPreview(null)}>
         <legend>生成输入</legend>
         <label>

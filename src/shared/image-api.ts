@@ -36,6 +36,7 @@ export const imagePreviewInputSchema = z.strictObject({
   localOnly: z.boolean(),
 })
 export const imageApiCommandSchema = z.discriminatedUnion('op', [
+  z.strictObject({ op: z.literal('probe'), toolId: toolIdSchema }),
   z.strictObject({ op: z.literal('profiles') }),
   z.strictObject({ op: z.literal('importProfile') }),
   z.strictObject({ op: z.literal('preview'), input: imagePreviewInputSchema }),
@@ -61,6 +62,15 @@ export const imageApiCommandSchema = z.discriminatedUnion('op', [
   }),
 ])
 export type ImageApiCommand = z.infer<typeof imageApiCommandSchema>
+export const imageConnectivitySchema = z.strictObject({
+  checkedAt: z.iso.datetime(),
+  authentication: z.enum(['accepted', 'rejected', 'unknown']),
+  modelVisible: z.boolean().nullable(),
+  generationValidated: z.literal(false),
+  tokenGroupVerified: z.literal(false),
+  message: z.string().max(1000),
+})
+export type ImageConnectivityReport = z.infer<typeof imageConnectivitySchema>
 export interface ImageApiPreview {
   id: string
   projectId: string

@@ -1,19 +1,25 @@
 import { readFile, writeFile, stat, rename } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import {
-  imageApiProfileSchema,
-  type ImageApiProfile,
-} from '../../../src/shared/image-api.js'
+import { imageApiProfileSchema } from '../../../src/shared/image-api.js'
 import type { CredentialStore } from '../video/credentials.js'
+import {
+  PackyImage25Adapter,
+  packyImage25ProfileSchema,
+} from '../tools/adapters/packy-image-25.js'
 import { ImageApiAdapter } from '../tools/adapters/image-api.js'
 import type { ImageGenerationService } from './image-service.js'
+const storedProfileSchema = z.union([
+  imageApiProfileSchema,
+  packyImage25ProfileSchema,
+])
+type StoredProfile = z.infer<typeof storedProfileSchema>
 export async function loadImageProfiles(
   path: string,
-): Promise<ImageApiProfile[]> {
+): Promise<StoredProfile[]> {
   try {
     return z
-      .array(imageApiProfileSchema)
+      .array(storedProfileSchema)
       .max(20)
       .parse(JSON.parse(await readFile(path, 'utf8')))
   } catch {
@@ -21,16 +27,18 @@ export async function loadImageProfiles(
   }
 }
 export function imageAdapters(
-  profiles: ImageApiProfile[],
+  profiles: StoredProfile[],
   credentials: CredentialStore,
 ) {
-  return profiles.map(
-    (p) =>
-      new ImageApiAdapter(p, async () => {
-        if (!p.credentialRef) throw new Error('credential missing')
-        return credentials.get(p.credentialRef)
-      }),
-  )
+  return profiles.map((p) => {
+    const credential = async () => {
+      if (!p.credentialRef) throw new Error('credential missing')
+      return credentials.get(p.credentialRef)
+    }
+    return 'adapter' in p
+      ? new PackyImage25Adapter(p, credential)
+      : new ImageApiAdapter(p, credential)
+  })
 }
 export async function importImageProfile(
   path: string,
@@ -46,8 +54,8 @@ export async function importImageProfile(
     throw new Error('File too large')
   const raw = await readFile(profileFile, 'utf8')
   if (raw.length > 64000) throw new Error('Profile too large')
-  const p = imageApiProfileSchema.parse(JSON.parse(raw)),
-    u = new URL(p.endpoint)
+  const p = storedProfileSchema.parse(JSON.parse(raw)),
+    u = new URL('endpoint' in p ? p.endpoint : 'https://cf.api.fan/v1')
   if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash)
     throw new Error('HTTPS endpoint required')
   const key = await readFile(keyFile, 'utf8')

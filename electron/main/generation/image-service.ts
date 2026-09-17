@@ -94,6 +94,12 @@ export class ImageGenerationService {
       resolutions: e.descriptor.capabilities[0].resolutions,
     }))
   }
+  async probe(toolId: string) {
+    const tool = this.imageTools.get(toolId)
+    if (!tool?.probeConnectivity)
+      throw new DomainError('INVALID_INPUT', '该工具未提供无副作用连通性探测')
+    return tool.probeConnectivity(AbortSignal.timeout(15000))
+  }
   async preview(raw: unknown): Promise<ImageApiPreview> {
     const input = imagePreviewInputSchema.parse(raw),
       p = input.projectId,

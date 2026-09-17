@@ -108,6 +108,7 @@ export function registerWorkspaceIPC(
             const c=request.command
             let data:unknown
             switch(c.op){
+              case 'probe': data=await imageApi.probe(c.toolId);break
               case 'profiles': data=imageApi.profiles();break
               case 'importProfile': data=await importImage?.();break
               case 'preview': data=await imageApi.preview(c.input);break

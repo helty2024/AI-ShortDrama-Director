@@ -25,6 +25,7 @@ import { generationEstimateSchema } from '../../../../src/shared/generation.js'
 import {
   imageApiProfileSchema,
   type ImageApiProfile,
+  type ImageConnectivityReport,
 } from '../../../../src/shared/image-api.js'
 import { ImageHttpTransport, transportFailure } from './image-http.js'
 import { requestFingerprint } from '../fingerprint.js'
@@ -39,6 +40,7 @@ export interface ImageExecutionAccess {
   billing: (amountMicro: number, currency: string) => void
 }
 export interface ImageApiTool extends ToolAdapter<ImageCapability> {
+  probeConnectivity?(signal: AbortSignal): Promise<ImageConnectivityReport>
   readonly profile: Pick<
     ImageApiProfile,
     'toolId' | 'displayName' | 'currency' | 'modelId'

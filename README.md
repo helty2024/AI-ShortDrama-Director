@@ -208,3 +208,5 @@ docs/               架构和领域说明
 项目尚未指定开源许可证。
 
 视觉管线详见 [资产管线](docs/asset-pipeline.md)、[图像生成](docs/image-generation.md)、[ComfyUI](docs/comfyui-provider.md)、[Prompt Compiler](docs/prompt-compiler.md)。备份需覆盖整个 userData（数据库及 media 目录）。
+
+07-06.5 新增 [PackyAPI 原生 Image 2.5 Adapter](docs/packy-image-25.md)：JSON 文生图、multipart 编辑映射已通过本地 fixture；真实 /v1/models 鉴权与 Sunburst 模型可见性已验证。真实生成仍关闭，未产生付费生成。开发者可用 `node scripts/packy-connectivity.mjs` 重复安全探测，密钥复用 Electron safeStorage。

@@ -38,7 +38,12 @@ export class ImageHttpTransport {
   async bytes(
     url: string,
     signal: AbortSignal,
-    options: { body?: string; key?: string; limit: number },
+    options: {
+      body?: string | Buffer
+      contentType?: string
+      key?: string
+      limit: number
+    },
   ): Promise<{ bytes: Buffer; mime: string }> {
     const caller = signal
     signal = AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)])
@@ -92,7 +97,7 @@ export class ImageHttpTransport {
                 : done(null, addresses[0].address, 4),
             headers: {
               ...(options.body !== undefined
-                ? { 'Content-Type': 'application/json' }
+                ? { 'Content-Type': options.contentType ?? 'application/json' }
                 : {}),
               ...(options.key
                 ? { Authorization: `Bearer ${options.key}` }
