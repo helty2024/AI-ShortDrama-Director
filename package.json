@@ -13,6 +13,7 @@
     "dist": "npm run build && electron-builder",
     "test:smoke": "playwright test",
     "test:unit": "tsx --test tests/unit/*.test.ts",
+    "validate:packy-paid": "node scripts/packy-paid-validation.mjs",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {

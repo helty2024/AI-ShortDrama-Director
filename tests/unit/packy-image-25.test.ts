@@ -2,14 +2,25 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import sharp from 'sharp'
 import {
   PackyImage25Adapter,
   packyImage25ProfileSchema,
+  type PackyPaidValidationGate,
 } from '../../electron/main/tools/adapters/packy-image-25.js'
 import { ImageHttpTransport } from '../../electron/main/tools/adapters/image-http.js'
 import { requestFingerprint } from '../../electron/main/tools/fingerprint.js'
 import type { CapabilityInput } from '../../src/shared/capabilities/index.js'
 import type { ImageCapability } from '../../electron/main/tools/adapters/image-api.js'
+import { ProjectDatabase, metadata } from '../../electron/main/database.js'
+import { entitySchema } from '../../src/shared/domain.js'
+import { IntelligenceRepository } from '../../electron/main/intelligence/repository.js'
+import { VisualRepository } from '../../electron/main/visual/repository.js'
+import { MediaStorage } from '../../electron/main/visual/storage.js'
+import { ImageGenerationService } from '../../electron/main/generation/image-service.js'
 const profile = packyImage25ProfileSchema.parse({
   adapter: 'packy-image-25',
   toolId: 'packy.image-25',
@@ -47,7 +58,7 @@ function context(cap: ImageCapability, data: CapabilityInput<ImageCapability>) {
     }),
   }
 }
-async function fixture(mode = 'ok') {
+async function fixture(mode = 'ok', generatedBytes = Buffer.from('fixture-image-bytes')) {
   const calls: { method: string; path: string; mime: string; body: Buffer }[] =
     []
   const server = createServer(async (req, res) => {
@@ -87,7 +98,7 @@ async function fixture(mode = 'ok') {
     res.end(
       JSON.stringify({
         data: [
-          { b64_json: Buffer.from('fixture-image-bytes').toString('base64') },
+          { b64_json: generatedBytes.toString('base64') },
         ],
         usage: { total_tokens: 12345 },
       }),
@@ -96,16 +107,18 @@ async function fixture(mode = 'ok') {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const a = server.address()
   assert.ok(a && typeof a !== 'string')
+  const origin = `http://127.0.0.1:${a.port}`
   const adapter = new PackyImage25Adapter(
     profile,
     async () => 'FIXTURE_SECRET',
     new ImageHttpTransport({
-      fixtureOrigin: `http://127.0.0.1:${a.port}`,
+      fixtureOrigin: origin,
       timeoutMs: 1000,
     }),
   )
   return {
     adapter,
+    origin,
     calls,
     close: () =>
       new Promise<void>((resolve) => {
@@ -114,6 +127,80 @@ async function fixture(mode = 'ok') {
       }),
   }
 }
+
+test('Packy paid gate prepares one unknown-cost image attempt in a sparse workspace', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'packy-paid-chain-'))
+  const image = await sharp({
+    create: {
+      width: 1024,
+      height: 1024,
+      channels: 4,
+      background: { r: 180, g: 20, b: 20, alpha: 1 },
+    },
+  })
+    .png()
+    .toBuffer()
+  const http = await fixture('ok', image)
+  const database = new ProjectDatabase(join(dir, 'workspace.sqlite'))
+  try {
+    const project = database.create({
+      name: 'Packy paid validation',
+      description: '',
+      genre: 'validation',
+      language: 'en',
+      aspectRatio: '1:1',
+    })
+    const target = entitySchema.parse({
+      ...metadata(),
+      projectId: project.id,
+      kind: 'character',
+      name: 'Packy paid validation target',
+      description: 'A matte red sphere on white',
+      appearance: '',
+      assetIds: [],
+    })
+    database.insertEntities(project.id, [target])
+    const gate: PackyPaidValidationGate = { consume: async () => {} }
+    const adapter = new PackyImage25Adapter(
+      profile,
+      async () => 'FIXTURE_SECRET',
+      new ImageHttpTransport({
+        fixtureOrigin: http.origin,
+        timeoutMs: 1000,
+      }),
+      gate,
+    )
+    const service = new ImageGenerationService(
+      new VisualRepository(
+        new IntelligenceRepository(database),
+        new MediaStorage(join(dir, 'media')),
+      ),
+      [adapter],
+    )
+    const preview = await service.preview({
+      projectId: project.id,
+      targetId: target.id,
+      toolId: profile.toolId,
+      resolution: { width: 1024, height: 1024 },
+      aspectRatio: '1:1',
+      count: 1,
+      references: [],
+      allowAssetUpload: true,
+      localOnly: false,
+    })
+    const task = service.confirm(project.id, preview.id, 1_000_000, true)
+    await service.wait(task.id)
+    const result = service.query(project.id, task.id)
+    assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
+    assert.equal(result.record.outcome, 'succeeded')
+    assert.equal(result.versions.length, 1)
+    assert.equal(result.reservationStatus, 'submitted')
+  } finally {
+    database.close()
+    await http.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
 for (const mode of ['ok', 'missing', '401', '403', '429', '500', 'malformed'])
   test(`Packy connectivity ${mode}: models only, sanitized, no generation capability claim`, async () => {
     const f = await fixture(mode)
@@ -255,6 +342,7 @@ for (const cap of ['image.generate', 'image.referenceGenerate'] as const)
           n: 1,
           output_format: 'png',
           response_format: 'b64_json',
+          quality: 'low',
         })
       } else {
         assert.match(call.mime, /^multipart\/form-data; boundary=/)

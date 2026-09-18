@@ -1,14 +1,16 @@
-# PackyAPI Image 2.5 — 07-06.5
+# PackyAPI Image 2.5 — 07-06.5 / 07-06.6
 
 ## 当前状态
 
-2026-09-17 本机验证：真实 GET `https://cf.api.fan/v1/models` 接受已加密保存的凭据，精确模型 ID `gpt-image-2.5-sunburst` 可见。退出探测进程后再次读取 CredentialStore 探测成功。真实生成请求数为 **0**。
+2026-09-17 本机验证：真实 GET `https://cf.api.fan/v1/models` 接受已加密保存的凭据，精确模型 ID `gpt-image-2.5-sunburst` 可见。退出探测进程后再次读取 CredentialStore 探测成功。
+
+2026-09-18 经二次明确确认执行一次最小真实文生图：PackyAPI、`gpt-image-2.5-sunburst`、1 张、1024×1024、1:1、`quality=low`，不含参考图。请求已进入远端生成端点，但没有返回可用图片；失败被规范化为 validation，因提交后缺少可核对的远端任务 ID/计费证据，账本保守进入 `unknown-submission`。没有自动重试、工具切换、候选版本、Review 或 Adopt。actual cost 仍未知，预留为 `pending-unknown`。
 
 - Native Adapter：Implemented，JSON / multipart 映射经过本地 HTTP fixture 验证。
 - Real connectivity / authenticated models listing：Validated。
 - Image token group：按用户配置记录；`/models` 不证明令牌分组。
 - 模型生成能力、参数限制、真实费用和图片质量：Not validated。
-- Real paid generation：Not authorized / Not executed。
+- Real paid generation：Attempted once / Not validated。
 
 ## 独立适配器
 
@@ -21,15 +23,15 @@
 - Reference → `POST /images/edits`，`multipart/form-data`，二进制 `image` 文件字段
 - Model：`gpt-image-2.5-sunburst`；Token Group 配置：`Image`
 
-原生映射：`prompt`、`model`、`n`、`size=WIDTHxHEIGHT`、`output_format=png`、`response_format=b64_json`。负面描述并入 prompt 的 Avoid 段，参考角色作为文字意图传入，不声称供应商存在角色或权重参数。私有字段完全留在 Adapter。
+原生映射：`prompt`、`model`、`n`、`size=WIDTHxHEIGHT`、`output_format=png`、`response_format=b64_json`、`quality=low`。负面描述并入 prompt 的 Avoid 段，参考角色作为文字意图传入，不声称供应商存在角色或权重参数。私有字段完全留在 Adapter。
 
 依据为用户指定的模型和端点，以及 [Packy Images 官方说明](https://docs.packyapi.com/docs/paint/GPTImage.html)。该公开页当前描述 gpt-image-2 / sora，不能据此声称 Sunburst 参数全部验证。保守本地限制：1 输出、最多 1 参考、权重 1、PNG、无 seed；尺寸仅开放 1024×1024、1536×864、864×1536。4 输出、seed、其它尺寸/格式会拒绝，不循环生成四笔费用。多参考、mask、远端取消和恢复未实现。
 
 ## 付费门禁
 
-07-06.5 中真实 Packy submit 被主进程 Adapter 硬性拒绝，连拥有 Approval 的调用也不例外。没有 renderer 开关、环境变量或 Profile 字段可以启用真实生成。仅显式注入的精确 loopback fixture transport 可验证原生提交映射。
+默认组合中真实 Packy submit 仍被主进程 Adapter 硬性拒绝，连拥有 Approval 的调用也不例外。没有 renderer 开关、环境变量或 Profile 字段可以启用真实生成。07-06.6 只能通过主进程一次性 `PackyPaidValidationGate` 开启固定单图请求；门闩在远端调用前以独占文件记录 submission intent。intent 已存在时验证工具拒绝再次运行。显式注入的精确 loopback fixture transport继续用于无费用协议测试。
 
-health 只 GET `/models`，可见也返回 unknown（生成可用性未知）。validate / estimate 仅本地校验，估价保持 unknown。后续真实付费测试须重新取得用户明确授权，并保留 07-06 Approval / Reservation / intent 门禁后再开放；模型列表成功不会解锁生成。
+默认 health 只 GET `/models`，可见也返回 unknown（生成可用性未知）。validate / estimate 仅本地校验，估价保持 unknown。一次性门闩仅在用户确认的独立验证进程内让 health 可进入 available；模型列表成功本身不会解锁生成。
 
 响应 `data[].b64_json` 或 `data[].url` 交回既有受控 ingestion：HTTPS、DNS 固定、无重定向、大小限制、MIME / 解码 / 尺寸 / hash 验证。API Key 只发往固定 API host，下载无认证头；usage tokens 不是货币费用，不据其虚构 actualCost。
 
@@ -65,6 +67,8 @@ node scripts/packy-connectivity.mjs
 
 ## 测试
 
-新增 15 项单元测试覆盖模型探测、401/403/429/500/非法 JSON、缺少凭据、保守能力校验、原生 JSON / 二进制 multipart、单次授权句柄、下载拒绝后的提交状态、费用未知、真实 submit 关闭及独立工厂注册。所有网络生成测试只连接本地 fixture。
+新增 16 项单元测试覆盖模型探测、401/403/429/500/非法 JSON、缺少凭据、保守能力校验、原生 JSON / 二进制 multipart、单次授权句柄、下载拒绝后的提交状态、费用未知、真实 submit 关闭、独立工厂注册，以及稀疏工作区中的完整 Approval / Reservation / Task / Record / Candidate 链路。自动测试的网络生成仍只连接本地 fixture。
 
-鉴权对照：同日未携带密钥的 GET `/v1/models` 返回 HTTP 401；使用 CredentialStore 中密钥的模型列表请求成功。探测与复核均未调用生成端点。
+鉴权对照：未携带密钥的 GET `/v1/models` 返回 HTTP 401；使用 CredentialStore 中密钥的模型列表请求成功。07-06.5 探测与复核未调用生成端点；07-06.6 仅执行上述一次人工授权请求。
+
+本机审计报告位于 `%APPDATA%/ai-shortdrama-director/diagnostics/packy-paid-validation-report.json`，submission intent 位于同目录 `packy-paid-validation-intent.json`。两者不含 Key、认证头或供应商原始错误正文。当前报告明确记录 `realImageReturned=false`、`candidateAssetVersionCreated=false`、`reservationStatus=pending-unknown`、`actualCost=null`、`paidGenerationValidated=false`。

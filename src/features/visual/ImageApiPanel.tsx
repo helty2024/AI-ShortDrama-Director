@@ -29,6 +29,7 @@ const previewSchema = z.object({
   target: z.string(),
   tool: z.string(),
   model: z.string(),
+  prompt: z.string(),
   count: z.number(),
   resolution: z.object({ width: z.number(), height: z.number() }),
   referenceCount: z.number(),
@@ -292,6 +293,7 @@ function ImageApiSession() {
             {preview.resolution.height} · {preview.referenceCount} 张参考
           </p>
           <p>{preview.disclosure}</p>
+          <p>Prompt：{preview.prompt}</p>
           <p>
             {preview.estimate}（{preview.currency}）；有效至 {preview.expiresAt}
           </p>

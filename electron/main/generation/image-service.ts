@@ -244,6 +244,7 @@ export class ImageGenerationService {
       target: target.name,
       tool: adapter.profile.displayName,
       model: adapter.profile.modelId,
+      prompt: compiled.positivePrompt,
       count: input.count,
       resolution: input.resolution,
       referenceCount: references.length,

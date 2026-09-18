@@ -35,6 +35,13 @@ export const packyImage25ProfileSchema = z.strictObject({
   currency: z.string().regex(/^[A-Z]{3}$/),
 })
 export type PackyImage25Profile = z.infer<typeof packyImage25ProfileSchema>
+export interface PackyPaidValidationGate {
+  consume(
+    capability: ImageCapability,
+    input: CapabilityInput<ImageCapability>,
+    context: ToolExecutionContext,
+  ): Promise<void>
+}
 const base = 'https://cf.api.fan/v1'
 const sizes = [
   { width: 1024, height: 1024 },
@@ -62,14 +69,17 @@ export class PackyImage25Adapter implements ImageApiTool {
     { ctx: ToolExecutionContext; access: ImageExecutionAccess }
   >()
   private readonly baseUrl: string
+  private readonly paidValidation: PackyPaidValidationGate | null
   constructor(
     profile: PackyImage25Profile,
     credential: () => Promise<string>,
     transport = new ImageHttpTransport({ timeoutMs: 180000 }),
+    paidValidation: PackyPaidValidationGate | null = null,
   ) {
     this.profile = immutable(packyImage25ProfileSchema.parse(profile))
     this.credential = credential
     this.transport = transport
+    this.paidValidation = paidValidation
     // Only a deliberately injected exact loopback transport can execute fixture generation.
     const fixture = transport.fixtureOrigin
       ? new URL(transport.fixtureOrigin)
@@ -187,16 +197,25 @@ export class PackyImage25Adapter implements ImageApiTool {
       toolId: this.profile.toolId,
       checkedAt: r.checkedAt,
       availability:
-        r.authentication === 'rejected' || r.modelVisible === false
-          ? 'unavailable'
-          : 'unknown',
-      issues: [
-        {
-          code: 'tool-unavailable',
-          field: null,
-          message: r.message + '；07-06.5 真实生成关闭',
-        },
-      ],
+        r.authentication === 'accepted' &&
+        r.modelVisible === true &&
+        this.paidValidation
+          ? 'available'
+          : r.authentication === 'rejected' || r.modelVisible === false
+            ? 'unavailable'
+            : 'unknown',
+      issues:
+        r.authentication === 'accepted' &&
+        r.modelVisible === true &&
+        this.paidValidation
+          ? []
+          : [
+              {
+                code: 'tool-unavailable',
+                field: null,
+                message: r.message + '；真实生成关闭',
+              },
+            ],
     })
   }
   async validate<C extends ImageCapability>(
@@ -265,7 +284,9 @@ export class PackyImage25Adapter implements ImageApiTool {
         {
           code: 'tool-unavailable',
           field: null,
-          message: '本地映射不证明 Sunburst 远端能力；真实生成关闭，费用未知',
+          message: this.paidValidation
+            ? 'Sunburst 首次最小付费验证；费用未知，只允许一次固定文生图'
+            : '本地映射不证明 Sunburst 远端能力；真实生成关闭，费用未知',
         },
       ],
     })
@@ -289,7 +310,9 @@ export class PackyImage25Adapter implements ImageApiTool {
       billingRisk: 'unknown',
       basis: `PackyAPI / ${this.profile.modelId} / Image; billing rules and account currency unverified`,
       createdAt: new Date().toISOString(),
-      validUntil: new Date(Date.now() + 60000).toISOString(),
+      validUntil: new Date(
+        Date.now() + (this.paidValidation ? 30 * 60 * 1000 : 60000),
+      ).toISOString(),
     })
   }
   authorizeInputs(ctx: ToolExecutionContext, access: ImageExecutionAccess) {
@@ -306,7 +329,7 @@ export class PackyImage25Adapter implements ImageApiTool {
     const grant = this.grants.get(ctx.taskId)
     this.grants.delete(ctx.taskId)
     if (
-      !this.transport.fixtureOrigin ||
+      (!this.transport.fixtureOrigin && !this.paidValidation) ||
       !grant ||
       !ctx.approvalId ||
       JSON.stringify(grant.ctx) !== JSON.stringify(ctx)
@@ -314,6 +337,17 @@ export class PackyImage25Adapter implements ImageApiTool {
       throw transportFailure('authorization', false)
     if (!(await this.validate(cap, input, ctx, signal)).valid)
       throw transportFailure('validation', false)
+    if (!this.transport.fixtureOrigin) {
+      try {
+        await this.paidValidation!.consume(
+          cap,
+          input as CapabilityInput<ImageCapability>,
+          ctx,
+        )
+      } catch {
+        throw transportFailure('authorization', false)
+      }
+    }
     let key: string
     try {
       key = await this.credential()
@@ -332,6 +366,7 @@ export class PackyImage25Adapter implements ImageApiTool {
       n: 1,
       output_format: 'png',
       response_format: 'b64_json',
+      quality: 'low',
     }
     let body: string | Buffer = JSON.stringify(fields),
       contentType = 'application/json'
