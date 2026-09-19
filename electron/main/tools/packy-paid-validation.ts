@@ -24,7 +24,7 @@ import type { ToolExecutionContext } from '../../../src/shared/tools.js'
 const projectName = '07-06.6 Packy 最小真实验证'
 const promptSeed =
   'A single matte red ceramic sphere centered on a plain white studio background, simple product photograph'
-const authorizationCeilingMicro = 1_000_000
+const authorizationCeilingMicro = 400_000
 let validationStage = 'startup'
 
 function preserveValidationDatabaseError(
@@ -151,8 +151,14 @@ async function main() {
     throw new Error('Missing confirmation channel')
   const userData = join(app.getPath('appData'), 'ai-shortdrama-director')
   const diagnostics = join(userData, 'diagnostics')
-  const intentPath = join(diagnostics, 'packy-paid-validation-intent.json')
-  const reportPath = join(diagnostics, 'packy-paid-validation-report.json')
+  const intentPath = join(
+    diagnostics,
+    'packy-paid-validation-v2-intent.json',
+  )
+  const reportPath = join(
+    diagnostics,
+    'packy-paid-validation-v2-report.json',
+  )
   await mkdir(diagnostics, { recursive: true })
   try {
     await readFile(intentPath)
@@ -254,14 +260,15 @@ async function main() {
         aspectRatio: '1:1',
         size: '1024x1024',
         quality: 'low',
-        estimate: 'unknown',
+        estimate: 'USD 0.4000 per request',
         currency: preview.currency,
         maximumLocalReservationMicro: authorizationCeilingMicro,
         maximumLocalReservationWarning:
-          '本地预留上限不是供应商侧价格上限；Packy 未返回可靠报价。',
+          '本地预留等于供应商确认的单次请求价格。',
         cloudDisclosure:
           '将 Prompt 和生成参数发送给 PackyAPI；不上传参考素材。',
-        generationRequestsSoFar: 0,
+        correctedEndpointGenerationRequestsSoFar: 0,
+        historicalGenerationRequests: 1,
         expiresAt: preview.expiresAt,
         confirmationPhrase: phrase,
       }) + '\n',
@@ -273,7 +280,7 @@ async function main() {
       project.id,
       preview.id,
       authorizationCeilingMicro,
-      true,
+      false,
     )
     validationStage = 'provider-execution'
     await service.wait(task.id)

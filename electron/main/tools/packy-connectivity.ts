@@ -72,7 +72,7 @@ async function probe() {
         toolId: 'packy.image-25',
         displayName: 'PackyAPI · GPT Image 2.5 Sunburst',
         modelId: 'gpt-image-2.5-sunburst',
-        tokenGroup: 'Image',
+        tokenGroup: 'image',
         credentialRef: randomUUID(),
         currency: 'USD',
       },

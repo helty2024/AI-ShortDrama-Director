@@ -26,7 +26,7 @@ const profile = packyImage25ProfileSchema.parse({
   toolId: 'packy.image-25',
   displayName: 'PackyAPI · GPT Image 2.5 Sunburst',
   modelId: 'gpt-image-2.5-sunburst',
-  tokenGroup: 'Image',
+  tokenGroup: 'image',
   credentialRef: randomUUID(),
   currency: 'USD',
 })
@@ -128,7 +128,7 @@ async function fixture(mode = 'ok', generatedBytes = Buffer.from('fixture-image-
   }
 }
 
-test('Packy paid gate prepares one unknown-cost image attempt in a sparse workspace', async () => {
+test('Packy paid gate prepares one known-cost image attempt in a sparse workspace', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'packy-paid-chain-'))
   const image = await sharp({
     create: {
@@ -188,7 +188,7 @@ test('Packy paid gate prepares one unknown-cost image attempt in a sparse worksp
       allowAssetUpload: true,
       localOnly: false,
     })
-    const task = service.confirm(project.id, preview.id, 1_000_000, true)
+    const task = service.confirm(project.id, preview.id, 400_000, false)
     await service.wait(task.id)
     const result = service.query(project.id, task.id)
     assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
@@ -229,7 +229,7 @@ for (const mode of ['ok', 'missing', '401', '403', '429', '500', 'malformed'])
       await f.close()
     }
   })
-test('Packy validate/estimate are local, conservative and do not upload', async () => {
+test('Packy validate/estimate are local, conservative and quote text generation', async () => {
   const f = await fixture()
   try {
     const signal = new AbortController().signal
@@ -244,17 +244,16 @@ test('Packy validate/estimate are local, conservative and do not upload', async 
       ).valid,
       true,
     )
-    assert.equal(
-      (
-        await f.adapter.estimate(
-          'image.generate',
-          input,
-          context('image.generate', input),
-          signal,
-        )
-      ).cost.status,
-      'unknown',
+    const estimate = await f.adapter.estimate(
+      'image.generate',
+      input,
+      context('image.generate', input),
+      signal,
     )
+    assert.deepEqual(estimate.cost, {
+      status: 'known',
+      estimatedCost: { amountMicros: 400_000, currency: 'USD' },
+    })
     for (const patch of [
       { count: 4 },
       { seed: 2 },
@@ -325,7 +324,7 @@ for (const cap of ['image.generate', 'image.referenceGenerate'] as const)
       assert.equal(
         call.path,
         cap === 'image.generate'
-          ? '/v1/images/generations'
+          ? '/v1/image-generation'
           : '/v1/images/edits',
       )
       const body = call.body.toString()
@@ -338,11 +337,10 @@ for (const cap of ['image.generate', 'image.referenceGenerate'] as const)
         assert.deepEqual(JSON.parse(body), {
           model: profile.modelId,
           prompt: 'test\nAvoid: blur',
-          size: '1024x1024',
           n: 1,
-          output_format: 'png',
-          response_format: 'b64_json',
+          size: '1024x1024',
           quality: 'low',
+          output_format: 'png',
         })
       } else {
         assert.match(call.mime, /^multipart\/form-data; boundary=/)
@@ -438,6 +436,13 @@ test('Packy profile factory selects a standalone native adapter and never expose
   assert.doesNotMatch(
     JSON.stringify(a.describe()),
     /credentialRef|FIXTURE_SECRET|director-image-reference-v1/,
+  )
+  assert.equal(
+    packyImage25ProfileSchema.parse({
+      ...profile,
+      tokenGroup: 'Image',
+    }).tokenGroup,
+    'image',
   )
   assert.equal(
     packyImage25ProfileSchema.safeParse({

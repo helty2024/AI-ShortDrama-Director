@@ -209,4 +209,4 @@ docs/               架构和领域说明
 
 视觉管线详见 [资产管线](docs/asset-pipeline.md)、[图像生成](docs/image-generation.md)、[ComfyUI](docs/comfyui-provider.md)、[Prompt Compiler](docs/prompt-compiler.md)。备份需覆盖整个 userData（数据库及 media 目录）。
 
-07-06.5/07-06.6 新增 [PackyAPI 原生 Image 2.5 Adapter](docs/packy-image-25.md)：JSON 文生图、multipart 编辑映射已通过本地 fixture；真实 `/v1/models` 鉴权与 Sunburst 模型可见性已验证。一次获明确授权的最小真实文生图请求已发出，但供应商返回被规范化为 validation 失败，未返回图片；任务进入 `unknown-submission`，未重试、未切换工具，预留保持占用且 actual cost 未知。因此 paid generation 仍为 **Not validated**。开发者可用 `node scripts/packy-connectivity.mjs` 重复安全探测；一次性验证工具 `npm run validate:packy-paid` 在 intent 已存在时会拒绝再次运行。
+07-06.5/07-06.6 新增 [PackyAPI 原生 Image 2.5 Adapter](docs/packy-image-25.md)：真实 `/v1/models` 鉴权与 Sunburst 模型可见性已验证。供应商口径现已修正为 Token Group `image`、`POST /v1/image-generation`、USD 0.4000 / request，文生图 JSON 不含 `response_format`。先前使用旧映射的单次请求进入 `unknown-submission`，不会自动重试或被新配置改写；修正后尚未执行新的真实付费请求，paid generation 仍为 **Not validated**。

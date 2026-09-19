@@ -25,15 +25,25 @@ import {
 } from '../../../../src/shared/tools.js'
 import { generationEstimateSchema } from '../../../../src/shared/generation.js'
 
-export const packyImage25ProfileSchema = z.strictObject({
+const currentPackyImage25ProfileSchema = z.strictObject({
   adapter: z.literal('packy-image-25'),
   toolId: z.literal('packy.image-25'),
   displayName: z.literal('PackyAPI · GPT Image 2.5 Sunburst'),
   modelId: z.literal('gpt-image-2.5-sunburst'),
-  tokenGroup: z.literal('Image'),
+  tokenGroup: z.literal('image'),
   credentialRef: z.uuid().nullable(),
-  currency: z.string().regex(/^[A-Z]{3}$/),
+  currency: z.literal('USD'),
 })
+export const packyImage25ProfileSchema = z.preprocess(
+  (value) =>
+    value &&
+    typeof value === 'object' &&
+    'tokenGroup' in value &&
+    value.tokenGroup === 'Image'
+      ? { ...value, tokenGroup: 'image' }
+      : value,
+  currentPackyImage25ProfileSchema,
+)
 export type PackyImage25Profile = z.infer<typeof packyImage25ProfileSchema>
 export interface PackyPaidValidationGate {
   consume(
@@ -124,7 +134,8 @@ export class PackyImage25Adapter implements ImageApiTool {
         seed: 'unsupported',
         cancel: 'unsupported',
         recover: 'unsupported',
-        estimate: 'unsupported',
+        estimate:
+          capability === 'image.generate' ? 'supported' : 'unsupported',
         locality: 'cloud',
         resources: {
           memoryMB: { status: 'unknown' },
@@ -285,8 +296,8 @@ export class PackyImage25Adapter implements ImageApiTool {
           code: 'tool-unavailable',
           field: null,
           message: this.paidValidation
-            ? 'Sunburst 首次最小付费验证；费用未知，只允许一次固定文生图'
-            : '本地映射不证明 Sunburst 远端能力；真实生成关闭，费用未知',
+            ? 'Sunburst 单次付费验证；USD 0.4000，只允许一次固定文生图'
+            : '本地映射不证明 Sunburst 远端能力；真实生成关闭',
         },
       ],
     })
@@ -304,11 +315,20 @@ export class PackyImage25Adapter implements ImageApiTool {
       projectId: ctx.projectId,
       routingDecisionId: ctx.routingDecisionId,
       requestFingerprint: ctx.requestFingerprint,
-      cost: { status: 'unknown', reason: 'not-quoted' },
+      cost:
+        cap === 'image.generate'
+          ? {
+              status: 'known',
+              estimatedCost: { amountMicros: 400_000, currency: 'USD' },
+            }
+          : { status: 'unknown', reason: 'not-quoted' },
       currency: this.profile.currency,
       estimatedDurationRange: { status: 'unknown' },
-      billingRisk: 'unknown',
-      basis: `PackyAPI / ${this.profile.modelId} / Image; billing rules and account currency unverified`,
+      billingRisk: 'may-charge',
+      basis:
+        cap === 'image.generate'
+          ? `PackyAPI / ${this.profile.modelId} / image-generation; USD 0.4000 per request`
+          : `PackyAPI / ${this.profile.modelId} / image edit; price not confirmed`,
       createdAt: new Date().toISOString(),
       validUntil: new Date(
         Date.now() + (this.paidValidation ? 30 * 60 * 1000 : 60000),
@@ -362,11 +382,10 @@ export class PackyImage25Adapter implements ImageApiTool {
     const fields = {
       model: this.profile.modelId,
       prompt,
-      size: `${input.resolution.width}x${input.resolution.height}`,
       n: 1,
-      output_format: 'png',
-      response_format: 'b64_json',
+      size: `${input.resolution.width}x${input.resolution.height}`,
       quality: 'low',
+      output_format: 'png',
     }
     let body: string | Buffer = JSON.stringify(fields),
       contentType = 'application/json'
@@ -398,7 +417,7 @@ export class PackyImage25Adapter implements ImageApiTool {
     }
     const r = await this.transport.bytes(
       this.baseUrl +
-        (cap === 'image.generate' ? '/images/generations' : '/images/edits'),
+        (cap === 'image.generate' ? '/image-generation' : '/images/edits'),
       signal,
       { body, contentType, key, limit: 64 * 1024 * 1024 },
     )

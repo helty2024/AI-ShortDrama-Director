@@ -249,10 +249,13 @@ export class ImageGenerationService {
       resolution: input.resolution,
       referenceCount: references.length,
       currency: adapter.profile.currency,
-      estimate: '未知费用，必须明确授权单次费用上限',
+      estimate:
+        estimate.cost.status === 'known'
+          ? `预估费用 ${estimate.cost.estimatedCost.currency} ${(estimate.cost.estimatedCost.amountMicros / 1_000_000).toFixed(4)}`
+          : '未知费用，必须明确授权单次费用上限',
       expiresAt: estimate.validUntil,
       disclosure:
-        'Cloud：将发送生成描述及选中的参考图片。本地预检不证明远端可用；未知费用不等于免费。',
+        'Cloud：将发送生成描述及选中的参考图片。本地预检不证明远端可用；提交前仍需人工确认。',
     }
     for (const [id, v] of this.previews)
       if (v.public.expiresAt < new Date().toISOString())
