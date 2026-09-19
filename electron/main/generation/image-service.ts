@@ -505,11 +505,14 @@ export class ImageGenerationService {
         requestFingerprint: v.record.requestFingerprint,
       }
       this.broker.assertCurrent(v.request, v.preflight)
+      const providerSelectedResolution =
+        v.adapter.outputResolutionPolicy === 'provider-auto'
       const execution = this.broker.openExecution(
         v.request,
         v.preflight,
         ctx,
         null,
+        { allowProviderSelectedResolution: providerSelectedResolution },
       )
       v.adapter.authorizeInputs(ctx, {
         references,
@@ -537,11 +540,23 @@ export class ImageGenerationService {
             meta = await image.metadata(),
             actualMime =
               meta.format === 'jpeg' ? 'image/jpeg' : `image/${meta.format}`
+          const safeProviderDimensions =
+            meta.width !== undefined &&
+            meta.height !== undefined &&
+            meta.width > 0 &&
+            meta.height > 0 &&
+            meta.width <= 8192 &&
+            meta.height <= 8192 &&
+            meta.width * meta.height <= 40_000_000 &&
+            meta.width / meta.height >= 1 / 3 &&
+            meta.width / meta.height <= 3
           if (
             actualMime !== mime ||
             mime !== 'image/png' ||
-            meta.width !== input.resolution.width ||
-            meta.height !== input.resolution.height ||
+            (providerSelectedResolution
+              ? !safeProviderDimensions
+              : meta.width !== input.resolution.width ||
+                meta.height !== input.resolution.height) ||
             (meta.pages ?? 1) > 1
           )
             throw new Error('image mismatch')

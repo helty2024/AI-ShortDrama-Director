@@ -408,7 +408,7 @@ test('transport proves pre-send network failure: no HTTP or billing and reservat
   const f = await fixture()
   try {
     class BeforeSendFailure extends ImageHttpTransport {
-      override async bytes(): Promise<{ bytes: Buffer; mime: string }> {
+      override async bytes(): Promise<never> {
         // Fault injection at the transport boundary, before any socket/request exists.
         throw {
           sent: false,

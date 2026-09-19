@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import { z } from 'zod'
 import { immutable } from '../registry.js'
 import { requestFingerprint } from '../fingerprint.js'
@@ -59,21 +60,93 @@ const sizes = [
   { width: 864, height: 1536 },
 ]
 const responseSchema = z.object({
-  data: z
-    .array(
-      z.union([
-        z.object({ b64_json: z.string().min(1).max(42_000_000) }),
-        z.object({ url: z.url().max(4000) }),
-      ]),
-    )
-    .length(1),
+  data: z.array(z.record(z.string(), z.unknown())).length(1),
 })
+export const packyOutputStageSchema = z.enum([
+  'generation-response',
+  'response-envelope',
+  'output-reference',
+  'output-download',
+  'redirect-validation',
+  'mime-detection',
+  'image-decode',
+  'dimension-validation',
+  'contract-match',
+  'asset-ingestion',
+])
+export const packyOutputDiagnosticSchema = z.strictObject({
+  stage: packyOutputStageSchema,
+  state: z.enum(['succeeded', 'failed']),
+  httpStatus: z.number().int().min(100).max(599).nullable().optional(),
+  contentType: z.string().max(200).nullable().optional(),
+  contentLength: z.number().int().min(0).nullable().optional(),
+  requestId: z.string().max(200).nullable().optional(),
+  topLevelKeys: z.array(z.string().regex(/^[A-Za-z0-9_]{1,100}$/)).max(50).optional(),
+  dataCount: z.number().int().min(0).max(10000).optional(),
+  itemKeys: z.array(z.string().regex(/^[A-Za-z0-9_]{1,100}$/)).max(50).optional(),
+  hasUrl: z.boolean().optional(),
+  hasB64Json: z.boolean().optional(),
+  hasRevisedPrompt: z.boolean().optional(),
+  downloadHost: z
+    .string()
+    .max(253)
+    .regex(/^[A-Za-z0-9.-]+$/)
+    .nullable()
+    .optional(),
+  redirectCount: z.number().int().min(0).max(3).optional(),
+  finalMime: z.enum(['image/png', 'image/jpeg', 'image/webp']).nullable().optional(),
+  magicBytes: z.enum(['png', 'jpeg', 'webp', 'unknown']).optional(),
+  sharpDecoded: z.boolean().optional(),
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
+  errorCode: z.string().regex(/^[a-z0-9-]{1,100}$/).optional(),
+  message: z.string().max(300).optional(),
+})
+export type PackyOutputDiagnostic = z.infer<typeof packyOutputDiagnosticSchema>
+export type PackyOutputDiagnosticsSink = (event: PackyOutputDiagnostic) => void
+
+const safeKeys = (value: Record<string, unknown>): string[] =>
+  Object.keys(value)
+    .filter((key) => /^[A-Za-z0-9_]{1,100}$/.test(key))
+    .sort()
+    .slice(0, 50)
+const magicMime = (
+  bytes: Buffer,
+): { mime: 'image/png' | 'image/jpeg' | 'image/webp'; name: 'png' | 'jpeg' | 'webp' } | null => {
+  if (
+    bytes.length >= 8 &&
+    bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  )
+    return { mime: 'image/png', name: 'png' }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+    return { mime: 'image/jpeg', name: 'jpeg' }
+  if (
+    bytes.length >= 12 &&
+    bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+  )
+    return { mime: 'image/webp', name: 'webp' }
+  return null
+}
+const validAutoDimensions = (width: number, height: number): boolean => {
+  const ratio = width / height
+  return (
+    width > 0 &&
+    height > 0 &&
+    width <= 8192 &&
+    height <= 8192 &&
+    width * height <= 40_000_000 &&
+    [1, 16 / 9, 9 / 16].some((allowed) => Math.abs(ratio - allowed) < 0.02)
+  )
+}
 import type { ImageConnectivityReport } from '../../../../src/shared/image-api.js'
 /** Packy native Images API. Production submissions remain disabled in 07-06.5. */
 export class PackyImage25Adapter implements ImageApiTool {
   readonly profile: PackyImage25Profile
+  readonly outputResolutionPolicy = 'provider-auto' as const
   private readonly transport: ImageHttpTransport
   private readonly credential: () => Promise<string>
+  private readonly diagnostics: PackyOutputDiagnosticsSink | null
   private readonly grants = new Map<
     string,
     { ctx: ToolExecutionContext; access: ImageExecutionAccess }
@@ -85,11 +158,13 @@ export class PackyImage25Adapter implements ImageApiTool {
     credential: () => Promise<string>,
     transport = new ImageHttpTransport({ timeoutMs: 180000 }),
     paidValidation: PackyPaidValidationGate | null = null,
+    diagnostics: PackyOutputDiagnosticsSink | null = null,
   ) {
     this.profile = immutable(packyImage25ProfileSchema.parse(profile))
     this.credential = credential
     this.transport = transport
     this.paidValidation = paidValidation
+    this.diagnostics = diagnostics
     // Only a deliberately injected exact loopback transport can execute fixture generation.
     const fixture = transport.fixtureOrigin
       ? new URL(transport.fixtureOrigin)
@@ -102,6 +177,13 @@ export class PackyImage25Adapter implements ImageApiTool {
     )
       throw new Error('Invalid fixture origin')
     this.baseUrl = fixture ? fixture.origin + '/v1' : base
+  }
+  private record(event: PackyOutputDiagnostic): void {
+    try {
+      this.diagnostics?.(packyOutputDiagnosticSchema.parse(event))
+    } catch {
+      // Diagnostics are bounded and best-effort; they never alter generation state.
+    }
   }
   describe() {
     return toolDescriptorSchema.parse({
@@ -412,30 +494,321 @@ export class PackyImage25Adapter implements ImageApiTool {
       body = Buffer.concat(chunks)
       contentType = 'multipart/form-data; boundary=' + boundary
     }
-    const r = await this.transport.bytes(
-      this.baseUrl +
-        (cap === 'image.generate' ? '/images/generations' : '/images/edits'),
-      signal,
-      { body, contentType, key, limit: 64 * 1024 * 1024 },
-    )
+    let stage: z.infer<typeof packyOutputStageSchema> = 'generation-response'
+    let failureRecorded = false
     try {
-      if (r.mime !== 'application/json') throw new Error()
-      const data = responseSchema.parse(JSON.parse(r.bytes.toString('utf8')))
-      const raw = data.data[0]
-      const file =
-        'b64_json' in raw
-          ? { bytes: Buffer.from(raw.b64_json, 'base64'), mime: 'image/png' }
-          : await this.transport.bytes(raw.url, signal, {
-              limit: 30 * 1024 * 1024,
+      const response = await this.transport.bytes(
+        this.baseUrl +
+          (cap === 'image.generate' ? '/images/generations' : '/images/edits'),
+        signal,
+        { body, contentType, key, limit: 64 * 1024 * 1024 },
+      )
+      this.record({
+        stage,
+        state: 'succeeded',
+        httpStatus: response.diagnostics.status,
+        contentType: response.diagnostics.contentType,
+        contentLength: response.diagnostics.contentLength,
+        requestId: response.diagnostics.requestId,
+      })
+      stage = 'response-envelope'
+      if (response.mime !== 'application/json') throw new Error('json-content-type')
+      const decoded: unknown = JSON.parse(response.bytes.toString('utf8'))
+      if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded))
+        throw new Error('json-object')
+      const envelope = decoded as Record<string, unknown>
+      const parsed = responseSchema.safeParse(envelope)
+      const dataCount = Array.isArray(envelope.data) ? envelope.data.length : 0
+      const first =
+        Array.isArray(envelope.data) &&
+        envelope.data[0] &&
+        typeof envelope.data[0] === 'object' &&
+        !Array.isArray(envelope.data[0])
+          ? (envelope.data[0] as Record<string, unknown>)
+          : null
+      if (!parsed.success || !first) {
+        this.record({
+          stage,
+          state: 'failed',
+          topLevelKeys: safeKeys(envelope),
+          dataCount,
+          itemKeys: first ? safeKeys(first) : [],
+          errorCode: 'unexpected-envelope',
+          message: 'Packy response envelope did not contain one usable data item',
+        })
+        failureRecorded = true
+        throw new Error('response-envelope')
+      }
+      const hasUrl = typeof first.url === 'string'
+      const hasB64Json = typeof first.b64_json === 'string'
+      this.record({
+        stage,
+        state: 'succeeded',
+        topLevelKeys: safeKeys(envelope),
+        dataCount,
+        itemKeys: safeKeys(first),
+        hasUrl,
+        hasB64Json,
+        hasRevisedPrompt: typeof first.revised_prompt === 'string',
+      })
+      stage = 'output-reference'
+      if (hasUrl === hasB64Json) throw new Error('ambiguous-output-reference')
+      let fileBytes: Buffer
+      let headerMime: string | null = null
+      if (hasB64Json) {
+        const encoded = first.b64_json as string
+        if (
+          encoded.length > 42_000_000 ||
+          encoded.length === 0 ||
+          !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
+        )
+          throw new Error('invalid-base64')
+        fileBytes = Buffer.from(encoded, 'base64')
+        this.record({
+          stage,
+          state: 'succeeded',
+          hasUrl: false,
+          hasB64Json: true,
+          hasRevisedPrompt: typeof first.revised_prompt === 'string',
+        })
+      } else {
+        const parsedUrl = z.url().max(4000).safeParse(first.url)
+        if (!parsedUrl.success) throw new Error('invalid-output-url')
+        const host = new URL(parsedUrl.data).hostname
+        this.record({
+          stage,
+          state: 'succeeded',
+          hasUrl: true,
+          hasB64Json: false,
+          hasRevisedPrompt: typeof first.revised_prompt === 'string',
+          downloadHost: host,
+        })
+        stage = 'output-download'
+        let downloaded
+        try {
+          downloaded = await this.transport.bytes(parsedUrl.data, signal, {
+            limit: 30 * 1024 * 1024,
+            redirects: {
+              max: 3,
+              allowedHosts: ['external-resources.packyapi.ai'],
+              allowedHostSuffixes: ['packyapi.ai'],
+            },
+          })
+        } catch (raw) {
+          const transport = z
+            .object({
+              error: toolErrorSchema,
+              diagnostics: z
+                .object({
+                  status: z.number().nullable(),
+                  contentType: z.string().nullable(),
+                  contentLength: z.number().nullable(),
+                  requestId: z.string().nullable(),
+                  host: z.string().nullable(),
+                  redirectCount: z.number(),
+                })
+                .optional(),
             })
-      const image = await grant.access.ingest(file.bytes, file.mime)
+            .safeParse(raw)
+          const details = transport.success ? transport.data.diagnostics : undefined
+          stage =
+            transport.success &&
+            ['validation', 'authorization'].includes(transport.data.error.code)
+              ? 'redirect-validation'
+              : 'output-download'
+          this.record({
+            stage,
+            state: 'failed',
+            httpStatus: details?.status ?? null,
+            contentType: details?.contentType ?? null,
+            contentLength: details?.contentLength ?? null,
+            requestId: details?.requestId ?? null,
+            downloadHost: details?.host ?? host,
+            redirectCount: details?.redirectCount ?? 0,
+            errorCode: transport.success ? transport.data.error.code : 'download-failed',
+            message: 'Packy output download or redirect validation failed',
+          })
+          failureRecorded = true
+          throw raw
+        }
+        fileBytes = downloaded.bytes
+        headerMime = downloaded.diagnostics.contentType
+        this.record({
+          stage,
+          state: 'succeeded',
+          httpStatus: downloaded.diagnostics.status,
+          contentType: headerMime,
+          contentLength: downloaded.diagnostics.contentLength,
+          requestId: downloaded.diagnostics.requestId,
+          downloadHost: downloaded.diagnostics.host,
+          redirectCount: downloaded.diagnostics.redirectCount,
+        })
+        stage = 'redirect-validation'
+        this.record({
+          stage,
+          state: 'succeeded',
+          downloadHost: downloaded.diagnostics.host,
+          redirectCount: downloaded.diagnostics.redirectCount,
+        })
+      }
+      stage = 'mime-detection'
+      const detected = magicMime(fileBytes)
+      this.record({
+        stage,
+        state: detected ? 'succeeded' : 'failed',
+        contentType: headerMime,
+        finalMime: detected?.mime ?? null,
+        magicBytes: detected?.name ?? 'unknown',
+        ...(detected
+          ? {}
+          : {
+              errorCode: 'invalid-magic-bytes',
+              message: 'Downloaded output is not a supported image payload',
+            }),
+      })
+      if (!detected) {
+        failureRecorded = true
+        throw new Error('magic-bytes')
+      }
+      stage = 'image-decode'
+      const image = sharp(fileBytes, {
+          limitInputPixels: 40_000_000,
+          failOn: 'error',
+        }),
+        metadata = await image.metadata().catch(() => null)
+      if (!metadata) {
+        this.record({
+          stage,
+          state: 'failed',
+          finalMime: detected.mime,
+          sharpDecoded: false,
+          width: null,
+          height: null,
+          errorCode: 'image-decode-failed',
+          message: 'Sharp could not decode the image payload',
+        })
+        failureRecorded = true
+        throw new Error('image-decode')
+      }
+      const decodedMime =
+        metadata.format === 'jpeg'
+          ? 'image/jpeg'
+          : metadata.format === 'png'
+            ? 'image/png'
+            : metadata.format === 'webp'
+              ? 'image/webp'
+              : null
+      const decodedOk =
+        decodedMime === detected.mime &&
+        metadata.width !== undefined &&
+        metadata.height !== undefined &&
+        (metadata.pages ?? 1) === 1
+      let pixelsDecoded = false
+      if (decodedOk)
+        pixelsDecoded = await image
+          .clone()
+          .raw()
+          .toBuffer()
+          .then(() => true)
+          .catch(() => false)
+      const sharpDecoded = decodedOk && pixelsDecoded
+      this.record({
+        stage,
+        state: sharpDecoded ? 'succeeded' : 'failed',
+        finalMime: detected.mime,
+        sharpDecoded,
+        width: metadata.width ?? null,
+        height: metadata.height ?? null,
+        ...(sharpDecoded
+          ? {}
+          : {
+              errorCode: 'image-decode-failed',
+              message: 'Sharp could not validate a single supported image frame',
+            }),
+      })
+      if (!sharpDecoded || !metadata.width || !metadata.height) {
+        failureRecorded = true
+        throw new Error('image-decode')
+      }
+      stage = 'dimension-validation'
+      const dimensionsValid = validAutoDimensions(metadata.width, metadata.height)
+      this.record({
+        stage,
+        state: dimensionsValid ? 'succeeded' : 'failed',
+        width: metadata.width,
+        height: metadata.height,
+        ...(dimensionsValid
+          ? {}
+          : {
+              errorCode: 'unsafe-dimensions',
+              message: 'Provider-selected dimensions exceed safety or aspect-ratio limits',
+            }),
+      })
+      if (!dimensionsValid) {
+        failureRecorded = true
+        throw new Error('dimensions')
+      }
+      stage = 'contract-match'
+      const normalizedBytes =
+        detected.mime === 'image/png'
+          ? fileBytes
+          : await sharp(fileBytes, { failOn: 'error' }).png().toBuffer()
+      this.record({
+        stage,
+        state: 'succeeded',
+        finalMime: detected.mime,
+        width: metadata.width,
+        height: metadata.height,
+      })
+      stage = 'asset-ingestion'
+      const output = await grant.access.ingest(normalizedBytes, 'image/png')
+      this.record({
+        stage,
+        state: 'succeeded',
+        finalMime: detected.mime,
+        width: metadata.width,
+        height: metadata.height,
+      })
       // usage token counts are not currency; never call billing with invented cost.
       return {
         state: 'completed',
-        output: { images: [image] } as CapabilityOutput<C>,
+        output: { images: [output] } as CapabilityOutput<C>,
       }
     } catch (raw) {
       const e = z.object({ error: toolErrorSchema }).safeParse(raw)
+      const transport = z
+        .object({
+          diagnostics: z
+            .object({
+              status: z.number().nullable(),
+              contentType: z.string().nullable(),
+              contentLength: z.number().nullable(),
+              requestId: z.string().nullable(),
+              host: z.string().nullable(),
+              redirectCount: z.number(),
+            })
+            .optional(),
+        })
+        .safeParse(raw)
+      const details = transport.success ? transport.data.diagnostics : undefined
+      if (!failureRecorded) {
+        this.record({
+          stage,
+          state: 'failed',
+          httpStatus: details?.status ?? null,
+          contentType: details?.contentType ?? null,
+          contentLength: details?.contentLength ?? null,
+          requestId: details?.requestId ?? null,
+          ...(stage === 'output-download' || stage === 'redirect-validation'
+            ? {
+                downloadHost: details?.host ?? null,
+                redirectCount: details?.redirectCount ?? 0,
+              }
+            : {}),
+          errorCode: e.success ? e.data.error.code : 'malformed-response',
+          message: `Packy output failed at ${stage}`,
+        })
+      }
       throw transportFailure(
         e.success ? e.data.error.code : 'malformed-response',
         true,

@@ -35,6 +35,7 @@ interface Execution {
   input: CapabilityInput<Capability>
   handle: ToolTaskHandle | null
   stopped: boolean
+  allowProviderSelectedResolution: boolean
 }
 const outputMetadataSchema = z.union([imageOutputItemSchema.omit({ handle: true }), videoOutputItemSchema.omit({ handle: true })])
 type OutputMetadata = z.infer<typeof outputMetadataSchema>
@@ -145,7 +146,13 @@ export class ToolBroker {
     if (!result.health || this.now().getTime() - Date.parse(result.health.checkedAt) > 60000) throw boundaryError('preflight-invalid')
   }
   /** Trusted Runtime integration seam only, not IPC. No submit is implemented here. */
-  openExecution(request: BrokerRequest, result: PreflightResult, rawContext: ToolExecutionContext, rawHandle: ToolTaskHandle | null): string {
+  openExecution(
+    request: BrokerRequest,
+    result: PreflightResult,
+    rawContext: ToolExecutionContext,
+    rawHandle: ToolTaskHandle | null,
+    options: { allowProviderSelectedResolution?: boolean } = {},
+  ): string {
     this.assertCurrent(request, result)
     const ctx = this.validResponse(toolExecutionContextSchema, rawContext), decision = result.routingDecision
     if (!decision || ctx.projectId !== request.projectId || ctx.taskId !== request.requestId || ctx.requestFingerprint !== result.requestFingerprint || ctx.model !== decision.selectedModel || ctx.routingDecisionId !== decision.id || ctx.estimateId !== result.estimate?.id) throw boundaryError('ownership-mismatch')
@@ -156,7 +163,16 @@ export class ToolBroker {
     const externalKey = handle ? `${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}` : null
     if (externalKey && this.externalOwners.has(externalKey)) throw boundaryError('ownership-mismatch')
     const id = randomUUID()
-    this.executions.set(id, { context: immutable(ctx), entry: this.registry.get(decision.selectedToolId, decision.selectedToolVersion), capability: decision.requestedCapability, input: immutable(structuredClone(request.snapshot.input)), handle: handle ? immutable(handle) : null, stopped: false })
+    this.executions.set(id, {
+      context: immutable(ctx),
+      entry: this.registry.get(decision.selectedToolId, decision.selectedToolVersion),
+      capability: decision.requestedCapability,
+      input: immutable(structuredClone(request.snapshot.input)),
+      handle: handle ? immutable(handle) : null,
+      stopped: false,
+      allowProviderSelectedResolution:
+        options.allowProviderSelectedResolution === true,
+    })
     if (externalKey) this.externalOwners.set(externalKey, id)
     this.submitted.add(key)
     return id
@@ -197,7 +213,13 @@ export class ToolBroker {
       const input = execution.input
       if ('count' in input && items.length !== input.count) throw boundaryError('output-not-issued')
       for (const item of items) {
-        if ('resolution' in input && (item.resolution.width !== input.resolution.width || item.resolution.height !== input.resolution.height)) throw boundaryError('output-not-issued')
+        if (
+          'resolution' in input &&
+          !execution.allowProviderSelectedResolution &&
+          (item.resolution.width !== input.resolution.width ||
+            item.resolution.height !== input.resolution.height)
+        )
+          throw boundaryError('output-not-issued')
         if ('outputMime' in input && item.mime !== input.outputMime) throw boundaryError('output-not-issued')
         if ('durationSeconds' in input && (!('durationSeconds' in item) || item.durationSeconds !== input.durationSeconds)) throw boundaryError('output-not-issued')
         const metadata = this.readOutput(ctx, id, item.handle)

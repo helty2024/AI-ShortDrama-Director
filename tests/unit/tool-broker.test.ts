@@ -216,6 +216,27 @@ test('synchronous outputs are host-issued without inventing an external task', a
   }
 })
 
+test('trusted provider-auto execution preserves a host-validated output resolution', async () => {
+  const { broker } = setup(),
+    req = request(),
+    preflight = await broker.preflight(req, signal),
+    ctx = execution(req, preflight)
+  const id = broker.openExecution(req, preflight, ctx, null, {
+    allowProviderSelectedResolution: true,
+  })
+  const metadata = {
+    mime: 'image/png' as const,
+    resolution: { width: 1536, height: 864 },
+  }
+  const handle = broker.issueOutput(ctx, id, metadata)
+  assert.equal(
+    broker.acceptOutput(ctx, id, 'image.generate', {
+      images: [{ handle, ...metadata }],
+    }).images[0].resolution.width,
+    1536,
+  )
+})
+
 test('a second execution cannot adopt an existing external identity or output', async () => {
   const first = await videoExecution(), req = request(true)
   req.projectId = first.req.projectId

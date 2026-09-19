@@ -41,6 +41,8 @@ export interface ImageExecutionAccess {
 }
 export interface ImageApiTool extends ToolAdapter<ImageCapability> {
   probeConnectivity?(signal: AbortSignal): Promise<ImageConnectivityReport>
+  /** Trusted host hint. Provider-auto means the native request omits size. */
+  readonly outputResolutionPolicy?: 'exact' | 'provider-auto'
   readonly profile: Pick<
     ImageApiProfile,
     'toolId' | 'displayName' | 'currency' | 'modelId'

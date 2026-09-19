@@ -17,6 +17,7 @@ import {
   PackyImage25Adapter,
   packyImage25ProfileSchema,
   type PackyPaidValidationGate,
+  type PackyOutputDiagnostic,
 } from './adapters/packy-image-25.js'
 import type { ImageCapability, ImageApiTool } from './adapters/image-api.js'
 import type { CapabilityInput } from '../../../src/shared/capabilities/index.js'
@@ -184,11 +185,13 @@ async function main() {
   if (!profile.credentialRef) throw new Error('Packy credential is missing')
   const credentialRef = profile.credentialRef
   const gate = new OneShotPaidGate(intentPath)
+  const outputDiagnostics: PackyOutputDiagnostic[] = []
   const adapter: ImageApiTool = new PackyImage25Adapter(
     profile,
     () => credentials.get(credentialRef),
     undefined,
     gate,
+    (event) => outputDiagnostics.push(event),
   )
   const database = new ProjectDatabase(join(userData, 'workspace.sqlite'))
   try {
@@ -398,6 +401,7 @@ async function main() {
       taskId: task.id,
       generationRecordId: query.record.id,
       output,
+      outputDiagnostics,
       paidGenerationValidated:
         query.record.outcome === 'succeeded' && reviewed && adopted,
     }

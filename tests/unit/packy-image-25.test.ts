@@ -10,6 +10,7 @@ import {
   PackyImage25Adapter,
   packyImage25ProfileSchema,
   type PackyPaidValidationGate,
+  type PackyOutputDiagnostic,
 } from '../../electron/main/tools/adapters/packy-image-25.js'
 import { ImageHttpTransport } from '../../electron/main/tools/adapters/image-http.js'
 import { requestFingerprint } from '../../electron/main/tools/fingerprint.js'
@@ -58,7 +59,17 @@ function context(cap: ImageCapability, data: CapabilityInput<ImageCapability>) {
     }),
   }
 }
-async function fixture(mode = 'ok', generatedBytes = Buffer.from('fixture-image-bytes')) {
+async function fixture(mode = 'ok', generatedBytes?: Buffer) {
+  generatedBytes ??= await sharp({
+    create: {
+      width: 1024,
+      height: 1024,
+      channels: 3,
+      background: { r: 180, g: 20, b: 20 },
+    },
+  })
+    .png()
+    .toBuffer()
   const calls: { method: string; path: string; mime: string; body: Buffer }[] =
     []
   const server = createServer(async (req, res) => {
@@ -126,6 +137,164 @@ async function fixture(mode = 'ok', generatedBytes = Buffer.from('fixture-image-
         server.close(() => resolve())
       }),
   }
+}
+
+type OutputMode =
+  | 'url'
+  | 'redirect-one'
+  | 'redirect-multiple'
+  | 'unsafe-redirect'
+  | 'octet-png'
+  | 'octet-jpeg'
+  | 'wrong-content-valid'
+  | 'image-content-invalid'
+  | 'b64'
+  | 'automatic-dimensions'
+  | 'unexpected-envelope'
+  | 'missing-data'
+  | 'unknown-fields'
+
+async function outputFixture(mode: OutputMode) {
+  const dimensions =
+    mode === 'automatic-dimensions'
+      ? { width: 1536, height: 864 }
+      : { width: 1024, height: 1024 }
+  const png = await sharp({
+    create: {
+      ...dimensions,
+      channels: 3,
+      background: { r: 180, g: 20, b: 20 },
+    },
+  })
+    .png()
+    .toBuffer()
+  const jpeg = await sharp(png).jpeg().toBuffer()
+  const diagnostics: PackyOutputDiagnostic[] = []
+  const requests: { path: string; authorization: string | undefined }[] = []
+  let origin = ''
+  const server = createServer(async (req, res) => {
+    requests.push({
+      path: req.url ?? '',
+      authorization: req.headers.authorization,
+    })
+    if (req.method === 'POST') {
+      assert.equal(req.headers.authorization, 'Bearer FIXTURE_SECRET')
+      for await (const _chunk of req) {
+        // Drain the bounded fixture request.
+      }
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('X-Request-Id', 'fixture-generation-request')
+      if (mode === 'unexpected-envelope') {
+        res.end(JSON.stringify({ result: [{ location: 'hidden' }] }))
+        return
+      }
+      if (mode === 'missing-data') {
+        res.end(JSON.stringify({ created: 1, data: [] }))
+        return
+      }
+      const item =
+        mode === 'b64'
+          ? { b64_json: png.toString('base64'), revised_prompt: 'safe fixture' }
+          : {
+              url: `${origin}/asset/start?signature=DO_NOT_LOG`,
+              revised_prompt: 'safe fixture',
+              ...(mode === 'unknown-fields'
+                ? { provider_trace: { private: 'DO_NOT_LOG' }, future_field: 1 }
+                : {}),
+            }
+      res.end(
+        JSON.stringify({
+          created: 1,
+          data: [item],
+          ...(mode === 'unknown-fields' ? { future_top_level: true } : {}),
+        }),
+      )
+      return
+    }
+    assert.equal(req.headers.authorization, undefined)
+    if (req.url?.startsWith('/asset/start')) {
+      if (mode === 'redirect-one' || mode === 'redirect-multiple') {
+        res.writeHead(302, { Location: '/asset/cdn-one?signature=DO_NOT_LOG' })
+        res.end()
+        return
+      }
+      if (mode === 'unsafe-redirect') {
+        res.writeHead(302, { Location: 'http://127.0.0.1:1/private?secret=DO_NOT_LOG' })
+        res.end()
+        return
+      }
+    }
+    if (req.url?.startsWith('/asset/cdn-one') && mode === 'redirect-multiple') {
+      res.writeHead(307, { Location: '/asset/cdn-two?signature=DO_NOT_LOG' })
+      res.end()
+      return
+    }
+    const contentType =
+      mode === 'octet-png' || mode === 'octet-jpeg'
+        ? 'application/octet-stream'
+        : mode === 'wrong-content-valid'
+          ? 'text/html'
+          : 'image/png'
+    const bytes =
+      mode === 'image-content-invalid'
+        ? Buffer.from('<html>not an image DO_NOT_LOG</html>')
+        : mode === 'octet-jpeg'
+          ? jpeg
+          : png
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Length': String(bytes.length),
+      'X-Request-Id': 'fixture-download-request',
+    })
+    res.end(bytes)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  assert.ok(address && typeof address !== 'string')
+  origin = `http://127.0.0.1:${address.port}`
+  const adapter = new PackyImage25Adapter(
+    profile,
+    async () => 'FIXTURE_SECRET',
+    new ImageHttpTransport({ fixtureOrigin: origin, timeoutMs: 1000 }),
+    null,
+    (event) => diagnostics.push(event),
+  )
+  return {
+    adapter,
+    diagnostics,
+    requests,
+    dimensions,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections()
+        server.close(() => resolve())
+      }),
+  }
+}
+
+async function submitOutputFixture(value: Awaited<ReturnType<typeof outputFixture>>) {
+  const ctx = context('image.generate', input)
+  const captured: { ingested?: { bytes: Buffer; mime: string } } = {}
+  value.adapter.authorizeInputs(ctx, {
+    references: [],
+    billing: () => assert.fail('response metadata is not billing evidence'),
+    ingest: async (bytes, mime) => {
+      captured.ingested = { bytes, mime }
+      const metadata = await sharp(bytes).metadata()
+      return {
+        handle: 'fixture-host-handle',
+        mime: 'image/png',
+        resolution: { width: metadata.width!, height: metadata.height! },
+      }
+    },
+  })
+  const result = await value.adapter.submit(
+    'image.generate',
+    input,
+    ctx,
+    new AbortController().signal,
+  )
+  return { result, ingested: captured.ingested ?? null }
 }
 
 test('Packy paid gate prepares one known-cost image attempt in a sparse workspace', async () => {
@@ -330,8 +499,11 @@ for (const cap of ['image.generate', 'image.referenceGenerate'] as const)
         ],
         billing: () => assert.fail('token usage is not actual cost'),
         ingest: async (bytes, mime) => {
-          assert.equal(bytes.toString(), 'fixture-image-bytes')
           assert.equal(mime, 'image/png')
+          const metadata = await sharp(bytes).metadata()
+          assert.equal(metadata.format, 'png')
+          assert.equal(metadata.width, 1024)
+          assert.equal(metadata.height, 1024)
           return {
             handle: 'issued_by_host',
             mime: 'image/png',
@@ -442,6 +614,174 @@ test('Packy missing credential probe stays local and sanitized', async () => {
   assert.match(r.message, /未发出请求/)
   assert.doesNotMatch(JSON.stringify(r), /DO_NOT_LOG/)
 })
+
+for (const mode of ['url', 'b64', 'unknown-fields'] as const)
+  test(`Packy ${mode} response envelope records structure without payload data`, async () => {
+    const f = await outputFixture(mode)
+    try {
+      const { result, ingested } = await submitOutputFixture(f)
+      assert.equal(result.state, 'completed')
+      assert.ok(ingested)
+      const envelope = f.diagnostics.find(
+        (event) => event.stage === 'response-envelope',
+      )
+      assert.equal(envelope?.state, 'succeeded')
+      assert.deepEqual(envelope?.topLevelKeys, [
+        'created',
+        'data',
+        ...(mode === 'unknown-fields' ? ['future_top_level'] : []),
+      ])
+      assert.equal(envelope?.dataCount, 1)
+      assert.equal(envelope?.hasUrl, mode !== 'b64')
+      assert.equal(envelope?.hasB64Json, mode === 'b64')
+      assert.equal(envelope?.hasRevisedPrompt, true)
+      const serialized = JSON.stringify(f.diagnostics)
+      assert.doesNotMatch(serialized, /DO_NOT_LOG|signature=|b64_json":"/)
+      if (mode === 'unknown-fields') {
+        assert.ok(envelope?.itemKeys?.includes('future_field'))
+        assert.ok(envelope?.itemKeys?.includes('provider_trace'))
+      }
+    } finally {
+      await f.close()
+    }
+  })
+
+for (const [mode, redirects] of [
+  ['redirect-one', 1],
+  ['redirect-multiple', 2],
+] as const)
+  test(`Packy ${mode} revalidates each safe redirect`, async () => {
+    const f = await outputFixture(mode)
+    try {
+      const { result } = await submitOutputFixture(f)
+      assert.equal(result.state, 'completed')
+      const validation = f.diagnostics.find(
+        (event) => event.stage === 'redirect-validation',
+      )
+      assert.equal(validation?.state, 'succeeded')
+      assert.equal(validation?.redirectCount, redirects)
+      assert.equal(
+        f.requests.filter((request) => request.path.startsWith('/asset')).length,
+        redirects + 1,
+      )
+      assert.ok(
+        f.requests
+          .filter((request) => request.path.startsWith('/asset'))
+          .every((request) => request.authorization === undefined),
+      )
+    } finally {
+      await f.close()
+    }
+  })
+
+test('Packy unsafe redirect is refused and records no signed URL', async () => {
+  const f = await outputFixture('unsafe-redirect')
+  try {
+    await assert.rejects(
+      submitOutputFixture(f),
+      (raw) =>
+        !!raw && typeof raw === 'object' && 'sent' in raw && raw.sent === true,
+    )
+    const failure = f.diagnostics.find(
+      (event) =>
+        event.stage === 'redirect-validation' && event.state === 'failed',
+    )
+    assert.equal(failure?.errorCode, 'validation')
+    assert.doesNotMatch(JSON.stringify(f.diagnostics), /DO_NOT_LOG|secret=/)
+  } finally {
+    await f.close()
+  }
+})
+
+for (const [mode, expected] of [
+  ['octet-png', 'image/png'],
+  ['octet-jpeg', 'image/jpeg'],
+  ['wrong-content-valid', 'image/png'],
+] as const)
+  test(`Packy ${mode} trusts magic bytes plus decode over the HTTP MIME`, async () => {
+    const f = await outputFixture(mode)
+    try {
+      const { result, ingested } = await submitOutputFixture(f)
+      assert.equal(result.state, 'completed')
+      assert.ok(ingested)
+      assert.equal(ingested.mime, 'image/png')
+      assert.equal((await sharp(ingested.bytes).metadata()).format, 'png')
+      const detection = f.diagnostics.find(
+        (event) => event.stage === 'mime-detection',
+      )
+      assert.equal(detection?.state, 'succeeded')
+      assert.equal(detection?.finalMime, expected)
+      assert.equal(
+        detection?.contentType,
+        mode.startsWith('octet') ? 'application/octet-stream' : 'text/html',
+      )
+    } finally {
+      await f.close()
+    }
+  })
+
+test('Packy image Content-Type with invalid bytes fails before asset ingestion', async () => {
+  const f = await outputFixture('image-content-invalid')
+  try {
+    await assert.rejects(submitOutputFixture(f))
+    const detection = f.diagnostics.find(
+      (event) => event.stage === 'mime-detection',
+    )
+    assert.equal(detection?.state, 'failed')
+    assert.equal(detection?.magicBytes, 'unknown')
+    assert.equal(
+      f.diagnostics.some((event) => event.stage === 'asset-ingestion'),
+      false,
+    )
+  } finally {
+    await f.close()
+  }
+})
+
+test('Packy provider-selected automatic dimensions are decoded and preserved', async () => {
+  const f = await outputFixture('automatic-dimensions')
+  try {
+    const { result, ingested } = await submitOutputFixture(f)
+    assert.equal(result.state, 'completed')
+    assert.ok(ingested)
+    const metadata = await sharp(ingested.bytes).metadata()
+    assert.deepEqual(
+      { width: metadata.width, height: metadata.height },
+      f.dimensions,
+    )
+    const validation = f.diagnostics.find(
+      (event) => event.stage === 'dimension-validation',
+    )
+    assert.equal(validation?.state, 'succeeded')
+    assert.deepEqual(
+      { width: validation?.width, height: validation?.height },
+      f.dimensions,
+    )
+  } finally {
+    await f.close()
+  }
+})
+
+for (const mode of ['unexpected-envelope', 'missing-data'] as const)
+  test(`Packy ${mode} fails specifically at response-envelope`, async () => {
+    const f = await outputFixture(mode)
+    try {
+      await assert.rejects(submitOutputFixture(f))
+      const failure = f.diagnostics.find(
+        (event) =>
+          event.stage === 'response-envelope' && event.state === 'failed',
+      )
+      assert.equal(failure?.errorCode, 'unexpected-envelope')
+      assert.equal(failure?.dataCount, 0)
+      assert.equal(
+        f.diagnostics.some((event) => event.stage === 'output-reference'),
+        false,
+      )
+    } finally {
+      await f.close()
+    }
+  })
+
 test('Packy profile factory selects a standalone native adapter and never exposes credentials', async () => {
   const { imageAdapters } = await import(
     '../../electron/main/generation/image-profiles.js'
