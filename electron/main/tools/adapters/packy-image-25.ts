@@ -327,7 +327,7 @@ export class PackyImage25Adapter implements ImageApiTool {
       billingRisk: 'may-charge',
       basis:
         cap === 'image.generate'
-          ? `PackyAPI / ${this.profile.modelId} / image-generation; USD 0.4000 per request`
+          ? `PackyAPI / ${this.profile.modelId} / endpoint type image-generation / POST images/generations; USD 0.4000 per request`
           : `PackyAPI / ${this.profile.modelId} / image edit; price not confirmed`,
       createdAt: new Date().toISOString(),
       validUntil: new Date(
@@ -383,9 +383,6 @@ export class PackyImage25Adapter implements ImageApiTool {
       model: this.profile.modelId,
       prompt,
       n: 1,
-      size: `${input.resolution.width}x${input.resolution.height}`,
-      quality: 'low',
-      output_format: 'png',
     }
     let body: string | Buffer = JSON.stringify(fields),
       contentType = 'application/json'
@@ -417,7 +414,7 @@ export class PackyImage25Adapter implements ImageApiTool {
     }
     const r = await this.transport.bytes(
       this.baseUrl +
-        (cap === 'image.generate' ? '/image-generation' : '/images/edits'),
+        (cap === 'image.generate' ? '/images/generations' : '/images/edits'),
       signal,
       { body, contentType, key, limit: 64 * 1024 * 1024 },
     )

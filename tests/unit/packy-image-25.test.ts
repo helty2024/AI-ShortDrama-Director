@@ -192,7 +192,7 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
       },
       {
         positivePrompt: exactPrompt,
-        compilerVersion: 'packy-paid-validation-v2',
+        compilerVersion: 'packy-paid-validation-v3',
       },
     )
     assert.equal(preview.prompt, exactPrompt)
@@ -218,7 +218,7 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
     assert.equal(promptPackage.targetToolId, profile.toolId)
     assert.equal(promptPackage.targetModel, profile.modelId)
     const generation = http.calls.find(
-      (call) => call.path === '/v1/image-generation',
+      (call) => call.path === '/v1/images/generations',
     )
     assert.ok(generation)
     assert.equal(JSON.parse(generation.body.toString()).prompt, exactPrompt)
@@ -351,7 +351,7 @@ for (const cap of ['image.generate', 'image.referenceGenerate'] as const)
       assert.equal(
         call.path,
         cap === 'image.generate'
-          ? '/v1/image-generation'
+          ? '/v1/images/generations'
           : '/v1/images/edits',
       )
       const body = call.body.toString()
@@ -365,9 +365,6 @@ for (const cap of ['image.generate', 'image.referenceGenerate'] as const)
           model: profile.modelId,
           prompt: 'test\nAvoid: blur',
           n: 1,
-          size: '1024x1024',
-          quality: 'low',
-          output_format: 'png',
         })
       } else {
         assert.match(call.mime, /^multipart\/form-data; boundary=/)

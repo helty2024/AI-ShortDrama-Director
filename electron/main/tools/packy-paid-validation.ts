@@ -23,7 +23,7 @@ import type { CapabilityInput } from '../../../src/shared/capabilities/index.js'
 import type { ToolExecutionContext } from '../../../src/shared/tools.js'
 
 const projectName = '07-06.6 Packy 最小真实验证'
-const targetName = 'Packy corrected endpoint validation target'
+const targetName = 'Packy minimal Images API validation target'
 const promptSeed = 'A red apple on a white table'
 const authorizationCeilingMicro = 400_000
 let validationStage = 'startup'
@@ -154,11 +154,11 @@ async function main() {
   const diagnostics = join(userData, 'diagnostics')
   const intentPath = join(
     diagnostics,
-    'packy-paid-validation-v2-intent.json',
+    'packy-paid-validation-v3-intent.json',
   )
   const reportPath = join(
     diagnostics,
-    'packy-paid-validation-v2-report.json',
+    'packy-paid-validation-v3-report.json',
   )
   await mkdir(diagnostics, { recursive: true })
   try {
@@ -252,7 +252,7 @@ async function main() {
       },
       {
         positivePrompt: promptSeed,
-        compilerVersion: 'packy-paid-validation-v2',
+        compilerVersion: 'packy-paid-validation-v3',
       },
     )
     gate.expectedPrompt = preview.prompt
@@ -262,12 +262,22 @@ async function main() {
         state: 'awaiting-explicit-confirmation',
         provider: 'PackyAPI',
         model: profile.modelId,
-        endpoint: 'https://cf.api.fan/v1/image-generation',
+        endpoint: 'https://cf.api.fan/v1/images/generations',
+        endpointType: 'image-generation',
         prompt: preview.prompt,
         outputCount: 1,
         aspectRatio: '1:1',
-        size: '1024x1024',
-        quality: 'low',
+        requestBody: {
+          model: profile.modelId,
+          prompt: preview.prompt,
+          n: 1,
+        },
+        omittedProviderFields: [
+          'size',
+          'quality',
+          'output_format',
+          'response_format',
+        ],
         estimate: 'USD 0.4000 per request',
         currency: preview.currency,
         maximumLocalReservationMicro: authorizationCeilingMicro,
@@ -275,8 +285,8 @@ async function main() {
           '本地预留等于供应商确认的单次请求价格。',
         cloudDisclosure:
           '将 Prompt 和生成参数发送给 PackyAPI；不上传参考素材。',
-        correctedEndpointGenerationRequestsSoFar: 0,
-        historicalGenerationRequests: 1,
+        minimalImagesApiRequestsSoFar: 0,
+        historicalGenerationRequests: 2,
         expiresAt: preview.expiresAt,
         confirmationPhrase: phrase,
       }) + '\n',
@@ -365,7 +375,7 @@ async function main() {
       checkedAt: new Date().toISOString(),
       provider: 'PackyAPI',
       model: profile.modelId,
-      endpoint: 'https://cf.api.fan/v1/image-generation',
+      endpoint: 'https://cf.api.fan/v1/images/generations',
       requestSent:
         reservation?.submissionIntentAt !== null &&
         reservation?.submissionIntentAt !== undefined,

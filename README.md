@@ -209,4 +209,4 @@ docs/               架构和领域说明
 
 视觉管线详见 [资产管线](docs/asset-pipeline.md)、[图像生成](docs/image-generation.md)、[ComfyUI](docs/comfyui-provider.md)、[Prompt Compiler](docs/prompt-compiler.md)。备份需覆盖整个 userData（数据库及 media 目录）。
 
-07-06.5/07-06.6 新增 [PackyAPI 原生 Image 2.5 Adapter](docs/packy-image-25.md)：真实 `/v1/models` 鉴权与 Sunburst 模型可见性已验证。供应商口径现已修正为 Token Group `image`、`POST /v1/image-generation`、USD 0.4000 / request，文生图 JSON 不含 `response_format`。修正映射后的唯一一次授权请求被供应商以 validation 拒绝，未返回图片；由于无可靠计费回执，保守保留 `unknown-submission` 和预留额度，paid generation 仍为 **Not validated**。
+07-06.5/07-06.6 新增 [PackyAPI 原生 Image 2.5 Adapter](docs/packy-image-25.md)：真实 `/v1/models` 鉴权与 Sunburst 模型可见性已验证。当前待验证契约为 Token Group `image`、`POST /v1/images/generations`、USD 0.4000 / request；`image-generation` 是 Endpoint Type，不是 HTTP path。下一次文生图只发送 `model / prompt / n`，未经再次确认不会执行。前两次 `unknown-submission` 审计记录保留不变，paid generation 仍为 **Not validated**。
