@@ -150,13 +150,14 @@ type OutputMode =
   | 'image-content-invalid'
   | 'b64'
   | 'automatic-dimensions'
+  | 'automatic-dimensions-b64'
   | 'unexpected-envelope'
   | 'missing-data'
   | 'unknown-fields'
 
 async function outputFixture(mode: OutputMode) {
   const dimensions =
-    mode === 'automatic-dimensions'
+    mode === 'automatic-dimensions' || mode === 'automatic-dimensions-b64'
       ? { width: 1312, height: 1199 }
       : { width: 1024, height: 1024 }
   const png = await sharp({
@@ -177,6 +178,12 @@ async function outputFixture(mode: OutputMode) {
       path: req.url ?? '',
       authorization: req.headers.authorization,
     })
+    if (req.method === 'GET' && req.url === '/v1/models') {
+      assert.equal(req.headers.authorization, 'Bearer FIXTURE_SECRET')
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ data: [{ id: profile.modelId }] }))
+      return
+    }
     if (req.method === 'POST') {
       assert.equal(req.headers.authorization, 'Bearer FIXTURE_SECRET')
       for await (const _chunk of req) {
@@ -193,7 +200,7 @@ async function outputFixture(mode: OutputMode) {
         return
       }
       const item =
-        mode === 'b64'
+        mode === 'b64' || mode === 'automatic-dimensions-b64'
           ? { b64_json: png.toString('base64'), revised_prompt: 'safe fixture' }
           : {
               url: `${origin}/asset/start?signature=DO_NOT_LOG`,
@@ -256,7 +263,7 @@ async function outputFixture(mode: OutputMode) {
     profile,
     async () => 'FIXTURE_SECRET',
     new ImageHttpTransport({ fixtureOrigin: origin, timeoutMs: 1000 }),
-    null,
+    { consume: async () => {} },
     (event) => diagnostics.push(event),
   )
   return {
@@ -391,6 +398,104 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
     )
     assert.ok(generation)
     assert.equal(JSON.parse(generation.body.toString()).prompt, exactPrompt)
+  } finally {
+    database.close()
+    await http.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('Packy real-envelope replay with 1312x1199 reaches Candidate, Review and Adopt locally', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'packy-real-envelope-replay-'))
+  const http = await outputFixture('automatic-dimensions-b64')
+  const database = new ProjectDatabase(join(dir, 'workspace.sqlite'))
+  try {
+    const project = database.create({
+      name: 'Packy real envelope replay',
+      description: '',
+      genre: 'validation',
+      language: 'en',
+      aspectRatio: '1:1',
+    })
+    const target = entitySchema.parse({
+      ...metadata(),
+      projectId: project.id,
+      kind: 'character',
+      name: 'Packy replay target',
+      description: 'A red apple on a white table',
+      appearance: '',
+      assetIds: [],
+    })
+    database.insertEntities(project.id, [target])
+    const visual = new VisualRepository(
+      new IntelligenceRepository(database),
+      new MediaStorage(join(dir, 'media')),
+    )
+    const service = new ImageGenerationService(visual, [http.adapter])
+    const preview = await service.preview(
+      {
+        projectId: project.id,
+        targetId: target.id,
+        toolId: profile.toolId,
+        resolution: { width: 1024, height: 1024 },
+        aspectRatio: '1:1',
+        count: 1,
+        references: [],
+        allowAssetUpload: true,
+        localOnly: false,
+      },
+      {
+        positivePrompt: 'A red apple on a white table',
+        compilerVersion: 'packy-v4-local-replay',
+      },
+    )
+    const task = service.confirm(project.id, preview.id, 400_000, false)
+    await service.wait(task.id)
+    const result = service.query(project.id, task.id)
+    assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
+    assert.equal(result.record.outcome, 'succeeded')
+    assert.equal(result.versions.length, 1)
+    assert.equal(result.versions[0].status, 'draft')
+    assert.equal(result.versions[0].width, 1312)
+    assert.equal(result.versions[0].height, 1199)
+    assert.equal(result.versions[0].mimeType, 'image/png')
+    const adopted = service.review(
+      project.id,
+      result.versions[0].id,
+      result.versions[0].revision,
+      true,
+      target.revision,
+    )
+    assert.equal(adopted.status, 'approved')
+    const updatedTarget = visual.repo.entity(project.id, target.id)
+    assert.ok(
+      'visualReferences' in updatedTarget &&
+        updatedTarget.visualReferences.some(
+          (reference) =>
+            reference.primary && reference.assetId === adopted.assetId,
+        ),
+    )
+    assert.deepEqual(
+      http.diagnostics
+        .filter((event) => event.state === 'succeeded')
+        .map((event) => event.stage),
+      [
+        'generation-response',
+        'response-envelope',
+        'output-reference',
+        'mime-detection',
+        'image-decode',
+        'dimension-validation',
+        'contract-match',
+        'asset-ingestion',
+      ],
+    )
+    assert.equal(
+      http.requests.filter(
+        (request) => request.path === '/v1/images/generations',
+      ).length,
+      1,
+    )
   } finally {
     database.close()
     await http.close()
