@@ -177,17 +177,29 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
       ),
       [adapter],
     )
-    const preview = await service.preview({
-      projectId: project.id,
-      targetId: target.id,
-      toolId: profile.toolId,
-      resolution: { width: 1024, height: 1024 },
-      aspectRatio: '1:1',
-      count: 1,
-      references: [],
-      allowAssetUpload: true,
-      localOnly: false,
-    })
+    const exactPrompt = 'A red apple on a white table'
+    const preview = await service.preview(
+      {
+        projectId: project.id,
+        targetId: target.id,
+        toolId: profile.toolId,
+        resolution: { width: 1024, height: 1024 },
+        aspectRatio: '1:1',
+        count: 1,
+        references: [],
+        allowAssetUpload: true,
+        localOnly: false,
+      },
+      {
+        positivePrompt: exactPrompt,
+        compilerVersion: 'packy-paid-validation-v2',
+      },
+    )
+    assert.equal(preview.prompt, exactPrompt)
+    const refreshed = await service.refreshForConfirmation(preview.id)
+    assert.equal(refreshed.id, preview.id)
+    assert.equal(refreshed.prompt, exactPrompt)
+    assert.equal(refreshed.estimate, preview.estimate)
     const task = service.confirm(project.id, preview.id, 400_000, false)
     await service.wait(task.id)
     const result = service.query(project.id, task.id)
@@ -195,6 +207,21 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
     assert.equal(result.record.outcome, 'succeeded')
     assert.equal(result.versions.length, 1)
     assert.equal(result.reservationStatus, 'submitted')
+    const promptPackage = service.generation.get(
+      'prompt_packages',
+      project.id,
+      result.record.promptPackageId!,
+    )
+    assert.ok('positivePrompt' in promptPackage.compiledPrompt)
+    assert.equal(promptPackage.compiledPrompt.positivePrompt, exactPrompt)
+    assert.equal(promptPackage.compiledPrompt.negativePrompt, '')
+    assert.equal(promptPackage.targetToolId, profile.toolId)
+    assert.equal(promptPackage.targetModel, profile.modelId)
+    const generation = http.calls.find(
+      (call) => call.path === '/v1/image-generation',
+    )
+    assert.ok(generation)
+    assert.equal(JSON.parse(generation.body.toString()).prompt, exactPrompt)
   } finally {
     database.close()
     await http.close()

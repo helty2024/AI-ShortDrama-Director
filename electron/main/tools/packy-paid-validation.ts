@@ -4,6 +4,7 @@ import { mkdir, open, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, safeStorage } from 'electron'
 import sharp from 'sharp'
+import { z } from 'zod'
 import { entitySchema } from '../../../src/shared/domain.js'
 import { ProjectDatabase, metadata } from '../database.js'
 import { IntelligenceRepository } from '../intelligence/repository.js'
@@ -22,8 +23,8 @@ import type { CapabilityInput } from '../../../src/shared/capabilities/index.js'
 import type { ToolExecutionContext } from '../../../src/shared/tools.js'
 
 const projectName = '07-06.6 Packy 最小真实验证'
-const promptSeed =
-  'A single matte red ceramic sphere centered on a plain white studio background, simple product photograph'
+const targetName = 'Packy corrected endpoint validation target'
+const promptSeed = 'A red apple on a white table'
 const authorizationCeilingMicro = 400_000
 let validationStage = 'startup'
 
@@ -206,13 +207,13 @@ async function main() {
         .entities.find(
           (value) =>
             value.kind === 'character' &&
-            value.name === 'Packy paid validation target',
+            value.name === targetName,
         ) ??
       entitySchema.parse({
         ...metadata(),
         projectId: project.id,
         kind: 'character',
-        name: 'Packy paid validation target',
+        name: targetName,
         description: promptSeed,
         appearance: '',
         assetIds: [],
@@ -237,17 +238,23 @@ async function main() {
     )
       throw new Error('Packy connectivity is not ready')
     validationStage = 'preview'
-    const preview = await service.preview({
-      projectId: project.id,
-      targetId: target.id,
-      toolId: profile.toolId,
-      resolution: { width: 1024, height: 1024 },
-      aspectRatio: '1:1',
-      count: 1,
-      references: [],
-      allowAssetUpload: true,
-      localOnly: false,
-    })
+    const preview = await service.preview(
+      {
+        projectId: project.id,
+        targetId: target.id,
+        toolId: profile.toolId,
+        resolution: { width: 1024, height: 1024 },
+        aspectRatio: '1:1',
+        count: 1,
+        references: [],
+        allowAssetUpload: true,
+        localOnly: false,
+      },
+      {
+        positivePrompt: promptSeed,
+        compilerVersion: 'packy-paid-validation-v2',
+      },
+    )
     gate.expectedPrompt = preview.prompt
     const phrase = `CONFIRM PACKY ONE PAID IMAGE ${preview.id}`
     process.stdout.write(
@@ -255,6 +262,7 @@ async function main() {
         state: 'awaiting-explicit-confirmation',
         provider: 'PackyAPI',
         model: profile.modelId,
+        endpoint: 'https://cf.api.fan/v1/image-generation',
         prompt: preview.prompt,
         outputCount: 1,
         aspectRatio: '1:1',
@@ -275,6 +283,22 @@ async function main() {
     )
     validationStage = 'awaiting-explicit-confirmation'
     await confirmation(pipe, phrase)
+    validationStage = 'post-confirmation-revalidation'
+    const refreshed = await service.refreshForConfirmation(preview.id)
+    if (
+      refreshed.id !== preview.id ||
+      refreshed.prompt !== promptSeed ||
+      refreshed.tool !== preview.tool ||
+      refreshed.model !== profile.modelId ||
+      refreshed.count !== 1 ||
+      refreshed.resolution.width !== 1024 ||
+      refreshed.resolution.height !== 1024 ||
+      refreshed.currency !== 'USD' ||
+      refreshed.estimate !== preview.estimate
+    )
+      throw new Error(
+        'Post-confirmation preflight changed an authorized request field',
+      )
     validationStage = 'approval-and-reservation'
     const task = service.confirm(
       project.id,
@@ -341,6 +365,7 @@ async function main() {
       checkedAt: new Date().toISOString(),
       provider: 'PackyAPI',
       model: profile.modelId,
+      endpoint: 'https://cf.api.fan/v1/image-generation',
       requestSent:
         reservation?.submissionIntentAt !== null &&
         reservation?.submissionIntentAt !== undefined,
@@ -389,10 +414,19 @@ async function main() {
 void main()
   .then(() => app.exit(0))
   .catch((error: unknown) => {
-    const message =
+    const structured = z
+      .object({
+        code: z.string().max(100).optional(),
+        message: z.string().max(1000).optional(),
+      })
+      .safeParse(error)
+    const message = (
       error instanceof Error
-        ? error.message.replace(/[A-Za-z0-9_-]{24,}/g, '[redacted]')
-        : 'Unknown validation failure'
+        ? error.message
+        : structured.success
+          ? structured.data.message ?? structured.data.code ?? 'Validation failed'
+          : 'Validation failed'
+    ).replace(/[A-Za-z0-9_-]{24,}/g, '[redacted]')
     process.stdout.write(
       JSON.stringify({
         state: 'failed-before-or-during-validation',

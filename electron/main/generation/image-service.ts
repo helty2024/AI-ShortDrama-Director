@@ -38,6 +38,10 @@ interface Preview {
   task: AITask
   adapter: ImageApiTool
 }
+const trustedPromptOverrideSchema = z.strictObject({
+  positivePrompt: z.string().trim().min(1).max(100_000),
+  compilerVersion: z.string().min(1).max(100),
+})
 export class ImageGenerationService {
   readonly registry = new ToolRegistry()
   readonly broker = new ToolBroker(this.registry)
@@ -100,7 +104,14 @@ export class ImageGenerationService {
       throw new DomainError('INVALID_INPUT', '该工具未提供无副作用连通性探测')
     return tool.probeConnectivity(AbortSignal.timeout(15000))
   }
-  async preview(raw: unknown): Promise<ImageApiPreview> {
+  /** Main-process-only override for an already reviewed exact prompt. IPC never accepts it. */
+  async preview(
+    raw: unknown,
+    trustedPromptOverride?: {
+      positivePrompt: string
+      compilerVersion: string
+    },
+  ): Promise<ImageApiPreview> {
     const input = imagePreviewInputSchema.parse(raw),
       p = input.projectId,
       target = this.generation.entity(p, input.targetId)
@@ -121,11 +132,46 @@ export class ImageGenerationService {
         throw new DomainError('INVALID_INPUT', '参考素材必须是图片')
       return v
     })
-    const prompt = new GenerationService(this.generation).capturePrompt(
-      p,
-      target.id,
-      cap,
+    const override = trustedPromptOverrideSchema.optional().parse(
+      trustedPromptOverride,
     )
+    if (override && references.length)
+      throw new DomainError(
+        'INVALID_INPUT',
+        '精确文本 Prompt 入口不接受参考素材',
+      )
+    const prompt = override
+      ? this.generation.create('prompt_packages', {
+          id: randomUUID(),
+          projectId: p,
+          targetObjectId: target.id,
+          targetObjectType: target.kind,
+          semanticInputSnapshot: {
+            target,
+            context: this.visual.repo.database.workspace(p).entities,
+          },
+          compiledPrompt: {
+            positivePrompt: override.positivePrompt,
+            negativePrompt: '',
+            subjectDescription: override.positivePrompt,
+            composition: '',
+            camera: '',
+            lighting: '',
+            style: '',
+            continuity: '',
+            referenceAssetIds: [],
+            providerHints: {},
+            promptVersion: override.compilerVersion,
+          },
+          compilerVersion: override.compilerVersion,
+          skillId: null,
+          skillVersion: null,
+          targetCapability: cap,
+          targetToolId: adapter.profile.toolId,
+          targetModel: adapter.profile.modelId,
+          createdAt: new Date().toISOString(),
+        })
+      : new GenerationService(this.generation).capturePrompt(p, target.id, cap)
     const compiled = prompt.compiledPrompt
     if (!('positivePrompt' in compiled))
       throw new DomainError('INVALID_INPUT', '需要图片提示词')
@@ -271,6 +317,67 @@ export class ImageGenerationService {
       adapter,
     })
     return result
+  }
+  /**
+   * Main-process-only refresh for a preview that has already been shown to the
+   * user. It renews the short-lived health snapshot while refusing any change
+   * to the confirmed route, request fingerprint, currency, or quoted cost.
+   */
+  async refreshForConfirmation(previewId: string): Promise<ImageApiPreview> {
+    const v = this.previews.get(previewId)
+    if (!v)
+      throw new DomainError('CONFLICT', '预览已失效')
+    if (v.public.expiresAt <= new Date().toISOString()) {
+      this.previews.delete(previewId)
+      throw new DomainError('CONFLICT', '估价已过期，需要重新确认')
+    }
+    const priorDecision = v.preflight.routingDecision
+    if (!priorDecision)
+      throw new DomainError('CONFLICT', '原预检结果不完整')
+    const refreshed = await this.broker.preflight(
+      v.request,
+      new AbortController().signal,
+    )
+    const decision = refreshed.routingDecision
+    const estimate = refreshed.estimate
+    if (
+      !refreshed.ready ||
+      !decision ||
+      !estimate ||
+      refreshed.requestFingerprint !== v.record.requestFingerprint ||
+      decision.selectedToolId !== priorDecision.selectedToolId ||
+      decision.selectedToolVersion !== priorDecision.selectedToolVersion ||
+      decision.selectedModel !== priorDecision.selectedModel ||
+      decision.requestedCapability !== priorDecision.requestedCapability ||
+      JSON.stringify(estimate.cost) !== JSON.stringify(v.record.estimatedCost) ||
+      estimate.currency !== v.public.currency
+    )
+      throw new DomainError(
+        'CONFLICT',
+        '预检结果已变化，需要重新显示并确认',
+      )
+    const storedDecision = this.generation.create(
+      'routing_decisions',
+      decision,
+    )
+    const storedEstimate = this.generation.create(
+      'generation_estimates',
+      estimate,
+    )
+    v.preflight = refreshed
+    v.record = persistedRecordSchema.parse({
+      ...v.record,
+      routingDecisionId: storedDecision.id,
+      estimateId: storedEstimate.id,
+      requestFingerprint: refreshed.requestFingerprint,
+      estimatedCost: storedEstimate.cost,
+      updatedAt: new Date().toISOString(),
+    })
+    v.public = {
+      ...v.public,
+      expiresAt: storedEstimate.validUntil,
+    }
+    return v.public
   }
   confirm(
     projectId: string,

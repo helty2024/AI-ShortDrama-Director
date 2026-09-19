@@ -6,13 +6,13 @@
 
 2026-09-18 经二次明确确认执行一次最小真实文生图：PackyAPI、`gpt-image-2.5-sunburst`、1 张、1024×1024、1:1、`quality=low`，不含参考图。该次请求使用了后来确认不正确的 `/images/generations` 映射，供应商返回 validation，未返回图片。因提交后缺少可核对的远端任务 ID/计费证据，历史账本保守保持 `unknown-submission`；本次配置修正不改写该记录，也不自动重试。
 
-2026-09-19 供应商口径修正为 Token Group `image`、`POST /v1/image-generation`、USD 0.4000 / request，并删除 `response_format`。修正只完成本地映射和 fixture 验证，尚未发出新的真实付费请求。
+2026-09-19 供应商口径修正为 Token Group `image`、`POST /v1/image-generation`、USD 0.4000 / request，并删除 `response_format`。修正映射后经二次明确确认发出唯一一次最小请求：`A red apple on a white table`、1 张、1024×1024、`quality=low`、PNG。供应商返回 validation 类 4xx 响应，未返回可解码图片或可核对的费用回执。本地因已存在 submission intent 而保守记为 `unknown-submission`：不重试、不切换工具、不释放 USD 0.4000 预留。
 
 - Native Adapter：Implemented，JSON / multipart 映射经过本地 HTTP fixture 验证。
 - Real connectivity / authenticated models listing：Validated。
 - Image token group：固定配置为 `image`；`/models` 不单独证明令牌分组权限。
 - 模型生成能力、参数限制、真实费用和图片质量：Not validated。
-- Real paid generation：Attempted once / Not validated。
+- Real paid generation：Attempted twice in total (one legacy endpoint, one corrected endpoint) / Not validated。
 
 ## 独立适配器
 
@@ -32,7 +32,7 @@
 
 ## 付费门禁
 
-默认组合中真实 Packy submit 仍被主进程 Adapter 硬性拒绝，连拥有 Approval 的调用也不例外。没有 renderer 开关、环境变量或 Profile 字段可以启用真实生成。07-06.6 只能通过主进程一次性 `PackyPaidValidationGate` 开启固定单图请求；门闩在远端调用前以独占文件记录 submission intent。intent 已存在时验证工具拒绝再次运行。显式注入的精确 loopback fixture transport继续用于无费用协议测试。
+默认组合中真实 Packy submit 仍被主进程 Adapter 硬性拒绝，连拥有 Approval 的调用也不例外。没有 renderer 开关、环境变量或 Profile 字段可以启用真实生成。07-06.6 只能通过主进程一次性 `PackyPaidValidationGate` 开启固定单图请求；门闩在远端调用前以独占文件记录 submission intent。修正端点的 v2 intent 现已存在，验证工具会拒绝再次运行。显式注入的精确 loopback fixture transport 继续用于无费用协议测试。
 
 默认 health 只 GET `/models`，可见也返回 unknown（生成可用性未知）。validate / estimate 仅本地校验；文生图 estimate 固定为 USD 0.4000 / request，参考图费用仍为 unknown。一次性门闩仅在用户确认的独立验证进程内让 health 可进入 available；模型列表成功本身不会解锁生成。
 
@@ -72,6 +72,6 @@ node scripts/packy-connectivity.mjs
 
 新增 16 项单元测试覆盖模型探测、401/403/429/500/非法 JSON、缺少凭据、保守能力校验、精确 URL / Headers / JSON / multipart、单次授权句柄、下载拒绝后的提交状态、文生图固定报价、参考图费用未知、真实 submit 关闭、独立工厂注册，以及稀疏工作区中的完整 Approval / Reservation / Task / Record / Candidate 链路。自动测试的网络生成仍只连接本地 fixture。
 
-鉴权对照：未携带密钥的 GET `/v1/models` 返回 HTTP 401；使用 CredentialStore 中密钥的模型列表请求成功。07-06.5 探测与复核未调用生成端点；07-06.6 仅执行上述一次人工授权请求。
+鉴权对照：未携带密钥的 GET `/v1/models` 返回 HTTP 401；使用 CredentialStore 中密钥的模型列表请求成功。07-06.5 探测与复核未调用生成端点；07-06.6 在旧映射和修正映射上各执行了一次人工授权请求，两次均没有生成可采用图片。
 
-旧映射的本机审计报告位于 `%APPDATA%/ai-shortdrama-director/diagnostics/packy-paid-validation-report.json`，submission intent 位于同目录 `packy-paid-validation-intent.json`。两者不含 Key、认证头或供应商原始错误正文。修正端点使用独立的 `packy-paid-validation-v2-{intent,report}.json`，不会覆盖旧证据；新的 intent 尚不存在，且只有再次取得精确确认后才会创建。
+旧映射的本机审计报告位于 `%APPDATA%/ai-shortdrama-director/diagnostics/packy-paid-validation-report.json`，submission intent 位于同目录 `packy-paid-validation-intent.json`。两者不含 Key、认证头或供应商原始错误正文。修正端点使用独立的 `packy-paid-validation-v2-{intent,report}.json`，不会覆盖旧证据；v2 intent 与报告已落盘，后续运行会被一次性门闩拒绝。

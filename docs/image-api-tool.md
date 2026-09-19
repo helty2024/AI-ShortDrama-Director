@@ -10,7 +10,7 @@
 | Real provider connectivity validated | Yes |
 | Real paid generation validated | No |
 
-07-06 的 Reference Adapter 状态仍只代表 loopback fixture。07-06.5 增加独立 Packy 原生 Adapter并验证真实模型列表；07-06.6 在明确人工确认后发出一次最小文生图请求。该请求未返回图片，状态按不明提交规则冻结，不能写成真实付费生成通过。Reference 协议仍不是 OpenAI、Seedream、Kling 或其他供应商的兼容性承诺。
+07-06 的 Reference Adapter 状态仍只代表 loopback fixture。07-06.5 增加独立 Packy 原生 Adapter并验证真实模型列表；07-06.6 分别在旧映射和修正映射上发出一次经明确人工确认的最小文生图请求。两次均未返回图片，状态按不明提交规则冻结，不能写成真实付费生成通过。Reference 协议仍不是 OpenAI、Seedream、Kling 或其他供应商的兼容性承诺。
 
 应用 package version 保持 0.6.0，SQLite schema 保持 v8；不修改已发布 migration。新增 AITask 输入判别 `image-api`，复用现有任务和来源表，不新增调度表。公共 Image Capability 没有添加供应商私有参数。Estimate 新增可选的通用 currency 字段，使未知价格也能有明确币种；旧估价快照保持可读。
 
@@ -129,4 +129,4 @@ Electron smoke 使用独立临时 userData，真实点击预览、填写上限�
 
 ## 07-06.5 后续状态
 
-PackyAPI 已新增独立原生 Adapter，未改用 Reference 协议。真实模型列表连通性验证已完成；07-06.6 的唯一一次真实生成请求进入 `unknown-submission`，没有图片、候选版本或可核实 actual cost，预算预留未释放。具体限制与安全配置见 [Packy Image 2.5](packy-image-25.md)。上文 Reference 阶段的验证表保留为 07-06 历史状态。
+PackyAPI 已新增独立原生 Adapter，未改用 Reference 协议。真实模型列表连通性验证已完成；07-06.6 修正端点后的唯一一次请求收到 validation 类 4xx 响应。没有图片、候选版本或可核实 actual cost，因已发出请求而进入 `unknown-submission`，预算预留未释放。具体限制与安全配置见 [Packy Image 2.5](packy-image-25.md)。上文 Reference 阶段的验证表保留为 07-06 历史状态。
