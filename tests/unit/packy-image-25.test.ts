@@ -157,7 +157,7 @@ type OutputMode =
 async function outputFixture(mode: OutputMode) {
   const dimensions =
     mode === 'automatic-dimensions'
-      ? { width: 1536, height: 864 }
+      ? { width: 1312, height: 1199 }
       : { width: 1024, height: 1024 }
   const png = await sharp({
     create: {

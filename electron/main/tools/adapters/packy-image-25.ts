@@ -136,7 +136,8 @@ const validAutoDimensions = (width: number, height: number): boolean => {
     width <= 8192 &&
     height <= 8192 &&
     width * height <= 40_000_000 &&
-    [1, 16 / 9, 9 / 16].some((allowed) => Math.abs(ratio - allowed) < 0.02)
+    ratio >= 1 / 3 &&
+    ratio <= 3
   )
 }
 import type { ImageConnectivityReport } from '../../../../src/shared/image-api.js'

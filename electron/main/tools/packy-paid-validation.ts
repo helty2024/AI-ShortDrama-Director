@@ -12,6 +12,7 @@ import { VisualRepository } from '../visual/repository.js'
 import { MediaStorage } from '../visual/storage.js'
 import { EncryptedCredentialStore } from '../video/credentials.js'
 import { ImageGenerationService } from '../generation/image-service.js'
+import { GenerationService } from '../generation/service.js'
 import { loadImageProfiles } from '../generation/image-profiles.js'
 import {
   PackyImage25Adapter,
@@ -322,7 +323,25 @@ async function main() {
     validationStage = 'provider-execution'
     await service.wait(task.id)
     validationStage = 'output-verification'
-    const query = service.query(project.id, task.id)
+    let query = service.query(project.id, task.id)
+    const exactOutputFailure = [...outputDiagnostics]
+      .reverse()
+      .find((event) => event.state === 'failed')
+    if (
+      query.record.outcome === 'unknown-submission' &&
+      outputDiagnostics.some(
+        (event) =>
+          event.stage === 'generation-response' && event.state === 'succeeded',
+      ) &&
+      exactOutputFailure
+    ) {
+      new GenerationService(service.generation).failAttempt(
+        project.id,
+        query.record.id,
+        'malformed-output',
+      )
+      query = service.query(project.id, task.id)
+    }
     let reviewed = false
     let adopted = false
     let output: null | {
