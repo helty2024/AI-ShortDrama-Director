@@ -155,11 +155,11 @@ async function main() {
   const diagnostics = join(userData, 'diagnostics')
   const intentPath = join(
     diagnostics,
-    'packy-paid-validation-v3-intent.json',
+    'packy-paid-validation-v4-intent.json',
   )
   const reportPath = join(
     diagnostics,
-    'packy-paid-validation-v3-report.json',
+    'packy-paid-validation-v4-report.json',
   )
   await mkdir(diagnostics, { recursive: true })
   try {
@@ -255,7 +255,7 @@ async function main() {
       },
       {
         positivePrompt: promptSeed,
-        compilerVersion: 'packy-paid-validation-v3',
+        compilerVersion: 'packy-paid-validation-v4',
       },
     )
     gate.expectedPrompt = preview.prompt
@@ -288,8 +288,8 @@ async function main() {
           '本地预留等于供应商确认的单次请求价格。',
         cloudDisclosure:
           '将 Prompt 和生成参数发送给 PackyAPI；不上传参考素材。',
-        minimalImagesApiRequestsSoFar: 0,
-        historicalGenerationRequests: 2,
+        validationAttempt: 4,
+        priorPaidGenerationAttempts: 3,
         expiresAt: preview.expiresAt,
         confirmationPhrase: phrase,
       }) + '\n',
@@ -340,10 +340,19 @@ async function main() {
         failOn: 'error',
         limitInputPixels: 40_000_000,
       }).metadata()
+      const width = decoded.width ?? 0,
+        height = decoded.height ?? 0,
+        safeDimensions =
+          width > 0 &&
+          height > 0 &&
+          width <= 8192 &&
+          height <= 8192 &&
+          width * height <= 40_000_000 &&
+          width / height >= 1 / 3 &&
+          width / height <= 3
       if (
         createHash('sha256').update(bytes).digest('hex') !== candidate.hash ||
-        decoded.width !== 1024 ||
-        decoded.height !== 1024
+        !safeDimensions
       )
         throw new Error('Persisted image verification failed')
       const adoptedVersion = service.review(
@@ -402,6 +411,62 @@ async function main() {
       generationRecordId: query.record.id,
       output,
       outputDiagnostics,
+      exactOutputDiagnostics: {
+        httpStatus:
+          outputDiagnostics.find(
+            (event) => event.stage === 'generation-response',
+          )?.httpStatus ?? null,
+        responseEnvelopeTopLevelKeys:
+          outputDiagnostics.find(
+            (event) => event.stage === 'response-envelope',
+          )?.topLevelKeys ?? null,
+        responseDataItemKeys:
+          outputDiagnostics.find(
+            (event) => event.stage === 'response-envelope',
+          )?.itemKeys ?? null,
+        outputReference:
+          outputDiagnostics.find(
+            (event) => event.stage === 'output-reference',
+          )?.hasUrl === true
+            ? 'url'
+            : outputDiagnostics.find(
+                  (event) => event.stage === 'output-reference',
+                )?.hasB64Json === true
+              ? 'b64_json'
+              : null,
+        redirectCount:
+          outputDiagnostics.find(
+            (event) => event.stage === 'redirect-validation',
+          )?.redirectCount ?? 0,
+        downloadHost:
+          outputDiagnostics.find(
+            (event) => event.stage === 'output-download',
+          )?.downloadHost ?? null,
+        contentType:
+          outputDiagnostics.find(
+            (event) => event.stage === 'output-download',
+          )?.contentType ?? null,
+        magicMime:
+          outputDiagnostics.find(
+            (event) => event.stage === 'mime-detection',
+          )?.finalMime ?? null,
+        sharpDecoded:
+          outputDiagnostics.find(
+            (event) => event.stage === 'image-decode',
+          )?.sharpDecoded ?? null,
+        width:
+          outputDiagnostics.find(
+            (event) => event.stage === 'dimension-validation',
+          )?.width ?? null,
+        height:
+          outputDiagnostics.find(
+            (event) => event.stage === 'dimension-validation',
+          )?.height ?? null,
+        failureStage:
+          [...outputDiagnostics]
+            .reverse()
+            .find((event) => event.state === 'failed')?.stage ?? null,
+      },
       paidGenerationValidated:
         query.record.outcome === 'succeeded' && reviewed && adopted,
     }
