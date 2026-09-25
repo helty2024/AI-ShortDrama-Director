@@ -1,4 +1,5 @@
 import type { ImageGenerationService } from './generation/image-service.js'
+import type { VideoApiGenerationService } from './generation/video-api-service.js'
 import { OperationsService } from './operations/service.js'
 import { app } from 'electron'
 import { ProductionService } from './video/service.js'
@@ -36,6 +37,7 @@ export function registerWorkspaceIPC(
   visual: VisualService,
   production: ProductionService,
   imageApi?: ImageGenerationService,
+  videoApi?: VideoApiGenerationService,
   importImage?: () => Promise<null>,
 ) {
   const pilot = new ProductionIntelligenceService(
@@ -118,6 +120,43 @@ export function registerWorkspaceIPC(
             }
             return {ok:true,data:z.json().parse(data??null)}
           }
+          case 'videoApi': {
+            if (!videoApi) throw new DomainError('CONFLICT', 'Video API 未配置')
+            const c = request.command
+            let data: unknown
+            switch (c.op) {
+              case 'profiles':
+                data = videoApi.profiles()
+                break
+              case 'preview':
+                data = await videoApi.preview(c.input)
+                break
+              case 'confirm':
+                data = videoApi.confirm(
+                  c.projectId,
+                  c.previewId,
+                  c.maxCostMicro,
+                  c.allowUnknownCost,
+                )
+                break
+              case 'query':
+                data = await videoApi.query(c.projectId, c.taskId)
+                break
+              case 'cancel':
+                data = await videoApi.cancel(c.projectId, c.taskId)
+                break
+              case 'review':
+                data = videoApi.review(
+                  c.projectId,
+                  c.versionId,
+                  c.revision,
+                  c.adopt,
+                  c.targetRevision,
+                )
+                break
+            }
+            return { ok: true, data: z.json().parse(data ?? null) }
+          }
           case 'visual':
             return { ok: true, data: await visual.execute(request.command) }
           case 'intelligence':
@@ -133,7 +172,8 @@ export function registerWorkspaceIPC(
           case 'projects.update':
             return { ok: true, data: database.update(request.input) }
           case 'projects.delete':
-            if (imageApi?.hasPending(request.id)) throw new DomainError('CONFLICT','请等待图像 API 提交处理结束后删除项目')
+            if (imageApi?.hasPending(request.id) || videoApi?.hasPending(request.id))
+              throw new DomainError('CONFLICT','请等待 API 提交处理结束后删除项目')
             intelligence.queue.cancelProject(request.id)
             return { ok: true, data: database.delete(request.id) }
           case 'workspace.get':

@@ -36,6 +36,7 @@ interface Execution {
   handle: ToolTaskHandle | null
   stopped: boolean
   allowProviderSelectedResolution: boolean
+  durationToleranceSeconds: number
 }
 const outputMetadataSchema = z.union([imageOutputItemSchema.omit({ handle: true }), videoOutputItemSchema.omit({ handle: true })])
 type OutputMetadata = z.infer<typeof outputMetadataSchema>
@@ -151,13 +152,22 @@ export class ToolBroker {
     result: PreflightResult,
     rawContext: ToolExecutionContext,
     rawHandle: ToolTaskHandle | null,
-    options: { allowProviderSelectedResolution?: boolean } = {},
+    options: {
+      allowProviderSelectedResolution?: boolean
+      durationToleranceSeconds?: number
+    } = {},
   ): string {
     this.assertCurrent(request, result)
     const ctx = this.validResponse(toolExecutionContextSchema, rawContext), decision = result.routingDecision
     if (!decision || ctx.projectId !== request.projectId || ctx.taskId !== request.requestId || ctx.requestFingerprint !== result.requestFingerprint || ctx.model !== decision.selectedModel || ctx.routingDecisionId !== decision.id || ctx.estimateId !== result.estimate?.id) throw boundaryError('ownership-mismatch')
     const key = requestKey(ctx.projectId, ctx.taskId)
     if (this.submitted.has(key)) throw boundaryError('preflight-invalid')
+    if (
+      options.durationToleranceSeconds !== undefined &&
+      (!Number.isFinite(options.durationToleranceSeconds) ||
+        options.durationToleranceSeconds < 0)
+    )
+      throw boundaryError('preflight-invalid')
     const handle = rawHandle === null ? null : this.validResponse(toolTaskHandleSchema, rawHandle)
     if (handle && (handle.toolId !== decision.selectedToolId || handle.toolVersion !== decision.selectedToolVersion)) throw boundaryError('ownership-mismatch')
     const externalKey = handle ? `${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}` : null
@@ -172,9 +182,69 @@ export class ToolBroker {
       stopped: false,
       allowProviderSelectedResolution:
         options.allowProviderSelectedResolution === true,
+      durationToleranceSeconds: options.durationToleranceSeconds ?? 0,
     })
     if (externalKey) this.externalOwners.set(externalKey, id)
     this.submitted.add(key)
+    return id
+  }
+  /** Trusted main-process restart seam. Rebuilds ownership from immutable
+   * persisted task/record data and an already accepted remote identity. It
+   * never calls submit and is intentionally not exposed over IPC. */
+  restoreExecution(
+    rawSnapshot: unknown,
+    rawContext: ToolExecutionContext,
+    toolId: string,
+    toolVersion: string,
+    rawHandle: ToolTaskHandle,
+    options: {
+      allowProviderSelectedResolution?: boolean
+      durationToleranceSeconds?: number
+    } = {},
+  ): string {
+    const snapshot = this.validResponse(capabilitySnapshotSchema, rawSnapshot)
+    const ctx = this.validResponse(toolExecutionContextSchema, rawContext)
+    const entry = this.registry.get(toolId, toolVersion)
+    const handle = this.validResponse(toolTaskHandleSchema, rawHandle)
+    const fingerprint = requestFingerprint({
+      fingerprintVersion: '1',
+      snapshot,
+      toolId,
+      toolVersion,
+      model: ctx.model,
+      sourceRevisions: {},
+      routing: null,
+    })
+    if (
+      fingerprint !== ctx.requestFingerprint ||
+      handle.toolId !== toolId ||
+      handle.toolVersion !== toolVersion ||
+      !entry.descriptor.capabilities.some(
+        (candidate) => candidate.capability === snapshot.capability,
+      )
+    )
+      throw boundaryError('ownership-mismatch')
+    const taskKey = requestKey(ctx.projectId, ctx.taskId)
+    const externalKey = `${toolId}/${toolVersion}/${handle.externalTaskId}`
+    if (this.submitted.has(taskKey) || this.externalOwners.has(externalKey))
+      throw boundaryError('ownership-mismatch')
+    const durationToleranceSeconds = options.durationToleranceSeconds ?? 0
+    if (!Number.isFinite(durationToleranceSeconds) || durationToleranceSeconds < 0)
+      throw boundaryError('preflight-invalid')
+    const id = randomUUID()
+    this.executions.set(id, {
+      context: immutable(ctx),
+      entry,
+      capability: snapshot.capability,
+      input: immutable(structuredClone(snapshot.input)),
+      handle: immutable(handle),
+      stopped: false,
+      allowProviderSelectedResolution:
+        options.allowProviderSelectedResolution === true,
+      durationToleranceSeconds,
+    })
+    this.externalOwners.set(externalKey, id)
+    this.submitted.add(taskKey)
     return id
   }
   markUnknownSubmission(request: BrokerRequest, result: PreflightResult): void {
@@ -221,7 +291,13 @@ export class ToolBroker {
         )
           throw boundaryError('output-not-issued')
         if ('outputMime' in input && item.mime !== input.outputMime) throw boundaryError('output-not-issued')
-        if ('durationSeconds' in input && (!('durationSeconds' in item) || item.durationSeconds !== input.durationSeconds)) throw boundaryError('output-not-issued')
+        if (
+          'durationSeconds' in input &&
+          (!('durationSeconds' in item) ||
+            Math.abs(item.durationSeconds - input.durationSeconds) >
+              execution.durationToleranceSeconds)
+        )
+          throw boundaryError('output-not-issued')
         const metadata = this.readOutput(ctx, id, item.handle)
         const { handle: _handle, ...returned } = item
         if (JSON.stringify(metadata) !== JSON.stringify(returned)) throw boundaryError('output-not-issued')

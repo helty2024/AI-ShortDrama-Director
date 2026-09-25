@@ -1,6 +1,7 @@
 import { ImageApiAdapter } from './tools/adapters/image-api.js'
 import { ImageHttpTransport } from './tools/adapters/image-http.js'
 import { ImageGenerationService } from './generation/image-service.js'
+import { VideoApiGenerationService } from './generation/video-api-service.js'
 import { loadImageProfiles, imageAdapters, importImageProfile } from './generation/image-profiles.js'
 import { MediaBroker } from './media-broker.js'
 import { protocol } from 'electron'
@@ -166,6 +167,7 @@ app
     })
     const imageProfilePath=join(app.getPath('userData'),'image-api-profiles.json')
     const imageApi=new ImageGenerationService(visual,imageAdapters(await loadImageProfiles(imageProfilePath),credentials))
+    const videoApi = new VideoApiGenerationService(visual, [])
     // Test composition only: isolated userData + unpackaged app + exact loopback origin.
     // Never derives a real endpoint/key from a test flag or registers this in packaged builds.
     if(!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_IMAGE_ORIGIN){
@@ -199,6 +201,7 @@ app
         },
       }),
       imageApi,
+      videoApi,
       async () => {
         const profile=await dialog.showOpenDialog({title:'导入 Image API Reference Profile',properties:['openFile'],filters:[{name:'Profile JSON',extensions:['json']}]})
         if(profile.canceled||!profile.filePaths[0])return null

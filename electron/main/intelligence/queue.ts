@@ -210,7 +210,11 @@ export class AITaskQueue {
               })
           },
         )
-      } else if (task.input.type !== 'parse' && task.input.type !== 'image-api') {
+      } else if (
+        task.input.type !== 'parse' &&
+        task.input.type !== 'image-api' &&
+        task.input.type !== 'video-api'
+      ) {
         const scenes = this.repo.selectedScenes(
           task.projectId,
           task.input.targetId,

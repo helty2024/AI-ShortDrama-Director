@@ -224,6 +224,7 @@ export const importPreviewSchema = z.strictObject({
 })
 export const taskInputSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('image-api'), targetId: id }),
+  z.strictObject({ type: z.literal('video-api'), targetId: id }),
   imageTaskInputSchema,
   videoTaskInputSchema,
   z.strictObject({

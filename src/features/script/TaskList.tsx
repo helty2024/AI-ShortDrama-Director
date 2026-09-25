@@ -1,7 +1,8 @@
 import type { AITask, IntelligenceCommand } from '../../shared/intelligence'
 const taskNames = {
   'image-api': '图像 API',
-    'shot-video': '镜头视频',
+  'video-api': '视频 API',
+  'shot-video': '镜头视频',
   'character-image': '角色生图',
   'location-image': '场景生图',
   'prop-image': '道具生图',

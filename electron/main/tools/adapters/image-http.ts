@@ -75,6 +75,7 @@ export class ImageHttpTransport {
     url: string,
     signal: AbortSignal,
     options: {
+      method?: 'GET' | 'POST' | 'DELETE'
       body?: string | Buffer
       contentType?: string
       key?: string
@@ -175,7 +176,7 @@ export class ImageHttpTransport {
         const req = send(
           target.url,
           {
-            method: options.body === undefined ? 'GET' : 'POST',
+            method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
             signal,
             lookup: (_host, lookupOptions, done) =>
               lookupOptions.all
@@ -284,6 +285,7 @@ export class ImageHttpTransport {
         if (
           !options.redirects ||
           redirectHosts.length >= options.redirects.max ||
+          (options.method !== undefined && options.method !== 'GET') ||
           options.body !== undefined ||
           options.key !== undefined
         )

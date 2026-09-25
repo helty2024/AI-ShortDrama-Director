@@ -1,4 +1,5 @@
 import { ImageApiPanel } from '../visual/ImageApiPanel'
+import { VideoApiPanel } from '../video/VideoApiPanel'
 import { OperationsPage } from '../operations/OperationsPage'
 import { LazyPanel } from '../../components/LazyPanel'
 import { BatchPanel } from '../video/BatchPanel'
@@ -287,6 +288,7 @@ export function GenerationPage() {
     <>
       <h1>生成</h1>
       <ImageApiPanel />
+      <VideoApiPanel />
       <OperationsPage tasksOnly />
       <p>上方统一追踪文本、图片和视频任务；下方保留早期媒体任务记录。</p>
       <EntityList kind="generationTask" />
