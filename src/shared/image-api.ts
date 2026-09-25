@@ -26,6 +26,7 @@ export const imagePreviewInputSchema = z.strictObject({
   projectId: z.uuid(),
   targetId: z.uuid(),
   toolId: toolIdSchema,
+  routingMode: z.enum(['AUTO', 'fixed']).default('fixed'),
   resolution: resolutionSchema,
   aspectRatio: aspectRatioSchema,
   count: z.number().int().min(1).max(8),
@@ -85,4 +86,6 @@ export interface ImageApiPreview {
   estimate: string
   expiresAt: string
   disclosure: string
+  executionMode: 'cloud' | 'local-service'
+  knownFree: boolean
 }

@@ -85,6 +85,12 @@ v5 只追加 continuity_snapshots、qc_reports、production_preferences、produc
 
 当前 Resolver 按同一 Storyboard 的镜头顺序继承；Phase 6 在一次 snapshot 中只读取一次项目实体和连续性集合，版本查找使用主键限定项目查询，避免每 Shot 或每 Range 请求扫描全体版本。
 
+## 07-08 ComfyUI 工具桥接
+
+`electron/main/tools/adapters/comfyui.ts` 只实现统一 Tool 生命周期与可信工作流映射；`comfyui-runtime.ts` 只连接用户自行运行的 loopback HTTP 服务。它们不管理进程，不扫描 ComfyUI 文件夹。旧 `visual/providers.ts` 继续服务 legacy 队列。
+
+新 ComfyUI 输出与 Image API 共享 `ImageGenerationService`：Broker 路由和预检 → Approval/Reservation → AITask/GenerationRecord → 受控字节校验与 MediaStorage → Candidate AssetVersion → Review/Adopt。模板 ID/版本写入现有 provenance 字段，节点配置不进入 Project Core。详见 [ComfyUI Optional ToolAdapter](comfyui-tool-adapter.md)。
+
 
 ## Phase 6 运行与验收边界
 

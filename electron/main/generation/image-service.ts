@@ -91,12 +91,20 @@ export class ImageGenerationService {
     this.imageTools.set(adapter.profile.toolId, adapter)
   }
   profiles() {
-    return this.registry.list().map((e) => ({
-      toolId: e.descriptor.id,
-      displayName: e.descriptor.name,
-      model: e.descriptor.capabilities[0].models,
-      resolutions: e.descriptor.capabilities[0].resolutions,
-    }))
+    return this.registry
+      .list()
+      .map((e) => ({
+        toolId: e.descriptor.id,
+        displayName: e.descriptor.name,
+        model: e.descriptor.capabilities[0].models,
+        resolutions: e.descriptor.capabilities[0].resolutions,
+        executionMode: e.descriptor.executionMode,
+        capabilities: e.descriptor.capabilities.map((c) => c.capability),
+      }))
+      .sort((a, b) => {
+        const locality = Number(a.executionMode === 'local-service') - Number(b.executionMode === 'local-service')
+        return locality || a.toolId.localeCompare(b.toolId)
+      })
   }
   async probe(toolId: string) {
     const tool = this.imageTools.get(toolId)
@@ -117,12 +125,12 @@ export class ImageGenerationService {
       target = this.generation.entity(p, input.targetId)
     if (!['character', 'location', 'prop', 'shot'].includes(target.kind))
       throw new DomainError('INVALID_INPUT', '只支持 Bible / Shot')
-    const entry = this.registry
+    const fixedEntry = this.registry
       .list()
       .find((e) => e.descriptor.id === input.toolId)
-    if (!entry || !this.imageTools.has(input.toolId))
-      throw new DomainError('NOT_FOUND', 'Image API 未配置')
-    const adapter = this.imageTools.get(input.toolId)!,
+    if (input.routingMode === 'fixed' && (!fixedEntry || !this.imageTools.has(input.toolId)))
+      throw new DomainError('NOT_FOUND', '图像工具未配置')
+    const fixedAdapter = this.imageTools.get(input.toolId),
       cap = input.references.length
         ? 'image.referenceGenerate'
         : 'image.generate'
@@ -167,8 +175,8 @@ export class ImageGenerationService {
           skillId: null,
           skillVersion: null,
           targetCapability: cap,
-          targetToolId: adapter.profile.toolId,
-          targetModel: adapter.profile.modelId,
+          targetToolId: fixedAdapter?.profile.toolId ?? null,
+          targetModel: fixedAdapter?.profile.modelId ?? null,
           createdAt: new Date().toISOString(),
         })
       : new GenerationService(this.generation).capturePrompt(p, target.id, cap)
@@ -206,12 +214,14 @@ export class ImageGenerationService {
       },
       policy: {
         version: '1.0.0',
-        selection: {
-          mode: 'fixed',
-          toolId: adapter.profile.toolId,
-          toolVersion: entry.descriptor.version,
-          model: adapter.profile.modelId,
-        },
+        selection: input.routingMode === 'AUTO'
+          ? { mode: 'AUTO' }
+          : {
+              mode: 'fixed',
+              toolId: fixedAdapter!.profile.toolId,
+              toolVersion: fixedEntry!.descriptor.version,
+              model: fixedAdapter!.profile.modelId,
+            },
         hardConstraints: {
           locality: input.localOnly ? 'local-only' : 'either',
           allowAssetUpload: input.allowAssetUpload,
@@ -239,6 +249,13 @@ export class ImageGenerationService {
         'CONFLICT',
         '预检未通过：配置、隐私策略或能力限制不满足',
       )
+    const selectedEntry = this.registry.get(
+        preflight.routingDecision.selectedToolId,
+        preflight.routingDecision.selectedToolVersion,
+      ),
+      adapter = this.imageTools.get(preflight.routingDecision.selectedToolId)
+    if (!adapter)
+      throw new DomainError('CONFLICT', '路由选择的图像工具不可用')
     const decision = this.generation.create(
         'routing_decisions',
         preflight.routingDecision,
@@ -257,13 +274,13 @@ export class ImageGenerationService {
       inputAssetVersionIds: references.map((v) => v.id),
       skillId: null,
       skillVersion: null,
-      workflowTemplateId: null,
-      workflowVersion: null,
+      workflowTemplateId: adapter.workflowIdentity?.templateId ?? null,
+      workflowVersion: adapter.workflowIdentity?.version ?? null,
       promptPackageId: prompt.id,
       routingDecisionId: decision.id,
       toolId: adapter.profile.toolId,
-      toolVersion: entry.descriptor.version,
-      modelId: adapter.profile.modelId,
+      toolVersion: selectedEntry.descriptor.version,
+      modelId: decision.selectedModel,
       parameters: request.snapshot,
       requestFingerprint: estimate.requestFingerprint,
       seed: null,
@@ -272,7 +289,7 @@ export class ImageGenerationService {
       estimatedCost: estimate.cost,
       actualCost: null,
       currency: adapter.profile.currency,
-      costStatus: 'unknown',
+      costStatus: estimate.cost.status === 'known' ? 'pending' : 'unknown',
       taskId: task.id,
       parentGenerationRecordId: null,
       attemptType: 'initial',
@@ -289,7 +306,7 @@ export class ImageGenerationService {
       projectId: p,
       target: target.name,
       tool: adapter.profile.displayName,
-      model: adapter.profile.modelId,
+      model: decision.selectedModel ?? adapter.profile.modelId,
       prompt: compiled.positivePrompt,
       count: input.count,
       resolution: input.resolution,
@@ -301,7 +318,16 @@ export class ImageGenerationService {
           : '未知费用，必须明确授权单次费用上限',
       expiresAt: estimate.validUntil,
       disclosure:
-        'Cloud：将发送生成描述及选中的参考图片。本地预检不证明远端可用；提交前仍需人工确认。',
+        selectedEntry.descriptor.executionMode === 'local-service'
+          ? 'Local：将提示词和项目内选中的参考图发送到用户自行运行的本机 ComfyUI；应用不会启动、停止或修改该服务。'
+          : 'Cloud：将发送生成描述及选中的参考图片。本地预检不证明远端可用；提交前仍需人工确认。',
+      executionMode:
+        selectedEntry.descriptor.executionMode === 'local-service'
+          ? 'local-service'
+          : 'cloud',
+      knownFree:
+        estimate.cost.status === 'known' &&
+        estimate.cost.estimatedCost.amountMicros === 0,
     }
     for (const [id, v] of this.previews)
       if (v.public.expiresAt < new Date().toISOString())

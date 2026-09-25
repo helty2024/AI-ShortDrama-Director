@@ -21,7 +21,12 @@ async function command(c: ImageApiCommand): Promise<unknown> {
   return r.data
 }
 const profilesSchema = z.array(
-  z.object({ toolId: z.string(), displayName: z.string() }),
+  z.object({
+    toolId: z.string(),
+    displayName: z.string(),
+    executionMode: z.enum(['cloud', 'local-service', 'managed-process', 'internal']),
+    capabilities: z.array(z.string()),
+  }),
 )
 const previewSchema = z.object({
   id: z.uuid(),
@@ -37,6 +42,8 @@ const previewSchema = z.object({
   estimate: z.string(),
   expiresAt: z.string(),
   disclosure: z.string(),
+  executionMode: z.enum(['cloud', 'local-service']),
+  knownFree: z.boolean(),
 })
 const querySchema = z.object({
   task: aiTaskSchema,
@@ -54,6 +61,7 @@ function ImageApiSession() {
     entities = state.workspace?.entities ?? []
   const [profiles, setProfiles] = useState<z.infer<typeof profilesSchema>>([]),
     [tool, setTool] = useState(''),
+    [routingMode, setRoutingMode] = useState<'AUTO' | 'fixed'>('fixed'),
     [target, setTarget] = useState(''),
     [count, setCount] = useState(1),
     [width, setWidth] = useState(1024),
@@ -119,7 +127,7 @@ function ImageApiSession() {
     <section aria-label="图像 API 生成">
       <h2>图像 API</h2>
       <p>
-        真实供应商未验证。预览不会上传素材或产生生成请求；只有确认后才允许提交。
+        云端 API 与本机 ComfyUI 使用同一生成入口。预览不会上传素材或产生生成请求；只有确认后才允许提交。
       </p>
       <button
         disabled={busy}
@@ -141,7 +149,7 @@ function ImageApiSession() {
         </p>
       ) : null}
       <button
-        disabled={busy || !tool}
+        disabled={busy || !tool || routingMode === 'AUTO'}
         onClick={() =>
           void act(async () => {
             const report = imageConnectivitySchema.parse(
@@ -176,11 +184,22 @@ function ImageApiSession() {
           </select>
         </label>
         <label>
+          路由
+          <select
+            aria-label="图像工具路由"
+            value={routingMode}
+            onChange={(e) => setRoutingMode(e.target.value as 'AUTO' | 'fixed')}
+          >
+            <option value="fixed">固定工具</option>
+            <option value="AUTO">自动选择</option>
+          </select>
+        </label>
+        <label>
           工具
-          <select value={tool} onChange={(e) => setTool(e.target.value)}>
+          <select disabled={routingMode === 'AUTO'} value={tool} onChange={(e) => setTool(e.target.value)}>
             {profiles.map((v) => (
               <option key={v.toolId} value={v.toolId}>
-                {v.displayName}
+                {v.displayName} · {v.executionMode === 'local-service' ? '本机' : '云端'}
               </option>
             ))}
           </select>
@@ -259,6 +278,7 @@ function ImageApiSession() {
                     projectId: p,
                     targetId: target,
                     toolId: tool,
+                    routingMode,
                     resolution: { width, height },
                     aspectRatio:
                       width === height
@@ -297,27 +317,31 @@ function ImageApiSession() {
           <p>
             {preview.estimate}（{preview.currency}）；有效至 {preview.expiresAt}
           </p>
-          <label>
-            最大授权金额（micro {preview.currency}，1 单位 = 1000000 micro）
-            <input
-              aria-label="最大授权微金额"
-              type="number"
-              min={0}
-              step={1}
-              value={ceiling}
-              onChange={(e) => setCeiling(e.target.value)}
-            />
-          </label>
+          {!preview.knownFree ? (
+            <label>
+              最大授权金额（micro {preview.currency}，1 单位 = 1000000 micro）
+              <input
+                aria-label="最大授权微金额"
+                type="number"
+                min={0}
+                step={1}
+                value={ceiling}
+                onChange={(e) => setCeiling(e.target.value)}
+              />
+            </label>
+          ) : null}
           <label>
             <input
               type="checkbox"
               checked={allow}
               onChange={(e) => setAllow(e.target.checked)}
             />
-            我明确允许未知估价，并授权上述费用上限
+            {preview.knownFree
+              ? '我确认在本机外部 ComfyUI 执行（工具估算费用为 0，不包含电费与 GPU 成本）'
+              : '我明确允许未知估价，并授权上述费用上限'}
           </label>
           <button
-            disabled={busy || !allow || ceiling === ''}
+            disabled={busy || !allow || (!preview.knownFree && ceiling === '')}
             onClick={() =>
               void act(async () => {
                 const task = aiTaskSchema.parse(
@@ -325,8 +349,8 @@ function ImageApiSession() {
                     op: 'confirm',
                     projectId: p,
                     previewId: preview.id,
-                    maxCostMicro: Number(ceiling),
-                    allowUnknownCost: allow,
+                    maxCostMicro: preview.knownFree ? 0 : Number(ceiling),
+                    allowUnknownCost: preview.knownFree ? false : allow,
                   }),
                 )
                 localStorage.setItem(`image-api-task:${p}`, task.id)
@@ -343,7 +367,7 @@ function ImageApiSession() {
               })
             }
           >
-            确认生成（可能收费）
+            {preview.knownFree ? '确认本机执行' : '确认生成（可能收费）'}
           </button>
         </div>
       ) : null}

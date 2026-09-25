@@ -1,6 +1,9 @@
 import { ImageApiAdapter } from './tools/adapters/image-api.js'
 import { ImageHttpTransport } from './tools/adapters/image-http.js'
 import { ImageGenerationService } from './generation/image-service.js'
+import { ComfyUIToolAdapter } from './tools/adapters/comfyui.js'
+import { validateLocalComfyUrl } from './tools/adapters/comfyui-runtime.js'
+import { builtinTemplates } from './visual/workflows.js'
 import { VideoApiGenerationService } from './generation/video-api-service.js'
 import { loadImageProfiles, imageAdapters, importImageProfile } from './generation/image-profiles.js'
 import { MediaBroker } from './media-broker.js'
@@ -166,7 +169,67 @@ app
       },
     })
     const imageProfilePath=join(app.getPath('userData'),'image-api-profiles.json')
-    const imageApi=new ImageGenerationService(visual,imageAdapters(await loadImageProfiles(imageProfilePath),credentials))
+    const configuredComfy = database
+      .list()
+      .map((project) => ({ project, settings: visual.settings(project.id) }))
+      .find((item) => item.settings.provider === 'comfyui')
+    const comfySettings = (() => {
+      if (!configuredComfy) return undefined
+      try {
+        validateLocalComfyUrl(configuredComfy.settings.baseUrl)
+        return configuredComfy.settings
+      } catch {
+        return undefined
+      }
+    })()
+    const trustedComfyWorkflow =
+      builtinTemplates.find((template) => template.id === comfySettings?.templateId) ??
+      builtinTemplates.find((template) => template.id === 'shot-keyframe')!
+    const comfyModel = comfySettings?.checkpoint || 'unconfigured-checkpoint'
+    const boundComfyWorkflow = structuredClone(trustedComfyWorkflow.workflow)
+    boundComfyWorkflow['1']!.inputs.ckpt_name = comfyModel
+    const comfyAdapter = new ComfyUIToolAdapter({
+      toolId: 'comfyui.local',
+      displayName: 'ComfyUI（本机外部服务）',
+      baseUrl: comfySettings?.baseUrl ?? 'http://127.0.0.1:8188',
+      modelId: comfyModel,
+      currency: 'USD',
+      template: {
+        templateId: trustedComfyWorkflow.id,
+        version: '1.0.0',
+        capability: 'image.generate',
+        workflow: boundComfyWorkflow,
+        requiredNodes: [
+          'CheckpointLoaderSimple',
+          'CLIPTextEncode',
+          'EmptyLatentImage',
+          'KSampler',
+          'VAEDecode',
+          'SaveImage',
+        ],
+        requiredModels: [comfyModel],
+        inputBindings: {
+          prompt: { nodeId: '2', input: 'text' },
+          negativePrompt: { nodeId: '3', input: 'text' },
+          width: { nodeId: '4', input: 'width' },
+          height: { nodeId: '4', input: 'height' },
+          seed: { nodeId: '5', input: 'seed' },
+        },
+        outputNode: '7',
+        supportedResolutions: [
+          { width: 512, height: 512 },
+          { width: 512, height: 768 },
+          { width: 768, height: 512 },
+          { width: 1024, height: 1024 },
+        ],
+        supportedAspectRatios: ['1:1', '3:4', '4:3'],
+        maxReferences: 0,
+      },
+    })
+    const imageApi=new ImageGenerationService(visual,[
+      ...imageAdapters(await loadImageProfiles(imageProfilePath),credentials),
+      comfyAdapter,
+    ])
     const videoApi = new VideoApiGenerationService(visual, [])
     // Test composition only: isolated userData + unpackaged app + exact loopback origin.
     // Never derives a real endpoint/key from a test flag or registers this in packaged builds.

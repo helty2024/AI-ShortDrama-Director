@@ -108,7 +108,15 @@ export class ToolBroker {
     const fixed = request.policy.selection
     for (const entry of this.registry.list()) {
       if (fixed.mode === 'fixed' && (entry.descriptor.id !== fixed.toolId || (fixed.toolVersion !== undefined && entry.descriptor.version !== fixed.toolVersion))) continue
-      const model = fixed.mode === 'fixed' ? fixed.model : null
+      const models = entry.descriptor.capabilities.find(
+        (candidate) => candidate.capability === request.snapshot.capability,
+      )?.models
+      const model =
+        fixed.mode === 'fixed'
+          ? fixed.model
+          : models?.status === 'known' && models.value.length === 1
+            ? models.value[0]!
+            : null
       let c: ToolCandidate = { descriptor: entry.descriptor, capability: request.snapshot.capability, model, health: null, validation: null, estimate: null, quality: { status: 'unknown' } }
       if (!staticReasons(c, request.snapshot.capability, request.policy).length) {
         try {

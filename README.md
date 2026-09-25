@@ -22,6 +22,8 @@
 
 07-07 新增 [Third-party Video API Production Path](docs/video-api-tool.md)：独立 Video Adapter、文生视频/图生视频、异步 submit/status/result、cancel/recover、重启恢复、安全下载、真实 FFprobe、Candidate → Review → Adopt 与多输出来源关联。测试用 Reference Video Protocol 不代表 Seedance/Kling/Veo/Sora/Runway/Hailuo/Packy 兼容；本地 fixture 动态生成 MP4 并验证 `submitCount=1`。`REAL_PAID_VIDEO_TEST=false`，未注册或调用真实付费视频供应商。旧 Mock/Seedance 保持 legacy compatibility path，schema v8 / package 0.6.0 不变。
 
+07-08 新增 [ComfyUI Optional ToolAdapter](docs/comfyui-tool-adapter.md)：外部用户自启的 loopback ComfyUI 以 `local-service` 与云端 Image API 并列注册，支持可信工作流预检、`object_info` 节点/模型检查、queue/history、项目版本参考图上传、`/view` 结果回收、FIXED/AUTO 路由、已知 prompt id 恢复和队列取消。新链路复用同一 Candidate → Review → Adopt；旧 ComfyUI Provider 保留兼容。应用不会启动、终止、安装或修改 ComfyUI。fixture 已验证协议；只有本机服务、明确 checkpoint 与可信模板全部就绪时才允许实机生成。
+
 契约 v1 的文本结构化能力限于有名的 string/number/boolean 字段，媒体转码限于视频，场景能力仅为预演/静帧渲染输入输出；后续扩展须升级能力契约，不使用任意 JSON 配置。图片最多 8 张参考图，具体工具可声明更小上限；工具约束检查和输入/输出关联检查由后续 validate/Broker 执行。金额以整数微单位及币种表达，未知费用/耗时独立标记。结果只返回受控 handle，不返回任意路径或 URL。
 
 `requestFingerprint` 是主进程纯函数：Zod 校验后按对象键排序进行 SHA-256，数组顺序保留；包含能力输入、来源 revision、工具/模型、版本和必要的路由语义。排除时间戳、随机运行/决策 ID、UI 状态和密钥。决策 ID 变化单独使预检/授权引用失效，不通过加入随机 ID 破坏语义哈希稳定性。27 项新增测试不启动 HTTP 服务，也不证明未来 adapter 的预检已无副作用；该行为验收属于 07-02。
