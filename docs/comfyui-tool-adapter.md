@@ -33,3 +33,7 @@ FIXED ComfyUI 缺服务、模型、节点或绑定时不回退。AUTO 先使用�
 fixture 覆盖可达/离线、object_info、模型/节点缺失、prompt_id、queued/running/completed/failed、history、view、上传、取消支持/不支持、重启历史缺失与 malformed response。fixture 通过仅代表模拟协议验证，不代表本机 GPU 或真实模型出图通过。实机验证只在用户已运行并配置服务时允许一次最小生成；应用不会为验收启动服务。
 
 旧 `ComfyUIImageProvider`、旧队列、旧项目设置与导入工作流继续保留。07-08 未增加 migration，SQLite schema 仍为 8，package 仍为 0.6.0。
+
+## 07-08.5 真实验证
+
+2026-09-26 已通过一次 SDXL Base 1.0 本机生图、1024×1024 PNG 候选、Review/Adopt，以及成功任务在全新 Electron 进程中的既有 prompt_id 恢复查询；提交次数始终为 1。内置模板完整绑定由 `comfyui-template.ts` 统一完成，模板版本为 1.0.1。详细结果、脱敏 fixture、防重复提交和恢复范围见 [真实本机验证](comfyui-local-validation.md)。

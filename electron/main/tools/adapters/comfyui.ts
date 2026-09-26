@@ -15,6 +15,7 @@ import { immutable } from '../registry.js'
 import { requestFingerprint } from '../fingerprint.js'
 import { normalizeToolError } from '../errors.js'
 import { ComfyUIRuntime, type ComfyHistoryEntry } from './comfyui-runtime.js'
+import { templateVariables } from '../../visual/workflows.js'
 
 type Workflow = Record<string, unknown>
 const clone = (value: Workflow): Workflow => structuredClone(value)
@@ -123,6 +124,12 @@ export class ComfyUIToolAdapter implements ImageApiTool {
         issues.push({ code: 'invalid-input', field: 'aspectRatio', message: '工作流不支持该画幅' })
       if ('references' in v && (v.references.length > t.maxReferences || !t.inputBindings.referenceImage))
         issues.push({ code: 'invalid-input', field: 'references', message: '参考图数量或绑定不受支持' })
+      try {
+        if (templateVariables(bind(t, v, ['director-preflight.png'])).length)
+          issues.push({ code: 'configuration-error', field: 'workflow', message: '工作流包含未绑定的模板变量' })
+      } catch {
+        issues.push({ code: 'configuration-error', field: 'workflow', message: '工作流输入绑定无效' })
+      }
     }
     if (ctx.requestFingerprint !== requestFingerprint({
       fingerprintVersion: '1', snapshot: { capability: cap, contractVersion: '1.0.0', input },
@@ -193,9 +200,10 @@ export class ComfyUIToolAdapter implements ImageApiTool {
       return { status: { state: 'running', progress: null }, entry }
     }
     const queue = await this.runtime.queue(signal)
-    const text = JSON.stringify(queue)
-    if (text.includes(handle.externalTaskId))
-      return { status: { state: text.includes('queue_running') ? 'running' : 'queued', progress: null }, entry: null }
+    if (queue.queue_running.some((entry) => entry[1] === handle.externalTaskId))
+      return { status: { state: 'running', progress: null }, entry: null }
+    if (queue.queue_pending.some((entry) => entry[1] === handle.externalTaskId))
+      return { status: { state: 'queued', progress: null }, entry: null }
     return { status: { state: 'unknown', reason: 'status-unavailable', resubmitAllowed: false }, entry: null }
   }
   async status(handle: ToolTaskHandle, signal: AbortSignal) { return (await this.state(handle, signal)).status }

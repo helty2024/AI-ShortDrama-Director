@@ -521,6 +521,7 @@ export class ImageGenerationService {
       )
       this.approvals.markSubmissionIntent(p, reservationId)
       intent = true
+      this.generation.supplement(p, v.record.id, { startedAt: new Date().toISOString() })
       const ctx: ToolExecutionContext = {
         projectId: p,
         taskId: v.task.id,
@@ -619,7 +620,10 @@ export class ImageGenerationService {
           state: 'submitted',
           id: handle.externalTaskId,
         })
-        const deadline = Date.now() + 120000
+        // A cold local checkpoint load can exceed the cloud request window.
+        // Waiting longer only polls the accepted prompt; it never resubmits.
+        const deadline = Date.now() +
+          (v.adapter.describe().executionMode === 'local-service' ? 30 * 60_000 : 120_000)
         while (Date.now() < deadline) {
           const status = await this.broker.status(
             ctx,

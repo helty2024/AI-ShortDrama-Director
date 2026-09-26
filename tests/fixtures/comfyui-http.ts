@@ -59,8 +59,9 @@ export async function comfyServer(mode: ComfyFixtureMode = 'ok', reference = fal
         queue_pending: mode === 'queued' ? [[0, promptId, {}, {}, []]] : [],
       })); return
     }
-    if (url.pathname === `/history/${promptId}`) {
+    if (url.pathname.startsWith('/history/')) {
       counts.history++; response.setHeader('Content-Type', 'application/json')
+      if (url.pathname !== `/history/${promptId}`) { response.end('{}'); return }
       if (!submitted || mode === 'history-missing' || mode === 'running' || mode === 'queued') { response.end('{}'); return }
       if (mode === 'failed') { response.end(JSON.stringify({ [promptId]: { status: { status_str: 'error', completed: true }, outputs: {} } })); return }
       response.end(JSON.stringify({ [promptId]: { status: { status_str: 'success', completed: true }, outputs: { '7': { images: [{ filename: 'result.png', subfolder: '', type: 'output' }] } } } })); return

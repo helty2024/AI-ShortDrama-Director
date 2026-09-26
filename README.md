@@ -24,6 +24,8 @@
 
 07-08 新增 [ComfyUI Optional ToolAdapter](docs/comfyui-tool-adapter.md)：外部用户自启的 loopback ComfyUI 以 `local-service` 与云端 Image API 并列注册，支持可信工作流预检、`object_info` 节点/模型检查、queue/history、项目版本参考图上传、`/view` 结果回收、FIXED/AUTO 路由、已知 prompt id 恢复和队列取消。新链路复用同一 Candidate → Review → Adopt；旧 ComfyUI Provider 保留兼容。应用不会启动、终止、安装或修改 ComfyUI。fixture 已验证协议；只有本机服务、明确 checkpoint 与可信模板全部就绪时才允许实机生成。
 
+07-08.5 已在 2026-09-26 通过一次真实本地 SDXL 生成验收：1024×1024 PNG → Candidate → Review → Adopt；全新 Electron 进程恢复查询已完成的 prompt_id，累计 submitCount=1。可信模板 1.0.1 修正 sampler 常量绑定，SQLite schema 8 / package 0.6.0 不变。可运行 `node scripts/comfyui-local-validation.mjs --recover-only` 只读核对已完成验收；生成入口 `--confirm-one-local-image` 仅用于明确授权的一次性验证，已有持久化 intent 时拒绝再次提交。详见 [真实验证记录](docs/comfyui-local-validation.md)。
+
 契约 v1 的文本结构化能力限于有名的 string/number/boolean 字段，媒体转码限于视频，场景能力仅为预演/静帧渲染输入输出；后续扩展须升级能力契约，不使用任意 JSON 配置。图片最多 8 张参考图，具体工具可声明更小上限；工具约束检查和输入/输出关联检查由后续 validate/Broker 执行。金额以整数微单位及币种表达，未知费用/耗时独立标记。结果只返回受控 handle，不返回任意路径或 URL。
 
 `requestFingerprint` 是主进程纯函数：Zod 校验后按对象键排序进行 SHA-256，数组顺序保留；包含能力输入、来源 revision、工具/模型、版本和必要的路由语义。排除时间戳、随机运行/决策 ID、UI 状态和密钥。决策 ID 变化单独使预检/授权引用失效，不通过加入随机 ID 破坏语义哈希稳定性。27 项新增测试不启动 HTTP 服务，也不证明未来 adapter 的预检已无副作用；该行为验收属于 07-02。

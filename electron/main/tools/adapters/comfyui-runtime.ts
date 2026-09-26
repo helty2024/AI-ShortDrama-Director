@@ -58,7 +58,11 @@ export class ComfyUIRuntime {
       input: z.object({ required: z.record(z.string(), z.unknown()).optional() }).optional(),
     }).passthrough()).parse(await this.json('/object_info', {}, signal))
   }
-  async queue(signal: AbortSignal) { return this.json('/queue', {}, signal) }
+  async queue(signal: AbortSignal) {
+    const entry = z.tuple([z.number(), z.string()]).rest(z.unknown())
+    return z.object({ queue_running: z.array(entry), queue_pending: z.array(entry) })
+      .parse(await this.json('/queue', {}, signal))
+  }
   async history(promptId: string, signal: AbortSignal): Promise<ComfyHistoryEntry | null> {
     const data = z.record(z.string(), z.unknown()).parse(
       await this.json('/history/' + encodeURIComponent(promptId), {}, signal),
