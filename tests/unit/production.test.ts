@@ -686,7 +686,7 @@ test('v4 upgrades to v5 without altering images, video pins or old task provider
     try {
       assert.equal(
         db.connection.prepare('PRAGMA user_version').get()?.user_version,
-        8,
+        9,
       )
       const restored = db
         .workspace(a.project.id)

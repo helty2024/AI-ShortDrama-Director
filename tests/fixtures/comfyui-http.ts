@@ -99,5 +99,5 @@ export async function comfyServer(mode: ComfyFixtureMode = 'ok', reference = fal
       outputNode: '7', supportedResolutions: [{ width: 32, height: 32 }], supportedAspectRatios: ['1:1'], maxReferences: reference ? 1 : 0,
     },
   }
-  return { origin, profile, counts, bytes, promptId, close: () => new Promise<void>((resolve) => server.close(() => resolve())) }
+  return { origin, profile, counts, bytes, promptId, setMode: (value: ComfyFixtureMode) => { mode = value }, close: () => new Promise<void>((resolve) => server.close(() => resolve())) }
 }

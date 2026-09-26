@@ -367,6 +367,7 @@ export class VideoApiGenerationService {
     previewId: string,
     maxCostMicro: number,
     allowUnknownCost: boolean,
+    onPrepared?: (task: AITask, record: ProvenanceRecord) => void,
   ): AITask {
     const preview = this.previews.get(previewId)
     if (!preview || preview.public.projectId !== projectId)
@@ -390,7 +391,7 @@ export class VideoApiGenerationService {
         ],
       })
       preview.record = { ...preview.record, approvalId: approval.id }
-      return this.approvals.prepareAfterPreflight(
+      const prepared = this.approvals.prepareAfterPreflight(
         this.broker,
         preview.request,
         preview.preflight,
@@ -398,6 +399,8 @@ export class VideoApiGenerationService {
         preview.record,
         approval.itemIds[0],
       )
+      onPrepared?.(this.generation.task(projectId, preview.task.id), this.generation.getRecord(projectId, preview.record.id))
+      return prepared
     })
     const controller = new AbortController()
     this.controllers.set(preview.task.id, controller)

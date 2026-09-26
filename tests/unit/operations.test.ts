@@ -500,7 +500,7 @@ test('v5 database appends v6 indexes and preserves UUID and prior data on reopen
     try {
       assert.equal(
         next.connection.prepare('PRAGMA user_version').get()?.user_version,
-        8,
+        9,
       )
       assert.deepEqual(next.workspace(app.project.id), before)
     } finally {

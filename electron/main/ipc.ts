@@ -1,3 +1,4 @@
+import { WorkflowService } from './workflow/service.js'
 import type { ImageGenerationService } from './generation/image-service.js'
 import type { VideoApiGenerationService } from './generation/video-api-service.js'
 import { OperationsService } from './operations/service.js'
@@ -40,6 +41,8 @@ export function registerWorkspaceIPC(
   videoApi?: VideoApiGenerationService,
   importImage?: () => Promise<null>,
 ) {
+  const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
+  workflows?.runner.recoverUnfinished()
   const pilot = new ProductionIntelligenceService(
     production,
     intelligence.queue,
@@ -85,6 +88,9 @@ export function registerWorkspaceIPC(
       try {
         const request = requestSchema.parse(raw)
         switch (request.action) {
+          case 'workflow':
+            if (!workflows) throw new DomainError('CONFLICT', '工作流服务未配置')
+            return { ok: true, data: z.json().parse(workflows.execute(request.command)) }
           case 'operations':
             return {
               ok: true,

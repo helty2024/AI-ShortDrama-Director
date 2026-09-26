@@ -175,6 +175,12 @@ export class ComfyUIToolAdapter implements ImageApiTool {
     if (this.access.has(ctx.taskId)) throw normalizeToolError({ code: 'authorization' })
     this.access.set(ctx.taskId, { context: structuredClone(ctx), access })
   }
+  authorizeRecovery(ctx: ToolExecutionContext, handle: ToolTaskHandle, access: ImageExecutionAccess) {
+    if (handle.toolId !== this.profile.toolId || handle.toolVersion !== this.describe().version || ctx.model !== this.profile.modelId)
+      throw normalizeToolError({ code: 'authorization' })
+    this.authorizeInputs(ctx, access)
+    this.owners.set(handle.externalTaskId, ctx.taskId)
+  }
   async submit<C extends ImageCapability>(cap: C, input: CapabilityInput<C>, ctx: ToolExecutionContext, signal: AbortSignal): Promise<ToolSubmitResult<CapabilityOutput<C>>> {
     const grant = this.access.get(ctx.taskId)
     if (!grant || JSON.stringify(grant.context) !== JSON.stringify(ctx) || !(await this.validate(cap, input, ctx, signal)).valid)

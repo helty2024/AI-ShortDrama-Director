@@ -21,7 +21,7 @@ for(const settled of [false,true]) test(`backup/restore retains ${settled?'consu
     const visual=new VisualRepository(new IntelligenceRepository(f.db),new MediaStorage(join(dir,'media')))
     for(const version of f.versions)for(const key of [version.storageKey,version.thumbnailPath]){const path=join(visual.storage.root,key);await mkdir(dirname(path),{recursive:true});await writeFile(path,mediaBytes)}
     const folder=await backupProject(visual,f.project.id,dir)
-    assert.equal(JSON.parse(await readFile(join(folder,'manifest.json'),'utf8')).schema,8)
+    assert.equal(JSON.parse(await readFile(join(folder,'manifest.json'),'utf8')).schema,9)
     const restored=await restoreProject(visual,folder),approval=f.approvals.listApprovals(restored.id)[0],reservation=f.approvals.history(restored.id,approval.id)[0]
     assert.equal(approval.status,'historical');assert.notEqual(approval.id,a.id);assert.equal(approval.maxAuthorizedCostMicro,a.maxAuthorizedCostMicro)
     assert.equal(reservation.status,'historical');assert.equal(reservation.historicalStatus,settled?'consumed':'pending-unknown')

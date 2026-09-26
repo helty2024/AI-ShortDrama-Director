@@ -11,12 +11,12 @@ import { provenanceTables } from '../../src/shared/provenance.js'
 import { GenerationRepository } from '../../electron/main/generation/repository.js'
 
 function v7(path:string) {const legacy=createV6(path),raw=new DatabaseSync(path);raw.exec('PRAGMA foreign_keys=ON; BEGIN IMMEDIATE');migrateGeneration(raw);raw.exec('COMMIT');raw.close();return legacy}
-for(const version of [6,7]) test(`published v${version} upgrades to v8 preserving legacy tasks and media`,async()=>{
+for(const version of [6,7]) test(`published v${version} upgrades to current schema preserving legacy tasks and media`,async()=>{
   const dir=await mkdtemp(join(tmpdir(),'approval-migrate-')),path=join(dir,'db.sqlite')
   try {
     const old=version===6?createV6(path):v7(path), db=new ProjectDatabase(path)
     try {
-      assert.equal(db.connection.prepare('PRAGMA user_version').get()!.user_version,8)
+      assert.equal(db.connection.prepare('PRAGMA user_version').get()!.user_version,9)
       assert.equal(db.connection.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1)
       assert.equal(new GenerationRepository(db).task(old.project.id,old.task.id).providerTaskId,'legacy-remote-123')
       assert.equal(db.connection.prepare('SELECT count(*) n FROM generation_approvals').get()!.n,0)

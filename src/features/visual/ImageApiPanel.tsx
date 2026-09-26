@@ -1,3 +1,4 @@
+import { createWorkflow } from '../workflow/api'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import {
@@ -305,6 +306,15 @@ function ImageApiSession() {
       >
         预览图像生成
       </button>
+      <button disabled={busy || chosen?.kind !== 'shot' || count !== 1 || !tool} onClick={() => void act(async () => {
+        await createWorkflow({ workflowType: 'shot-keyframe', generation: {
+          projectId: p, targetId: target, toolId: tool, routingMode, resolution: { width, height },
+          aspectRatio: width === height ? '1:1' : width > height ? '16:9' : '9:16', count: 1,
+          references: refs.map((assetVersionId) => ({ assetVersionId, role: 'identity', weight: 1 })),
+          allowAssetUpload: upload, localOnly,
+        } })
+        setPreview(null)
+      })}>创建 Shot 关键帧工作流（单图）</button>
       {preview ? (
         <div role="region" aria-label="图像生成确认">
           <p>

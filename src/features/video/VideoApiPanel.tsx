@@ -1,3 +1,4 @@
+import { createWorkflow } from '../workflow/api'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import {
@@ -183,6 +184,16 @@ function VideoApiSession() {
           })}>预览 Video API 生成</button>
         </>
       )}
+      <button disabled={busy || !targetId || !selectedProfile} onClick={() => void act(async () => {
+        await createWorkflow({ workflowType: 'shot-video', generation: {
+          projectId, targetId, toolId, mode, prompt: prompt.trim() || null,
+          durationSeconds: duration, fps, resolution: { width, height }, aspectRatio,
+          seed: null, firstFrameAssetVersionId: mode === 'image-to-video' ? firstFrame || null : null,
+          lastFrameAssetVersionId: mode === 'image-to-video' ? lastFrame || null : null,
+          allowAssetUpload: allowUpload, localOnly: false,
+        } })
+        setPreview(null)
+      })}>创建 Shot 视频工作流</button>
       {preview ? (
         <div role="region" aria-label="Video API 提交确认">
           <p>{preview.target} · {preview.tool} / {preview.model} · {preview.mode} · {preview.durationSeconds} 秒 · {preview.resolution.width}×{preview.resolution.height}</p>

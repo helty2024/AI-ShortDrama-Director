@@ -49,6 +49,7 @@ export interface ImageApiTool extends ToolAdapter<ImageCapability> {
     'toolId' | 'displayName' | 'currency' | 'modelId'
   >
   authorizeInputs(ctx: ToolExecutionContext, access: ImageExecutionAccess): void
+  authorizeRecovery?(ctx: ToolExecutionContext, handle: ToolTaskHandle, access: ImageExecutionAccess): void
 }
 const responseSchema = z.strictObject({
   images: z

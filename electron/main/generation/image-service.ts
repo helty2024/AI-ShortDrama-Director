@@ -15,11 +15,14 @@ import {
   type BrokerRequest,
   type PreflightResult,
 } from '../tools/broker.js'
+import type { CapabilityOutput } from '../../../src/shared/capabilities/index.js'
 import type { ImageApiTool } from '../tools/adapters/image-api.js'
 import { normalizeToolError } from '../tools/errors.js'
 import {
   toolErrorSchema,
   type ToolExecutionContext,
+  type ToolTaskHandle,
+  type ToolSubmitResult,
 } from '../../../src/shared/tools.js'
 import {
   persistedRecordSchema,
@@ -76,6 +79,8 @@ export class ImageGenerationService {
             r.generationRecordId,
             'failed',
           )
+        } else if (task.providerTaskId && this.imageTools.get(this.generation.findByTask(p.id, task.id)?.toolId ?? '')?.authorizeRecovery && this.generation.findByTask(p.id, task.id)?.outcome === 'pending') {
+          // A known accepted job remains recoverable without another submit.
         } else if (['submitted', 'pending-unknown'].includes(r.status))
           this.approvals.markUnknownSubmission(p.id, r.id)
         else
@@ -410,6 +415,7 @@ export class ImageGenerationService {
     previewId: string,
     maxCostMicro: number,
     allowUnknownCost: boolean,
+    onPrepared?: (task: AITask, record: ProvenanceRecord) => void,
   ): AITask {
     const v = this.previews.get(previewId)
     if (!v || v.public.projectId !== projectId)
@@ -433,7 +439,7 @@ export class ImageGenerationService {
         ],
       })
       v.record = { ...v.record, approvalId: approval.id }
-      return this.approvals.prepareAfterPreflight(
+      const prepared = this.approvals.prepareAfterPreflight(
         this.broker,
         v.request,
         v.preflight,
@@ -441,8 +447,10 @@ export class ImageGenerationService {
         v.record,
         approval.itemIds[0],
       )
+      onPrepared?.(this.generation.task(projectId, v.task.id), this.generation.getRecord(projectId, v.record.id))
+      return prepared
     })
-    const run = this.run(v, prepared.reservation.id).finally(() =>
+    const run = this.run({ ...v, originalRequest: v.request }, prepared.reservation.id).finally(() =>
       this.pending.delete(v.task.id),
     )
     this.pending.set(v.task.id, run)
@@ -498,7 +506,28 @@ export class ImageGenerationService {
       adopt ? targetRevision : null,
     )
   }
-  private async run(v: Preview, reservationId: string): Promise<void> {
+  async recover(p: string, taskId: string): Promise<void> {
+    if (this.pending.has(taskId)) { await this.wait(taskId); return }
+    const { task, record } = this.query(p, taskId)
+    if (task.status === 'succeeded' || record.outcome !== 'pending') return
+    const adapter = this.imageTools.get(record.toolId)
+    if (!task.providerTaskId || !adapter?.authorizeRecovery) return
+    if (adapter.workflowIdentity?.version !== record.workflowVersion || adapter.profile.modelId !== record.modelId)
+      throw new DomainError('CONFLICT', '原 Image Tool 模型或模板版本已改变')
+    const reservation = this.approvals.repository.list('approval_reservations', p).find(r => r.taskId === taskId)
+    if (!reservation || !['submitted', 'pending-unknown', 'consumed', 'requires-review'].includes(reservation.status))
+      throw new DomainError('CONFLICT', '原任务预算状态不可恢复')
+    const handle = { toolId: record.toolId, toolVersion: record.toolVersion, externalTaskId: task.providerTaskId }
+    const work = this.run({ record, task, adapter, request: { snapshot: record.parameters },
+      public: { target: this.generation.entity(p, record.targetObjectId).name } }, reservation.id, handle)
+      .finally(() => this.pending.delete(taskId))
+    this.pending.set(taskId, work)
+    await work
+  }
+  private async run(v: Omit<Preview, 'request' | 'public' | 'preflight'> & {
+    request: Pick<BrokerRequest, 'snapshot'>; public: Pick<ImageApiPreview, 'target'>
+    preflight?: PreflightResult; originalRequest?: BrokerRequest
+  }, reservationId: string, recovery?: ToolTaskHandle): Promise<void> {
     const p = v.record.projectId,
       signal = new AbortController().signal,
       assetId = randomUUID(),
@@ -519,9 +548,11 @@ export class ImageGenerationService {
           return { assetVersionId: id, mime: file.mimeType, bytes }
         }),
       )
-      this.approvals.markSubmissionIntent(p, reservationId)
+      if (!recovery) {
+        this.approvals.markSubmissionIntent(p, reservationId)
+        this.generation.supplement(p, v.record.id, { startedAt: new Date().toISOString() })
+      }
       intent = true
-      this.generation.supplement(p, v.record.id, { startedAt: new Date().toISOString() })
       const ctx: ToolExecutionContext = {
         projectId: p,
         taskId: v.task.id,
@@ -531,19 +562,23 @@ export class ImageGenerationService {
         model: v.record.modelId,
         requestFingerprint: v.record.requestFingerprint,
       }
-      this.broker.assertCurrent(v.request, v.preflight)
+      if (v.originalRequest && v.preflight) this.broker.assertCurrent(v.originalRequest, v.preflight)
       const providerSelectedResolution =
         v.adapter.outputResolutionPolicy === 'provider-auto'
-      const execution = this.broker.openExecution(
-        v.request,
-        v.preflight,
+      const execution = recovery ? this.broker.restoreExecution(v.record.parameters, ctx, v.record.toolId, v.record.toolVersion, recovery, { allowProviderSelectedResolution: providerSelectedResolution }) : this.broker.openExecution(
+        v.originalRequest!,
+        v.preflight!,
         ctx,
         null,
         { allowProviderSelectedResolution: providerSelectedResolution },
       )
-      v.adapter.authorizeInputs(ctx, {
+      const authorize = recovery
+        ? (access: import('../tools/adapters/image-api.js').ImageExecutionAccess) => v.adapter.authorizeRecovery!(ctx, recovery, access)
+        : (access: import('../tools/adapters/image-api.js').ImageExecutionAccess) => v.adapter.authorizeInputs(ctx, access)
+      authorize({
         references,
         billing: (amount, currency) => {
+          if (recovery && ['consumed', 'requires-review'].includes(this.approvals.repository.get('approval_reservations', p, reservationId).status)) return
           this.approvals.consume(
             p,
             reservationId,
@@ -607,7 +642,8 @@ export class ImageGenerationService {
       )
         throw new Error()
       submitStarted = true
-      let result = await v.adapter.submit(
+      let result: ToolSubmitResult<CapabilityOutput<'image.generate'>> = recovery
+        ? { state: 'accepted', handle: recovery } : await v.adapter.submit(
         snapshot.capability,
         snapshot.input,
         ctx,
@@ -615,7 +651,11 @@ export class ImageGenerationService {
       )
       if (result.state === 'accepted') {
         const handle = result.handle
-        this.broker.bindAccepted(ctx, execution, handle)
+        if (!recovery) this.broker.bindAccepted(ctx, execution, handle)
+        else {
+          const recovered = await this.broker.recover(ctx, execution, handle, signal)
+          if (recovered.state !== 'recovered') throw normalizeToolError({ code: 'provider' })
+        }
         this.approvals.reconcileSubmissionReceipt(p, reservationId, {
           state: 'submitted',
           id: handle.externalTaskId,

@@ -1,3 +1,4 @@
+import { WorkflowPanel } from '../workflow/WorkflowPanel'
 import { ImageApiPanel } from '../visual/ImageApiPanel'
 import { VideoApiPanel } from '../video/VideoApiPanel'
 import { OperationsPage } from '../operations/OperationsPage'
@@ -287,6 +288,7 @@ export function GenerationPage() {
   return (
     <>
       <h1>生成</h1>
+      <WorkflowPanel />
       <ImageApiPanel />
       <VideoApiPanel />
       <OperationsPage tasksOnly />
