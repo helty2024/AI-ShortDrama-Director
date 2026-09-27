@@ -193,6 +193,8 @@ Assets unifies Character, Location and Prop production. Source or Tool never cre
 
 Candidate review happens inside the selected asset. The primary adoption label is **设为主参考**. AssetVersion IDs, source type and internal status stay in SourceDetails.
 
+After adoption, the candidate immediately changes to **已确认** and a short toast says **已设为主参考**.
+
 The generic media library remains useful for imported video/audio/document and storage inspection, but it is not a seventh primary stage. Non-Bible media can be reached from contextual source/details or Maintenance until a later information-architecture decision.
 
 ## 8. Storyboard
@@ -219,6 +221,8 @@ Storyboard is a compact Shot Board, not a generic entity list or admin table.
 
 The default is **Compact Shot Board**. At 2560×1440, several Shots must be visible simultaneously; no card should occupy half the viewport. Selecting a card opens the inspector without navigating away. Reordering and batch selection are board actions. Keyframe generation opens 生成 with the Shot context.
 
+Up to 30 Shots remain in one continuous Compact Shot Board. Above 30 Shots, the board groups Shots by Scene and uses collapsible Scene headers so a long episode remains scannable without changing Shot order.
+
 ## 9. Generate
 
 Generate is the Production Center. Its primary object is a Shot, not a Tool or API request.
@@ -236,6 +240,8 @@ Generate is the Production Center. Its primary object is a Shot, not a Tool or A
 - One primary 生成 action.
 - CandidateCompare appears in place after generation.
 - ReviewActions appear beside the result; no detour through a task center.
+
+CandidateCompare shows two primary candidates at full comparison size by default. Additional candidates appear in a horizontal thumbnail switcher; they do not extend the page with an unlimited row of large previews.
 
 ### Right: Generate Inspector
 
@@ -345,7 +351,8 @@ The internal boundary remains Candidate → Review → Adopt. The interface tran
 2. Let the user inspect full media and compare relevant candidates.
 3. 批准 records that a candidate is acceptable but does not silently replace the official binding.
 4. 拒绝 records a negative review and preserves history.
-5. 设为主参考 or 设为当前镜头视频 performs the explicit adopt action.
+5. The explicit adoption labels are fixed by target: Asset → **设为主参考**, Keyframe → **设为镜头关键帧**, Video → **设为当前镜头视频**.
+6. Adoption immediately changes the adopted result to **已确认** and shows a short target-specific toast: **已设为主参考**, **已设为镜头关键帧** or **已设为当前镜头视频**.
 
 Regenerate creates another candidate and never overwrites the current official version. Stale inputs or continuity changes are explained on the candidate before adoption. IDs and internal relation names remain accessible under SourceDetails.
 
@@ -412,7 +419,7 @@ Settings owns durable Tool/model/credential/ComfyUI/Provider/storage configurati
 ### 1920×1080 secondary target
 
 - Main workspace remains the priority.
-- ContextInspector may default collapsed or overlay on demand.
+- ContextInspector defaults collapsed and opens as a right-side overlay on demand. It never pushes or compresses the main workspace.
 - ProjectNav may shrink or collapse to icon rail.
 - TaskDrawer expands over the lower workspace rather than permanently reducing content height.
 - Toolbar actions may move into an overflow menu; labels remain available.

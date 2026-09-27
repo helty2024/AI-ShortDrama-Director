@@ -194,6 +194,8 @@ Show:
 - CandidateCompare in a Waiting Review variant.
 - ConfirmationDialog variant for a paid cloud Tool.
 
+CandidateCompare displays two primary candidates at full size. Additional candidates use a horizontal thumbnail switcher rather than an unlimited row of large previews.
+
 The paid confirmation displays Tool, Model, count, estimated cost/currency and cloud upload statement. It must not display Approval or Reservation terminology.
 
 Create a local ComfyUI confirmation variant that says 本地生成 and 预计 API 费用：0.
@@ -257,8 +259,10 @@ Review pattern:
 ```text
 Current official version | Candidate A | Candidate B
                          [批准] [拒绝]
-                         [设为主参考 / 设为当前镜头视频]
+                         [设为主参考 / 设为镜头关键帧 / 设为当前镜头视频]
 ```
+
+After adoption, switch the adopted item to 已确认 immediately and show a short toast using the corresponding “已设为……” wording.
 
 SourceDetails first level:
 
@@ -275,13 +279,14 @@ Second level “技术详情” may show record IDs, Tool version and Prompt sna
 
 Validate these specific adaptations:
 
-- ContextInspector defaults collapsed or opens as an overlay.
+- ContextInspector defaults collapsed and opens as a right-side overlay. It must not push or compress the main workspace.
 - ProjectNav shrinks or becomes an icon rail.
 - Main editor/board retains its type and control size.
 - TaskDrawer expands over content instead of permanently consuming height.
 - Lower-priority toolbar actions move into overflow.
 - Script center editor stays wider than the Scene tree.
 - Storyboard still displays multiple Shot cards.
+- Storyboard stays continuous through 30 Shots; above 30 it groups by Scene with collapsible Scene headers.
 - Generate still keeps Shot Queue and central generation action usable; only one side panel stays open at a time.
 - Shot Videos keeps the player usable and moves list/inspector into collapsible regions if necessary.
 

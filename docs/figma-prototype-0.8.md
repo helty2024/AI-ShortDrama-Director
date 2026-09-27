@@ -37,7 +37,7 @@ These frames share the same 52 px TopBar, 216 px ProjectNav, 344 px ContextInspe
 2. `Storyboard 1920`
 3. `Generate 1920`
 
-The responsive frames use a 64 px icon rail, a collapsed Inspector rail, and a collapsed bottom task bar so the main workspace keeps priority. They are separate layouts rather than uniformly scaled versions of the 2560 frames.
+The responsive frames use a 64 px icon rail, a collapsed Inspector rail, and a collapsed bottom task bar so the main workspace keeps priority. The Inspector opens as a right-side overlay and never pushes the workspace. These are separate layouts rather than uniformly scaled versions of the 2560 frames.
 
 ## Design coverage
 
@@ -67,12 +67,14 @@ The Assets candidate adoption and Shot Videos shot-switch destinations were prep
 - The 1920 layouts collapse navigation and Inspector chrome while preserving workspace density; they do not scale the 2560 layouts.
 - Prompt and provider details stay inside Advanced Generation and Source Details rather than becoming first-level production stages.
 
-## Open review decisions
+## Locked interaction decisions
 
-- Confirm whether 1920 mode should open the Inspector as a right-side overlay or a temporary push panel.
-- Confirm whether the Generate candidate comparison should default to two candidates or reveal additional candidates horizontally.
-- Confirm the final copy and interaction feedback for “设为主参考” and “设为当前镜头视频”.
-- Complete the dedicated Cloud unknown-state and local ComfyUI confirmation-state board when Figma write quota is available.
-- Decide whether the compact Shot Board needs scene grouping when an episode exceeds roughly 30 shots.
+- At 1920×1080, the Inspector opens as a right-side overlay and never pushes or compresses the main workspace.
+- Generate shows two primary candidates at full size by default. Additional candidates use a horizontal thumbnail switcher.
+- Adoption labels are fixed: Asset → 设为主参考, Keyframe → 设为镜头关键帧, Video → 设为当前镜头视频.
+- Adoption immediately changes the result to 已确认 and shows a short “已设为……” toast.
+- Storyboard stays as one continuous Compact Board through 30 Shots. Above 30 Shots it groups by Scene with collapsible Scene headers.
+
+The dedicated Cloud unknown-state and local ComfyUI confirmation-state board still needs to be written when Figma write quota is available.
 
 No React, CSS, router, Electron, database, schema, Tool, Workflow, or package-version changes are included in this step.

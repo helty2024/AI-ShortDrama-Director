@@ -137,6 +137,8 @@ Generate result
 
 Review and adoption stay within the current Asset/Shot context. There is no standalone review backend in primary navigation.
 
+Adoption feedback is immediate: the adopted candidate becomes 已确认 and a short toast confirms 已设为主参考、已设为镜头关键帧 or 已设为当前镜头视频 according to the target.
+
 ## 8. Task Drawer map
 
 ```text
