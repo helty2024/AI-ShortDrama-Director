@@ -14,6 +14,25 @@ import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
 
+test('creator shell starts in compact 1920 layout', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-creator-compact-'))
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.getByRole('button', { name: '载入开发示例' }).click()
+    await expect(page.locator('.creator-nav')).toHaveClass(/is-collapsed/)
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toHaveCount(0)
+    const mainBefore = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
+    await page.getByRole('button', { name: '切换检查器' }).click()
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toBeVisible()
+    expect(await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)).toBe(mainBefore)
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('creator shell navigation, context, overlays and project round trip', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-creator-shell-'))
   const application = await launch(directory)
