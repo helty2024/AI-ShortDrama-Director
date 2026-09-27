@@ -6,12 +6,82 @@ import { buildSeed } from '../electron/main/seed.js'
 import { aiTaskSchema } from '../src/shared/intelligence.js'
 import { assetVersionSchema } from '../src/shared/visual.js'
 import { test, expect, _electron as electron } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { mkdtemp, rm, writeFile, readdir } from 'node:fs/promises'
 import sharp from 'sharp'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
+
+test('creator shell navigation, context, overlays and project round trip', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-creator-shell-'))
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('button', { name: '载入开发示例' }).click()
+    await expect(page.locator('.creator-shell')).toBeVisible()
+    const primary = page.getByRole('navigation', { name: '创作阶段' }).getByRole('button')
+    await expect(primary).toHaveCount(6)
+    for (const [index, name] of ['故事', '剧本', '资产', '分镜', '生成', '分镜视频'].entries()) await expect(primary.nth(index)).toHaveAccessibleName(name)
+    for (const [index, name] of ['项目设置', '验收与维护'].entries()) await expect(page.getByRole('navigation', { name: '次级导航' }).getByRole('button').nth(index)).toHaveAccessibleName(name)
+    for (const name of ['故事', '剧本', '资产', '分镜', '生成', '分镜视频']) {
+      await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true }).click()
+      await expect(page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page')
+    }
+    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+    await expect(page.getByRole('heading', { name: 'Provider 设置' })).toBeVisible()
+    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '验收与维护' }).click()
+    await expect(page.getByRole('heading', { name: '生产验收与维护' })).toBeVisible()
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+    const shot = await page.getByRole('combobox', { name: '当前镜头' }).locator('option').nth(1).getAttribute('value')
+    await page.getByRole('combobox', { name: '当前镜头' }).selectOption(shot!)
+    await page.getByRole('main', { name: '主工作区' }).getByRole('button', { name: '去生成' }).click()
+    await expect(page.getByRole('combobox', { name: '当前镜头' })).toHaveValue(shot!)
+    await page.getByRole('main', { name: '主工作区' }).getByRole('button', { name: '查看分镜' }).click()
+    await expect(page.getByRole('combobox', { name: '当前镜头' })).toHaveValue(shot!)
+    await page.screenshot({ path: 'test-results/CreatorShell-2560.png' })
+    const mainWidth = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.getByRole('button', { name: '关闭检查器' }).click()
+    const mainScroll = await page.locator('.creator-main').evaluate((element) => element.scrollTop)
+    await page.getByRole('button', { name: '切换检查器' }).click()
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '关闭检查器' })).toBeFocused()
+    const overlayWidth = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
+    expect(overlayWidth).toBeGreaterThan(1400)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '切换检查器' })).toBeFocused()
+    expect(await page.locator('.creator-main').evaluate((element) => element.scrollTop)).toBe(mainScroll)
+    const mainHeight = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().height)
+    await page.getByRole('button', { name: '制作任务', exact: true }).first().click()
+    await expect(page.getByRole('button', { name: /制作任务.*个任务进行中/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().height)).toBe(mainHeight)
+    await page.getByRole('button', { name: '高级模式', exact: true }).click()
+    await expect(page.getByRole('status').filter({ hasText: '已切换到高级模式' })).toBeVisible()
+    await page.getByRole('button', { name: '关闭提示' }).click()
+    await expect(page.getByText('已切换到高级模式')).toHaveCount(0)
+    await page.evaluate(() => localStorage.setItem('director-test-render-error', '1'))
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '剧本', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '当前工作区加载失败' })).toBeVisible()
+    await page.evaluate(() => localStorage.removeItem('director-test-render-error'))
+    await page.getByRole('button', { name: '重新加载当前工作区' }).click()
+    await expect(page.getByRole('heading', { name: '当前工作区加载失败' })).toHaveCount(0)
+    await page.screenshot({ path: 'test-results/CreatorShell-1920.png' })
+    expect(mainWidth).toBeGreaterThan(1400)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.getByRole('button', { name: '返回项目列表' }).click()
+    await expect(page.getByRole('heading', { name: '项目', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '打开项目' }).first().click()
+    await expect(page.locator('.creator-shell')).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '剧本', exact: true })).toHaveAttribute('aria-current', 'page')
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 async function launch(directory: string, imageFixtureOrigin?: string) {
   const environment: Record<string, string> = {}
@@ -24,6 +94,15 @@ async function launch(directory: string, imageFixtureOrigin?: string) {
   environment.DIRECTOR_TEST_USER_DATA = directory
   environment.DIRECTOR_TEXT_PROVIDER = 'mock'
   return electron.launch({ args: ['.'], env: environment })
+}
+
+async function openAssetTab(page: Page, name: '角色' | '场景' | '道具') {
+  await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '资产', exact: true }).click()
+  await page.getByRole('tab', { name, exact: true }).click()
+}
+async function openLegacy(page: Page, name: '生产看板' | '素材库') {
+  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+  await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name, exact: true }).click()
 }
 
 test('project workspace persists CRUD, seed relations and safe IPC', async () => {
@@ -62,9 +141,11 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     await expect(page.getByRole('combobox', { name: '切换项目' })).toHaveValue(
       /.+/,
     )
+    await page.getByRole('button', { name: '返回项目列表' }).click()
     await page.getByRole('button', { name: '重命名', exact: true }).click()
     await page.getByLabel('名称', { exact: true }).fill('重命名短剧')
     await page.getByRole('button', { name: '保存', exact: true }).click()
+    await page.getByRole('button', { name: '打开项目', exact: true }).click()
     await expect(
       page.getByRole('heading', { name: '重命名短剧', exact: true }),
     ).toBeVisible()
@@ -75,6 +156,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
       page.getByRole('heading', { name: '重命名短剧', exact: true }),
     ).toBeVisible()
     await expect(page.locator('.topbar strong')).toHaveText('重命名短剧')
+    await page.getByRole('button', { name: '返回项目列表' }).click()
     await page.getByRole('button', { name: '删除', exact: true }).click()
     await page.getByLabel('确认项目名').fill('重命名短剧')
     await page.getByRole('button', { name: '确认删除' }).click()
@@ -83,7 +165,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     await expect(page.locator('.topbar strong')).toHaveText(
       '雨夜来信 · 示例短剧',
     )
-    await page.getByRole('button', { name: '角色', exact: true }).click()
+    await openAssetTab(page, '角色')
     await expect(
       page.getByRole('region', { name: '角色列表' }).getByRole('listitem'),
     ).toHaveCount(3)
@@ -102,7 +184,9 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
       fullPage: true,
     })
     for (const name of ['剧本', '场景', '道具', '生成', '素材库']) {
-      await page.getByRole('button', { name, exact: true }).click()
+      if (name === '场景' || name === '道具') await openAssetTab(page, name)
+      else if (name === '素材库') await openLegacy(page, '素材库')
+      else await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true }).click()
       await expect(
         page.getByRole('heading', { name, exact: true }),
       ).toBeVisible()
@@ -110,16 +194,17 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     const seedId = await page
       .getByRole('combobox', { name: '切换项目' })
       .inputValue()
-    await page.getByRole('button', { name: '项目', exact: true }).click()
+    await page.getByRole('button', { name: '返回项目列表' }).click()
     await page.getByRole('button', { name: '新建项目', exact: true }).click()
     await page.getByLabel('名称', { exact: true }).fill('空白项目')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(page.getByRole('dialog')).not.toBeVisible()
-    await page.getByRole('button', { name: '角色', exact: true }).click()
+    await openAssetTab(page, '角色')
     await expect(
       page.getByRole('region', { name: '角色列表' }).getByRole('listitem'),
     ).toHaveCount(0)
     await page.getByRole('combobox', { name: '切换项目' }).selectOption(seedId)
+    await openAssetTab(page, '角色')
     await expect(
       page.getByRole('region', { name: '角色列表' }).getByRole('listitem'),
     ).toHaveCount(4)
@@ -215,7 +300,7 @@ test('script editing, import preview, breakdown review, Bible merge and Shot con
     await page.getByLabel('动作', { exact: true }).fill('冲突时保留的本地修改')
     await expect(page.getByRole('alert')).toContainText('数据已更新')
     page.once('dialog', (dialog) => void dialog.dismiss())
-    await page.getByRole('button', { name: '角色', exact: true }).click()
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '资产', exact: true }).click()
     await expect(page.getByLabel('动作', { exact: true })).toHaveValue(
       '冲突时保留的本地修改',
     )
@@ -313,7 +398,7 @@ test('script editing, import preview, breakdown review, Bible merge and Shot con
       path: 'test-results/script-intelligence.png',
       fullPage: true,
     })
-    await page.getByRole('button', { name: '角色', exact: true }).click()
+    await openAssetTab(page, '角色')
     const bible = page
       .getByRole('listitem')
       .filter({ has: page.getByText('阿青', { exact: true }) })
@@ -351,7 +436,7 @@ test('visual production imports, generates, reviews versions and pins Shot keyfr
   try {
     let page = await application.firstWindow()
     await page.getByRole('button', { name: '载入开发示例' }).click()
-    await page.getByRole('button', { name: '角色', exact: true }).click()
+    await openAssetTab(page, '角色')
     const character = page
       .getByRole('region', { name: '角色列表', exact: true })
       .getByRole('listitem')
@@ -448,7 +533,7 @@ test('visual production imports, generates, reviews versions and pins Shot keyfr
         filePaths: [path],
       })
     }, file)
-    await page.getByRole('button', { name: '素材库', exact: true }).click()
+    await openLegacy(page, '素材库')
     await page.getByRole('button', { name: '导入图片', exact: true }).click()
     const tile = page
       .locator('.asset-tile')
@@ -623,8 +708,8 @@ test('production board runs continuity, batch video, version-bound QC, strict co
   try {
     let page = await application.firstWindow()
     await page.getByRole('button', { name: '载入开发示例' }).click()
-    await page.getByRole('button', { name: 'Advanced', exact: true }).click()
-    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await page.getByRole('button', { name: '高级模式', exact: true }).click()
+    await openLegacy(page, '生产看板')
     await expect(
       page.getByRole('heading', { name: '生产看板', exact: true }),
     ).toBeVisible()
@@ -734,7 +819,7 @@ test('production board runs continuity, batch video, version-bound QC, strict co
     await application.close()
     application = await launch(directory)
     page = await application.firstWindow()
-    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await openLegacy(page, '生产看板')
     await expect(
       page
         .getByRole('article', { name: '生产镜头 雨中车站全景', exact: true })
@@ -757,9 +842,9 @@ test('simple production validation, task center, backup restore and diagnostics 
       .click()
     await page.getByRole('button', { name: '验收与维护', exact: true }).click()
     await page.getByRole('button', { name: '创建 3 Shot 验收项目' }).click()
-    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await openLegacy(page, '生产看板')
     await expect(
-      page.getByRole('button', { name: 'Advanced', exact: true }),
+      page.getByRole('button', { name: '高级模式', exact: true }),
     ).toBeVisible()
     await expect(page.getByRole('article', { name: /生产镜头/ })).toHaveCount(3)
     const card = page.getByRole('article', {
@@ -792,7 +877,7 @@ test('simple production validation, task center, backup restore and diagnostics 
     expect(await media.getAttribute('src')).toMatch(
       /^director-media:\/\/asset\//,
     )
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '生成', exact: true }).click()
     await expect(
       page.getByRole('heading', { name: '任务中心', exact: true }),
     ).toBeVisible()
@@ -940,10 +1025,7 @@ test('large project startup, switching and paged workspaces handle the productio
     const page = await application.firstWindow()
     await expect(page.locator('.topbar strong')).toHaveText(p.name)
     expect(Date.now() - started).toBeLessThan(15000)
-    await page
-      .getByRole('button', { name: '5. 进入工作台 / 暂时跳过设置' })
-      .click()
-    await page.getByRole('button', { name: '生产看板', exact: true }).click()
+    await openLegacy(page, '生产看板')
     await expect(page.getByRole('article', { name: /生产镜头/ })).toHaveCount(
       20,
     )
@@ -951,7 +1033,7 @@ test('large project startup, switching and paged workspaces handle the productio
     await expect(page.getByRole('article', { name: /生产镜头/ })).toHaveCount(
       20,
     )
-    await page.getByRole('button', { name: '素材库', exact: true }).click()
+    await openLegacy(page, '素材库')
     await expect(page.locator('.asset-tile')).toHaveCount(2)
     await page.getByRole('button', { name: '生成', exact: true }).click()
     await expect(page.getByText('共 500 个任务 · 第 1 页')).toBeVisible()
@@ -960,6 +1042,7 @@ test('large project startup, switching and paged workspaces handle the productio
     await page.getByLabel('切换项目', { exact: true }).selectOption(other.id)
     await expect(page.locator('.topbar strong')).toHaveText('切换目标')
     await page.getByLabel('切换项目', { exact: true }).selectOption(p.id)
+    await page.getByRole('button', { name: '生成', exact: true }).click()
     await expect(page.getByText('共 500 个任务 · 第 1 页')).toBeVisible()
   } finally {
     await application.close()
@@ -1067,8 +1150,10 @@ test('pre-v7 project opens legacy Bible, storyboard, generation, tasks and missi
     const page = await application.firstWindow(), errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
     await page.getByRole('button', { name: '打开项目', exact: true }).click()
-    for (const name of ['项目','角色','场景','道具','分镜','生成','素材库']) {
-      await page.getByRole('button', { name, exact: true }).click()
+    for (const name of ['角色','场景','道具','分镜','生成','素材库']) {
+      if (name === '角色' || name === '场景' || name === '道具') await openAssetTab(page, name)
+      else if (name === '素材库') await openLegacy(page, name)
+      else await page.getByRole('button', { name, exact: true }).click()
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
     }
     await page.locator('.asset-tile').first().click()
@@ -1084,7 +1169,7 @@ test('pre-v7 project opens legacy Bible, storyboard, generation, tasks and missi
     await expect(readiness.getByText('real-generation-partially-validated', { exact: true })).toBeVisible()
     await expect(readiness.getByText('not-validated', { exact: true })).toBeVisible()
     await expect(readiness.getByText('development-test-only', { exact: true }).first()).toBeVisible()
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '生成', exact: true }).click()
     await expect(page.getByText(/Legacy Task ·/)).toBeVisible()
     expect(errors).toEqual([])
   } finally { await application.close(); await rm(directory, { recursive: true, force: true }) }

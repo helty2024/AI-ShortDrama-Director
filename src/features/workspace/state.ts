@@ -7,13 +7,16 @@ import type {
 } from '../../shared/domain'
 export const navigation = {
   projects: '项目',
+  story: '故事',
   scripts: '剧本',
+  assetsHub: '资产',
   characters: '角色',
   locations: '场景',
   props: '道具',
   storyboard: '分镜',
   production: '生产看板',
   generation: '生成',
+  shotVideos: '分镜视频',
   assets: '素材库',
   settings: '设置',
   operations: '验收与维护',
@@ -59,7 +62,7 @@ interface Store {
   setEditorStatus: (status: EditorStatus) => void
   acceptEntity: (entity: Entity) => void
   state: State
-  navigate: (module: Module) => void
+  navigate: (module: Module) => boolean
   modal: (modal: Modal) => void
   open: (id: string) => Promise<void>
   reload: () => Promise<void>

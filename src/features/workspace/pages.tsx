@@ -224,9 +224,7 @@ export function ProjectPage() {
                   disabled={busy}
                   onClick={() => void open(project.id)}
                 >
-                  {state.workspace?.project.id === project.id
-                    ? '已打开 · 刷新'
-                    : '打开项目'}
+                  打开项目
                 </button>
                 <button
                   disabled={busy}

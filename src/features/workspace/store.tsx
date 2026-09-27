@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { workspaceService } from '../../services/workspace'
-import type { EditorStatus } from './state'
+import type { EditorStatus, Module } from './state'
 import { Context, initial, workspaceReducer } from './state'
+const creativeModules: Module[] = ['story', 'scripts', 'assetsHub', 'storyboard', 'generation', 'shotVideos']
+function preferredStage(projectId: string): Module {
+  const saved = localStorage.getItem(`director-stage:${projectId}`) as Module | null
+  return saved && creativeModules.includes(saved) ? saved : 'story'
+}
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(workspaceReducer, initial)
   const locked = useRef(false)
@@ -46,7 +51,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const workspace = recent
           ? await workspaceService.readWorkspace(recent.id)
           : null
-        if (active) patch({ projects, workspace, loading: false })
+        if (active) patch({ projects, workspace, module: workspace ? preferredStage(workspace.project.id) : 'projects', loading: false })
       } catch (error) {
         if (active)
           patch({
@@ -62,6 +67,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const run = async (
     operation: () => Promise<string | null | undefined>,
     saving: boolean,
+    destination?: 'preferred',
   ) => {
     if (locked.current || state.loading || !guard()) return
     locked.current = true
@@ -74,7 +80,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         id && projects.some((p) => p.id === id)
           ? await workspaceService.readWorkspace(id)
           : null
-      patch({ projects, workspace, modal: null })
+      patch({ projects, workspace, module: workspace ? (destination === 'preferred' || state.workspace?.project.id !== workspace.project.id ? preferredStage(workspace.project.id) : state.module) : 'projects', modal: null })
     } catch (error) {
       patch({ error: error instanceof Error ? error.message : '操作失败' })
     } finally {
@@ -100,14 +106,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             })
         },
         navigate: (module) => {
-          if (module !== state.module && !locked.current && guard())
-            patch({ module })
+          if (module === state.module) return true
+          if (locked.current || !guard()) return false
+          patch({ module })
+          if (state.workspace && creativeModules.includes(module)) localStorage.setItem(`director-stage:${state.workspace.project.id}`, module)
+          return true
         },
         modal: (modal) => {
           if (!locked.current) patch({ modal, error: null })
         },
-        open: (id) =>
-          run(async () => (await workspaceService.open(id)).id, false),
+        open: (id) => run(async () => (await workspaceService.open(id)).id, false, 'preferred'),
         reload: () => run(async () => undefined, false),
         mutate: (operation) => run(operation, true),
       }}

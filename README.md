@@ -10,7 +10,7 @@
 
 当前候选版本为 **0.7.0 Release Candidate**，冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。
 
-0.8 Creator UI baseline in design
+0.8 Creator Shell implemented; content pages remain on legacy compatibility mounts.
 
 07-01 已新增独立契约：`src/shared/tools.ts`、`capabilities/`、`routing.ts`、`generation.ts` 和 `electron/main/tools/`。九个生命周期动作与八种版本化能力均有类型/schema；新增 27 项纯契约测试。尚未接入应用调用、Routing 算法或数据库。package version 保持 0.6.0。
 

@@ -1,148 +1,157 @@
-import { MediaEnvironmentNotice } from './features/operations/MediaEnvironmentNotice'
 import { useState } from 'react'
+import { CreatorShell } from './components/creator-shell/CreatorShell'
+import { useCreator } from './components/creator-shell/creator-context'
+import { MediaEnvironmentNotice } from './features/operations/MediaEnvironmentNotice'
 import { SimpleModeContext } from './features/operations/mode'
-import {
-  OperationsPage,
-  SetupWizard,
-} from './features/operations/OperationsPage'
+import { OperationsPage, SetupWizard } from './features/operations/OperationsPage'
 import { ProductionBoard } from './features/production/ProductionBoard'
 import { AssetsPage } from './features/visual/AssetsPage'
 import { ProviderSettingsPage } from './features/visual/ProviderSettingsPage'
-import './features/visual/visual.css'
-import './App.css'
 import { ScriptPage } from './features/script/ScriptPage'
-import './features/script/script.css'
 import { WorkspaceProvider } from './features/workspace/store'
-import { navigation, useWorkspace } from './features/workspace/state'
+import { useWorkspace } from './features/workspace/state'
 import {
-  ProjectPage,
-  CharactersPage,
-  LocationsPage,
-  PropsPage,
-  StoryboardPage,
-  GenerationPage,
+  ProjectPage, CharactersPage, LocationsPage, PropsPage, StoryboardPage, GenerationPage,
 } from './features/workspace/pages'
 import { WorkspaceDialog } from './features/workspace/dialogs'
-const pages = {
-  operations: OperationsPage,
-  projects: ProjectPage,
-  production: ProductionBoard,
-  scripts: ScriptPage,
-  characters: CharactersPage,
-  locations: LocationsPage,
-  props: PropsPage,
-  storyboard: StoryboardPage,
-  generation: GenerationPage,
-  assets: AssetsPage,
-  settings: ProviderSettingsPage,
-}
-function WorkspaceShell() {
-  const { state, navigate, open, reload } = useWorkspace()
-  const [simple, setSimple] = useState(
-    () => localStorage.getItem('director-mode') !== 'advanced',
+import './features/visual/visual.css'
+import './features/script/script.css'
+import './App.css'
+
+function StoryCompatibility() {
+  const { state, modal } = useWorkspace()
+  const project = state.workspace?.project
+  if (!project) return null
+  return (
+    <section aria-label="故事">
+      <div className="page-heading">
+        <h1>故事</h1>
+        <button onClick={() => modal({ type: 'rename', project })}>编辑项目名称</button>
+      </div>
+      <div className="creator-story-summary">
+        <h2>{project.name}</h2>
+        <p>{project.description || '暂无故事简介。'}</p>
+        <p>类型：{project.genre || '未设置'} · 画幅：{project.aspectRatio} · 语言：{project.language}</p>
+      </div>
+    </section>
   )
-  const Page = pages[state.module]
+}
+function AssetsCompatibility() {
+  const [tab, setTab] = useState<'characters' | 'locations' | 'props'>('characters')
+  const pages = { characters: CharactersPage, locations: LocationsPage, props: PropsPage }
+  const Page = pages[tab]
+  const labels = { characters: '角色', locations: '场景', props: '道具' }
+  return (
+    <section aria-label="资产工作区">
+      <div className="page-heading">
+        <h1>资产</h1>
+        <div className="actions" role="tablist" aria-label="资产类型">
+          {(['characters', 'locations', 'props'] as const).map((key) => (
+            <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{labels[key]}</button>
+          ))}
+        </div>
+      </div>
+      <Page />
+      <details><summary>其他素材</summary><AssetsPage /></details>
+    </section>
+  )
+}
+function LegacyLinks() {
+  const { state, navigate } = useWorkspace()
+  if (state.module !== 'settings' && state.module !== 'operations') return null
+  const labels = { characters: '角色', locations: '场景', props: '道具', assets: '素材库', production: '生产看板', generation: '生成' }
+  return (
+    <section className="creator-compat-links" aria-label="旧版兼容入口">
+      <span>旧版兼容入口</span>
+      {(['characters', 'locations', 'props', 'assets', 'production', 'generation'] as const).map((module) => (
+        <button key={module} onClick={() => navigate(module)}>{labels[module]}</button>
+      ))}
+    </section>
+  )
+}
+function CreatorPages() {
+  const { state } = useWorkspace()
+  const { currentModule, shotId, navigateCreator, select } = useCreator()
+  if (window.desktop?.development && localStorage.getItem('director-test-render-error') === '1') {
+    throw new Error('Creator workspace test error')
+  }
+  const pages = {
+    story: StoryCompatibility, scripts: ScriptPage, assetsHub: AssetsCompatibility,
+    storyboard: StoryboardPage, generation: GenerationPage, shotVideos: ProductionBoard,
+    settings: ProviderSettingsPage, operations: OperationsPage,
+  }
+  const legacy = {
+    characters: CharactersPage, locations: LocationsPage, props: PropsPage,
+    assets: AssetsPage, production: ProductionBoard,
+  }
+  const Page = state.module in legacy
+    ? legacy[state.module as keyof typeof legacy]
+    : pages[currentModule]
+  const shots = state.workspace?.entities.filter((entity) => entity.kind === 'shot') ?? []
+  const showShotContext = ['storyboard', 'generation', 'shotVideos'].includes(currentModule) && shots.length > 0
+  return (
+    <>
+      <MediaEnvironmentNotice />
+      {showShotContext && (
+        <div className="creator-context-strip" aria-label="镜头上下文">
+          <label>
+            当前镜头
+            <select aria-label="当前镜头" value={shotId ?? ''} onChange={(event) => select({ shotId: event.target.value || undefined })}>
+              <option value="">选择镜头</option>
+              {shots.map((shot) => <option key={shot.id} value={shot.id}>{shot.name}</option>)}
+            </select>
+          </label>
+          {shotId && currentModule === 'storyboard' && <button onClick={() => navigateCreator('generation', { shotId })}>去生成</button>}
+          {shotId && currentModule === 'generation' && <button onClick={() => navigateCreator('storyboard', { shotId })}>查看分镜</button>}
+          {shotId && currentModule === 'shotVideos' && <button onClick={() => navigateCreator('generation', { shotId })}>重新生成</button>}
+        </div>
+      )}
+      {currentModule === 'shotVideos' && <h1>分镜视频</h1>}
+      <Page key={`${state.workspace?.project.id}:${state.module}:${state.editorEpoch}`} />
+      <LegacyLinks />
+    </>
+  )
+}
+function WorkspaceRoot() {
+  const { state, navigate } = useWorkspace()
+  const [simple, setSimple] = useState(() => localStorage.getItem('director-mode') !== 'advanced')
+  const inProject = Boolean(state.workspace) && state.module !== 'projects'
+  const toggleMode = () => {
+    setSimple(!simple)
+    localStorage.setItem('director-mode', simple ? 'advanced' : 'simple')
+  }
   return (
     <SimpleModeContext value={simple}>
-      <div className={simple ? 'app-shell simple-mode' : 'app-shell'}>
-        <aside>
-          <div className="brand">
-            DIRECTOR<span>AI 短剧工作台</span>
-          </div>
-          <nav aria-label="主导航">
-            {Object.entries(navigation).map(([key, label]) => (
-              <button
-                key={key}
-                aria-current={state.module === key ? 'page' : undefined}
-                disabled={state.loading || state.saving}
-                onClick={() => navigate(key as keyof typeof navigation)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-          <small>Phase 6 · 生产验收</small>
-        </aside>
-        <div className="main-shell">
+      {inProject ? (
+        <CreatorShell key={state.workspace!.project.id} simple={simple} onModeToggle={toggleMode}>
+          <div className={simple ? 'simple-mode' : ''}><CreatorPages /></div>
+        </CreatorShell>
+      ) : (
+        <div className="project-list-shell">
           <header className="topbar">
-            <div>
-              <strong>{state.workspace?.project.name ?? '尚未打开项目'}</strong>
-              <span role="status" className="save-state">
-                {state.editorStatus !== 'saved'
-                  ? {
-                      dirty: '尚未保存',
-                      saving: '自动保存中…',
-                      error: '保存失败，修改已保留',
-                    }[state.editorStatus]
-                  : state.saving
-                    ? '保存中…'
-                    : state.loading
-                      ? '加载中…'
-                      : state.error
-                        ? '操作失败'
-                        : state.modal && state.modal.type !== 'delete'
-                          ? '尚未保存'
-                          : '已保存到本地'}
-              </span>
+            <strong>{state.workspace?.project.name ?? '尚未打开项目'}</strong>
+            <div className="actions">
+              <button onClick={() => navigate('projects')}>项目</button>
+              <button onClick={() => navigate('settings')}>项目设置</button>
+              <button onClick={() => navigate('operations')}>验收与维护</button>
+              <button onClick={toggleMode}>{simple ? '高级模式' : '简洁模式'}</button>
             </div>
-            <button
-              aria-pressed={!simple}
-              onClick={() => {
-                setSimple(!simple)
-                localStorage.setItem(
-                  'director-mode',
-                  simple ? 'advanced' : 'simple',
-                )
-              }}
-            >
-              {simple ? 'Advanced' : 'Simple Mode'}
-            </button>
-            <label className="switcher">
-              切换项目
-              <select
-                aria-label="切换项目"
-                disabled={state.loading || state.saving}
-                value={state.workspace?.project.id ?? ''}
-                onChange={(event) => {
-                  if (event.target.value) void open(event.target.value)
-                }}
-              >
-                <option value="">选择项目</option>
-                {state.projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
           </header>
-          <main aria-busy={state.loading || state.saving}>
-            {state.error && !state.modal && (
-              <div role="alert" className="error">
-                {state.error}
-                <button onClick={() => void reload()}>重新加载</button>
-              </div>
-            )}
+          <main>
             <MediaEnvironmentNotice />
             <SetupWizard />
-            <Page
-              key={
-                (state.workspace?.project.id ?? 'none') +
-                ':' +
-                state.editorEpoch
-              }
-            />
+            {state.module === 'operations'
+              ? <OperationsPage />
+              : state.module === 'settings'
+                ? <ProviderSettingsPage />
+                : <ProjectPage />}
           </main>
         </div>
-        {state.modal && <WorkspaceDialog />}
-      </div>
+      )}
+      {state.modal && <WorkspaceDialog />}
     </SimpleModeContext>
   )
 }
 export default function App() {
-  return (
-    <WorkspaceProvider>
-      <WorkspaceShell />
-    </WorkspaceProvider>
-  )
+  return <WorkspaceProvider><WorkspaceRoot /></WorkspaceProvider>
 }
