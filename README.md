@@ -10,6 +10,8 @@
 
 当前候选版本为 **0.7.0 Release Candidate**，冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。
 
+0.8 Creator UI baseline in design
+
 07-01 已新增独立契约：`src/shared/tools.ts`、`capabilities/`、`routing.ts`、`generation.ts` 和 `electron/main/tools/`。九个生命周期动作与八种版本化能力均有类型/schema；新增 27 项纯契约测试。尚未接入应用调用、Routing 算法或数据库。package version 保持 0.6.0。
 
 07-02 新增 [测试专用模拟工具](tests/fixtures/tools/README.md)：同步 Image 与异步 Video，34 项行为测试验证无副作用预检、状态链、未知提交防重提、请求归属、输出校验、取消/恢复与 Abort。运行 `npx tsx --test tests/unit/tool-behavior.test.ts`，或执行 `npm run test:unit` 运行完整测试。模拟工具仅在测试中使用，不代表真实服务验收，也未实现生产 Broker。
