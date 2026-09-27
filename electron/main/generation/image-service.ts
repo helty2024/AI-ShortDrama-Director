@@ -68,7 +68,7 @@ export class ImageGenerationService {
       )) {
         const task = this.generation.task(p.id, r.taskId)
         if (
-          task.input.type !== 'image-api' ||
+          task.executionAllowed === false || task.input.type !== 'image-api' ||
           !['queued', 'running'].includes(task.status)
         )
           continue
@@ -285,6 +285,7 @@ export class ImageGenerationService {
       routingDecisionId: decision.id,
       toolId: adapter.profile.toolId,
       toolVersion: selectedEntry.descriptor.version,
+      executionMode: selectedEntry.descriptor.executionMode,
       modelId: decision.selectedModel,
       parameters: request.snapshot,
       requestFingerprint: estimate.requestFingerprint,
@@ -509,7 +510,7 @@ export class ImageGenerationService {
   async recover(p: string, taskId: string): Promise<void> {
     if (this.pending.has(taskId)) { await this.wait(taskId); return }
     const { task, record } = this.query(p, taskId)
-    if (task.status === 'succeeded' || record.outcome !== 'pending') return
+    if (task.executionAllowed === false || task.status === 'succeeded' || record.outcome !== 'pending') return
     const adapter = this.imageTools.get(record.toolId)
     if (!task.providerTaskId || !adapter?.authorizeRecovery) return
     if (adapter.workflowIdentity?.version !== record.workflowVersion || adapter.profile.modelId !== record.modelId)

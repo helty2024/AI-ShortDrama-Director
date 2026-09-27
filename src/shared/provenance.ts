@@ -20,6 +20,7 @@ export const provenancePromptSchema = z.strictObject({
   createdAt: z.iso.datetime(),
 }).refine(v => (v.skillId === null) === (v.skillVersion === null), 'Skill version must be paired')
 export const persistedRecordSchema = generationRecordSchema.safeExtend({
+  executionMode: z.enum(['cloud', 'local-service', 'managed-process', 'internal']).optional(),
   targetObjectType: targetType,
   approvalId: z.uuid().nullable(),
 })

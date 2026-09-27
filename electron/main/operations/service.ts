@@ -1,4 +1,6 @@
 import { fingerprint } from '../production/continuity.js'
+import { GenerationRepository } from '../generation/repository.js'
+import { productionMessages, moneyLabel } from '../../../src/shared/compatibility.js'
 import { z } from 'zod'
 import { writeFile } from 'node:fs/promises'
 import { metadata, DomainError } from '../database.js'
@@ -30,6 +32,7 @@ export interface OperationsHost {
   restart: () => void
 }
 export function explainError(code: string) {
+  if (productionMessages[code]) return { reason: productionMessages[code], fix: '查看来源、结果诊断与费用；不会自动重提生产任务。' }
   if (/CREDENTIAL|AUTH|401|403/.test(code))
     return {
       reason: '服务凭据未配置或失效',
@@ -127,6 +130,7 @@ export class OperationsService {
         return {
           id: j.id,
           kind: 'qc',
+          path: 'QC Task',
           target: entities.find((e) => e.id === j.shotId)?.name ?? j.shotId,
           provider: j.provider,
           status: j.status,
@@ -145,7 +149,11 @@ export class OperationsService {
         }
       }
       const t = aiTaskSchema.parse(JSON.parse(String(r.data)))
+      const record = new GenerationRepository(this.db).findByTask(p, t.id)
       return {
+        path: record || ['image-api', 'video-api'].includes(t.input.type) ? 'Production Task' : 'Legacy Task',
+        generationRecordId: record?.id ?? null,
+        readOnly: t.executionAllowed === false,
         id: t.id,
         kind: t.input.type,
         target:
@@ -163,13 +171,13 @@ export class OperationsService {
             Date.parse(t.startedAt ?? t.createdAt)) /
             1000,
         ),
-        cost: ['mock-image', 'mock-video'].includes(t.provider ?? '')
+        cost: record ? (record.estimatedCost.status === 'known' ? moneyLabel(record.estimatedCost.estimatedCost) : 'unknown / 费用未知') : ['mock-image', 'mock-video'].includes(t.provider ?? '')
           ? 'LOCAL 0'
           : t.costMetadata.estimatedCost === null
             ? '未知'
             : `${t.costMetadata.currency ?? ''} ${t.costMetadata.estimatedCost}`,
         error: t.error ? explainError(t.error.code).reason : null,
-        remoteId: t.providerTaskId,
+        remoteId: t.providerTaskId ?? t.historicalProviderTaskId ?? null,
       }
     })
     const jobs = this.db.connection

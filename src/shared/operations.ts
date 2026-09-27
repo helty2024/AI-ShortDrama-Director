@@ -85,6 +85,9 @@ export function nextAction(
   return '运行并审核 QC，确认生产结果'
 }
 export const taskRowSchema = z.object({
+  path: z.enum(['Legacy Task', 'Production Task', 'QC Task']).default('Legacy Task'),
+  generationRecordId: z.uuid().nullable().default(null),
+  readOnly: z.boolean().default(false),
   id: z.uuid(),
   kind: z.string(),
   target: z.string(),

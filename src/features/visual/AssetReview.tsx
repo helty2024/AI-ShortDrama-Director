@@ -1,3 +1,4 @@
+import { ProvenancePanel } from '../operations/ProvenancePanel'
 import { useSimpleMode } from '../operations/mode'
 import { LazyPanel } from '../../components/LazyPanel'
 import { useState } from 'react'
@@ -113,6 +114,7 @@ export function AssetReview({
               thumbnail={!(simple && v.mimeType === 'video/mp4')}
               alt={asset.name + ' v' + v.versionNumber}
             />
+            <ProvenancePanel projectId={asset.projectId} versionId={v.id} revision={v.revision} />
             <strong>
               v{v.versionNumber} · {v.status}
             </strong>

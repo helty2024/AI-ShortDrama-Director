@@ -288,6 +288,7 @@ export function GenerationPage() {
   return (
     <>
       <h1>生成</h1>
+      <p>新生产使用 Workflow Generation 或 Direct Tool Generation；旧生成入口仅用于 Legacy 兼容。</p>
       <WorkflowPanel />
       <ImageApiPanel />
       <VideoApiPanel />

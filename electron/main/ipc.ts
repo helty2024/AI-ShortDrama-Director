@@ -1,4 +1,6 @@
 import { WorkflowService } from './workflow/service.js'
+import { LineageService } from './generation/lineage.js'
+import { toolReadiness } from './tools/readiness.js'
 import type { ImageGenerationService } from './generation/image-service.js'
 import type { VideoApiGenerationService } from './generation/video-api-service.js'
 import { OperationsService } from './operations/service.js'
@@ -40,6 +42,7 @@ export function registerWorkspaceIPC(
   imageApi?: ImageGenerationService,
   videoApi?: VideoApiGenerationService,
   importImage?: () => Promise<null>,
+  hasToolCredential: (toolId: string) => Promise<boolean> = async () => false,
 ) {
   const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
   workflows?.runner.recoverUnfinished()
@@ -88,6 +91,13 @@ export function registerWorkspaceIPC(
       try {
         const request = requestSchema.parse(raw)
         switch (request.action) {
+          case 'compatibility': {
+            const c = request.command, lineage = new LineageService(database)
+            const data = c.op === 'lineage' ? lineage.version(c.projectId, c.versionId)
+              : c.op === 'generation' ? lineage.generation(c.projectId, c.recordId)
+                : await toolReadiness([...(imageApi ? [imageApi.registry] : []), ...(videoApi ? [videoApi.registry] : [])], hasToolCredential)
+            return { ok: true, data: z.json().parse(data) }
+          }
           case 'workflow':
             if (!workflows) throw new DomainError('CONFLICT', '工作流服务未配置')
             return { ok: true, data: z.json().parse(workflows.execute(request.command)) }

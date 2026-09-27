@@ -38,6 +38,7 @@ function Board({ projectId }: { projectId: string }) {
   }
   return (
     <section>
+      <p>Legacy compatibility 看板：此处的生成按钮沿用旧任务。新生产请进入“生成”页。</p>
       <p>
         从关键帧开始，依次审核视频、检查连续性和 QC。服务参数与批次设置可在顶部
         Advanced 中查看。

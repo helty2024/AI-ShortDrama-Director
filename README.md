@@ -28,6 +28,8 @@
 
 07-09 新增[最小工作流编排](docs/workflow-orchestration.md)：Shot 关键帧与 Shot 视频两条固定流程，生成前费用确认、生成后独立审核与采用，持久化步骤及任务关联，重启只恢复既有任务。SQLite 追加 v9，备份 format 4 保留编排历史并禁止恢复副本继续执行；package 版本不变。生成页提供最小创建、状态、继续与取消入口。
 
+07-10 已完成 [0.7 Compatibility Closeout](docs/compatibility-closeout.md)：Legacy、Direct Tool Generation 与 Workflow Generation 明确分流；素材可只读反查完整 Generation/Task/Routing/Prompt/Workflow 来源，旧素材显示 `Legacy / provenance unavailable`。Settings 增加 Validation Status 与当前 Runtime Status 分离的只读工具表；Reference 工具保持开发隔离。format 1/schema 6 至 format 4/schema 9 备份均可恢复且永不复活执行权。当前真实验收边界为 ComfyUI Local VALIDATED、Packy Image PARTIAL REAL VALIDATION、Real Video Provider NOT VALIDATED。package 仍为 0.6.0，正式 0.7.0 版本号和安装包留给独立 Release Candidate。
+
 契约 v1 的文本结构化能力限于有名的 string/number/boolean 字段，媒体转码限于视频，场景能力仅为预演/静帧渲染输入输出；后续扩展须升级能力契约，不使用任意 JSON 配置。图片最多 8 张参考图，具体工具可声明更小上限；工具约束检查和输入/输出关联检查由后续 validate/Broker 执行。金额以整数微单位及币种表达，未知费用/耗时独立标记。结果只返回受控 handle，不返回任意路径或 URL。
 
 `requestFingerprint` 是主进程纯函数：Zod 校验后按对象键排序进行 SHA-256，数组顺序保留；包含能力输入、来源 revision、工具/模型、版本和必要的路由语义。排除时间戳、随机运行/决策 ID、UI 状态和密钥。决策 ID 变化单独使预检/授权引用失效，不通过加入随机 ID 破坏语义哈希稳定性。27 项新增测试不启动 HTTP 服务，也不证明未来 adapter 的预检已无副作用；该行为验收属于 07-02。

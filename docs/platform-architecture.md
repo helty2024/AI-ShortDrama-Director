@@ -1,10 +1,10 @@
 # Architecture Baseline v2
 
-Status: Approved for implementation
+Status: 0.7 architecture implemented and frozen (07-01 through 07-10 COMPLETE)
 
 产品：AI ShortDrama Director · AI 短剧一站式工作流。批准日期：2026-09-13。
 
-本基线批准的是实施方向及契约，不表示新增平台能力已经实现。代码基线为 0.6.0。施工顺序和迁移门槛以 [implementation-roadmap-v2.md](implementation-roadmap-v2.md) 为准；早期 tool-protocol-phase-a.md 草案不再作为施工依据。本轮只定稿文档，不改业务代码、数据库、UI、Provider、版本或安装包。
+本基线的 0.7 架构已按 [implementation-roadmap-v2.md](implementation-roadmap-v2.md) 完成 07-01 至 07-10，并以 [compatibility-closeout.md](compatibility-closeout.md) 的验证边界冻结。架构完成不表示所有真实 Provider 均已验收：ComfyUI Local 已真实本机验证，Packy 仅部分真实验证，真实 Video Provider 未验证。代码 package 仍为 0.6.0；0.7.0 版本号与安装包由独立 Release Candidate 处理。早期 tool-protocol-phase-a.md 草案不再作为施工依据。
 
 ## 1. 产品主线与界面边界
 

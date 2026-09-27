@@ -107,7 +107,7 @@ export class VideoApiGenerationService {
       )) {
         const task = this.generation.task(project.id, reservation.taskId)
         if (
-          task.input.type !== 'video-api' ||
+          task.executionAllowed === false || task.input.type !== 'video-api' ||
           !['queued', 'running'].includes(task.status)
         )
           continue
@@ -309,6 +309,7 @@ export class VideoApiGenerationService {
       routingDecisionId: decision.id,
       toolId: adapter.profile.toolId,
       toolVersion: entry.descriptor.version,
+      executionMode: entry.descriptor.executionMode,
       modelId: adapter.profile.modelId,
       parameters: request.snapshot,
       requestFingerprint: estimate.requestFingerprint,
@@ -769,7 +770,7 @@ export class VideoApiGenerationService {
     if (
       !record ||
       task.input.type !== 'video-api' ||
-      task.status !== 'running' ||
+      task.executionAllowed === false || task.status !== 'running' ||
       !task.providerTaskId ||
       record.outcome !== 'pending'
     )

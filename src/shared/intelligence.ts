@@ -242,6 +242,8 @@ export const taskInputSchema = z.discriminatedUnion('type', [
   }),
 ])
 export const aiTaskSchema = z.strictObject({
+  historicalProviderTaskId: z.string().max(2000).nullable().optional(),
+  executionAllowed: z.boolean().optional(),
   ...imageTaskFields,
   ...meta,
   input: taskInputSchema,

@@ -1,3 +1,5 @@
+import { ProvenancePanel } from '../operations/ProvenancePanel'
+import { productionMessage } from '../../shared/compatibility'
 import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 import { workflowRunSchema, workflowSnapshotSchema, type WorkflowRun, type WorkflowSnapshot, type WorkflowCommand } from '../../shared/workflow'
@@ -60,18 +62,22 @@ function WorkflowSession({ projectId }: { projectId: string }) {
   const target = state.workspace?.entities.find((e) => e.id === run?.targetObjectId)
   const stopped = run && ['succeeded', 'failed', 'cancelled'].includes(run.status)
   return <section aria-label="制作工作流">
-    <h2>制作工作流</h2>
+    <h2>制作工作流 · Workflow Generation</h2>
     <p>在下方图像或视频表单中选择 Shot 并创建工作流。生成前确认费用，候选需审核和采用后才正式绑定。</p>
     <label>历史流程<select aria-label="选择工作流" value={selected || runs[0]?.id || ''} onChange={(e) => setSelected(e.target.value)}>
       {!runs.length && <option value="">暂无流程</option>}
       {runs.map((r) => <option key={r.id} value={r.id}>{r.workflowType === 'shot-keyframe' ? '关键帧' : '视频'} · {state.workspace?.entities.find((e) => e.id === r.targetObjectId)?.name ?? r.targetObjectId} · {names[r.status]}</option>)}
     </select></label>
     {snapshot && run && <div>
+      <p>Workflow Run：{run.id} · {run.workflowType}</p>
+      <p>Adopt：{run.resultSummary.adopted ? '已采用' : '尚未采用'}</p>
       <p role="status">流程状态：{names[run.status]} · {stepNames[run.currentStepKey]}</p>
-      {!run.executionAllowed && <p>备份历史，仅可查看。</p>}
+      {!run.executionAllowed && <p>Historical / Read-only · 备份历史，仅可查看。</p>}
       <ol>{snapshot.steps.map((s) => <li key={s.id}>{stepNames[s.stepType]}：{names[s.status]}
         {s.relatedTaskId && <details><summary>生产记录</summary><p>Task：{s.relatedTaskId}</p><p>GenerationRecord：{s.relatedGenerationRecordId}</p><p>AssetVersion：{s.relatedAssetVersionId ?? '尚未产生'}</p></details>}
-        {s.errorSummary && <p>{s.errorSummary.message}</p>}
+        {s.relatedGenerationRecordId && <ProvenancePanel projectId={projectId} recordId={s.relatedGenerationRecordId} revision={run.revision} />}
+        {s.outputSnapshot.decisions.map(d => <p key={d.id}>Review / decision：{d.action} · {d.id}</p>)}
+        {s.errorSummary && <p>{productionMessage(s.errorSummary.code)}</p>}
       </li>)}</ol>
       {!stopped && run.executionAllowed && <>
         <button disabled={busy} onClick={() => void act({ op: 'resumeWorkflowRun', projectId, runId: run.id })}>恢复 / 继续流程</button>

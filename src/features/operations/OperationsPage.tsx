@@ -1,3 +1,4 @@
+import { ProvenancePanel } from './ProvenancePanel'
 import { AssetImage } from '../visual/AssetImage'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
@@ -370,7 +371,7 @@ export function OperationsPage({ tasksOnly = false }: { tasksOnly?: boolean }) {
               >
                 Test Connection / Workflow / Results
               </button>
-              <h2>Paid Validation Flow</h2>
+              <h2>Legacy compatibility · Paid Validation Flow</h2>
               <select
                 aria-label="验收镜头"
                 value={shot}
@@ -429,7 +430,7 @@ export function OperationsPage({ tasksOnly = false }: { tasksOnly?: boolean }) {
           {snapshot.tasks.map((t) => (
             <article key={t.id}>
               <strong>
-                {t.target} · {t.kind}
+                {t.path} · {t.target} · {t.kind}
               </strong>
               <p>
                 {t.provider} · {t.status} · {Math.round(t.progress * 100)}% ·{' '}
@@ -437,7 +438,9 @@ export function OperationsPage({ tasksOnly = false }: { tasksOnly?: boolean }) {
               </p>
               {t.error && <p role="alert">{t.error}</p>}
               {t.remoteId && <p>远程 ID：{t.remoteId}</p>}
-              {['failed', 'cancelled'].includes(t.status) && (
+              {t.readOnly && <p>Historical / Read-only</p>}
+              {t.generationRecordId && <ProvenancePanel projectId={p} recordId={t.generationRecordId} revision={t.status} />}
+              {t.path !== 'Production Task' && !t.readOnly && ['failed', 'cancelled'].includes(t.status) && (
                 <button
                   disabled={busy}
                   onClick={() =>
@@ -467,7 +470,7 @@ export function OperationsPage({ tasksOnly = false }: { tasksOnly?: boolean }) {
                   重试任务
                 </button>
               )}
-              {['queued', 'running'].includes(t.status) && (
+              {t.path !== 'Production Task' && !t.readOnly && ['queued', 'running'].includes(t.status) && (
                 <button
                   disabled={busy}
                   onClick={() =>

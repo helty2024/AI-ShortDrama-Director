@@ -69,6 +69,8 @@ for (const schema of [6, 7, 8]) test(`old v${schema} backup restores into v9 wit
     assert.equal(visual.versions(project.id).length, 1)
     const task = visual.repo.list(project.id, 'ai_tasks', (await import('../../src/shared/intelligence.js')).aiTaskSchema)[0]
     assert.equal(task.providerTaskId, null)
+    assert.equal(task.historicalProviderTaskId, legacy.task.providerTaskId)
+    assert.equal(task.executionAllowed, false)
     assert.equal(repo.findByTask(project.id, task.id), null)
   } finally { db.close(); await rm(dir, { recursive: true, force: true }) }
 })

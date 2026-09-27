@@ -231,11 +231,15 @@ app
       imageApi,
       videoApi,
       async () => {
-        const profile=await dialog.showOpenDialog({title:'导入 Image API Reference Profile',properties:['openFile'],filters:[{name:'Profile JSON',extensions:['json']}]})
+        const profile=await dialog.showOpenDialog({title:'导入 Packy Image Profile',properties:['openFile'],filters:[{name:'Profile JSON',extensions:['json']}]})
         if(profile.canceled||!profile.filePaths[0])return null
         const key=await dialog.showOpenDialog({title:'导入 API Key（主进程加密保存）',properties:['openFile'],filters:[{name:'Key 文本',extensions:['txt','key']}]})
         if(key.canceled||!key.filePaths[0])return null
         return importImageProfile(imageProfilePath,profile.filePaths[0],key.filePaths[0],credentials,imageApi)
+      },
+      async (toolId) => {
+        const profile = (await loadImageProfiles(imageProfilePath)).find(p => p.toolId === toolId)
+        return Boolean(profile?.credentialRef && safeStorage.isEncryptionAvailable() && await credentials.has(profile.credentialRef))
       },
     )
     session.defaultSession.setPermissionRequestHandler(

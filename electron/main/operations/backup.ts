@@ -364,7 +364,10 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
                 }
               }
               // A restored project has no authority to poll or resubmit the original remote job.
+              const originalTask = aiTaskSchema.parse(JSON.parse(String(original.data)))
+              task.historicalProviderTaskId = originalTask.historicalProviderTaskId ?? originalTask.providerTaskId
               task.providerTaskId = null
+              task.executionAllowed = false
               parsed = task
             }
             if (table === 'projects') {

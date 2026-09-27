@@ -1,3 +1,5 @@
+import { ProvenancePanel } from '../operations/ProvenancePanel'
+import { productionMessage } from '../../shared/compatibility'
 import { createWorkflow } from '../workflow/api'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
@@ -119,7 +121,7 @@ function VideoApiSession() {
   const imageVersions = versions.filter((value) => value.mimeType.startsWith('image/'))
   return (
     <section aria-label="Video API 生成">
-      <h2>Video API</h2>
+      <h2>Video API · Direct Tool Generation</h2>
       <p>Reference Video Protocol 仅用于生产链验证，不代表任何真实视频供应商兼容。预览不会上传或提交。</p>
       {!profiles.length ? (
         <p className="empty">尚未注册 Video API Profile。旧 Mock / Seedance 路径继续独立工作。</p>
@@ -213,11 +215,14 @@ function VideoApiSession() {
       {result ? (
         <div>
           <p role="status">{result.task.status} / {result.record.outcome} · 预算 {result.reservationStatus} · 实际费用 {result.record.actualCost ? `${result.record.actualCost.amountMicros} micro ${result.record.actualCost.currency}` : 'unknown'}</p>
+          <ProvenancePanel projectId={projectId} recordId={result.record.id} revision={result.record.updatedAt} />
+          {result.task.error && <p role="alert">{productionMessage(result.task.error.code)}</p>}
           {result.diagnostic ? <p>当前阶段：{result.diagnostic.stage}</p> : null}
           <button disabled={busy} onClick={() => void act(async () => setResult(querySchema.parse(await command({ op: 'query', projectId, taskId: result.task.id }))))}>恢复 / 刷新远端任务</button>
           {result.task.status === 'running' ? <button disabled={busy || !result.task.providerTaskId} onClick={() => void act(async () => { await command({ op: 'cancel', projectId, taskId: result.task.id }); setResult(querySchema.parse(await command({ op: 'query', projectId, taskId: result.task.id }))) })}>请求取消远端任务</button> : null}
           {result.versions.map((version) => (
             <article key={version.id}>
+              <ProvenancePanel projectId={projectId} versionId={version.id} revision={version.revision} />
               <AssetImage projectId={projectId} versionId={version.id} thumbnail={false} alt={`Video API 候选 v${version.versionNumber}`} />
               <p>v{version.versionNumber} · {version.status} · {version.width}×{version.height} · {version.duration} 秒</p>
               {[false, true].map((adopt) => <button key={String(adopt)} disabled={busy} onClick={() => void act(async () => {

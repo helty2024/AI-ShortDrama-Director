@@ -102,6 +102,7 @@ export function VisualPanel({
     })
   return (
     <section className="visual-panel" aria-label={'视觉生产 ' + entity.name}>
+      <p>Legacy compatibility · 新生产请进入“生成”页的 Tool / Workflow 入口。</p>
       <h4>{entity.kind === 'shot' ? '关键帧生成' : '视觉资产与参考图'}</h4>
       {entity.kind === 'shot' && entity.approvedKeyframeVersionId && (
         <div>

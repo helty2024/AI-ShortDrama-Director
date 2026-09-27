@@ -1,3 +1,5 @@
+import { ProvenancePanel } from '../operations/ProvenancePanel'
+import { productionMessage } from '../../shared/compatibility'
 import { createWorkflow } from '../workflow/api'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
@@ -126,7 +128,7 @@ function ImageApiSession() {
   const chosen = entities.find((e) => e.id === target)
   return (
     <section aria-label="图像 API 生成">
-      <h2>图像 API</h2>
+      <h2>图像 API · Direct Tool Generation</h2>
       <p>
         云端 API 与本机 ComfyUI 使用同一生成入口。预览不会上传素材或产生生成请求；只有确认后才允许提交。
       </p>
@@ -398,7 +400,8 @@ function ImageApiSession() {
                   ? '费用已结算'
                   : '预算继续持有，待核对'}
           </p>
-          <p>{result.task.error?.message}</p>
+          <p>{result.task.error ? productionMessage(result.task.error.code) : ''}</p>
+          <ProvenancePanel projectId={p} recordId={result.record.id} revision={result.record.updatedAt} />
           <button
             disabled={busy}
             onClick={() =>
@@ -419,6 +422,7 @@ function ImageApiSession() {
           </button>
           {result.versions.map((v) => (
             <article key={v.id}>
+              <ProvenancePanel projectId={p} versionId={v.id} revision={v.revision} />
               <AssetImage
                 projectId={p}
                 versionId={v.id}

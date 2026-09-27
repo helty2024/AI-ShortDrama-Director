@@ -1,4 +1,6 @@
 import { imageServer } from './fixtures/image-http.js'
+import { createV6 } from './fixtures/provenance.js'
+import { lineageSchema } from '../src/shared/compatibility.js'
 import { ProjectDatabase, metadata } from '../electron/main/database.js'
 import { buildSeed } from '../electron/main/seed.js'
 import { aiTaskSchema } from '../src/shared/intelligence.js'
@@ -1034,8 +1036,49 @@ test('workflow desktop creates, confirms once, resumes review after restart and 
     if (!after.ok) throw new Error(after.message)
     const bound = workspaceSchema.parse(after.data).entities.find(e => e.id === shot.id)
     expect(bound?.kind === 'shot' && bound.approvedKeyframeVersionId).toBeTruthy()
+    if (bound?.kind !== 'shot' || !bound.approvedKeyframeVersionId) throw new Error('missing adopted version')
+    const lineage = await page.evaluate(({ projectId, versionId }) => window.desktop!.workspace.request({ action: 'compatibility', command: { op: 'lineage', projectId, versionId } }), { projectId, versionId: bound.approvedKeyframeVersionId })
+    if (!lineage.ok) throw new Error(lineage.message)
+    expect(lineageSchema.parse(lineage.data).status).toBe('Adopted')
+    expect(lineageSchema.parse(lineage.data).links.workflowRunId).toBeTruthy()
+    await workflow.getByText('来源 / 费用 / 工作流', { exact: true }).first().click()
+    await expect(workflow.getByText('Generated · succeeded', { exact: true })).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await expect(page.getByRole('region', { name: '制作工作流' }).getByRole('status')).toContainText('已完成')
     expect(server.counts.submit).toBe(1)
     const denied = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workflow', command: { op: 'resumeWorkflowRun', projectId: id, runId: id, status: 'succeeded' } } as never), projectId)
     expect(denied.ok).toBe(false)
   } finally { await application.close(); await server.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pre-v7 project opens legacy Bible, storyboard, generation, tasks and missing provenance without new metadata', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-legacy-ui-'))
+  const legacy = createV6(join(directory, 'workspace.sqlite'))
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow(), errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.getByRole('button', { name: '打开项目', exact: true }).click()
+    for (const name of ['项目','角色','场景','道具','分镜','生成','素材库']) {
+      await page.getByRole('button', { name, exact: true }).click()
+      await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+    }
+    await page.locator('.asset-tile').first().click()
+    const summary = page.getByText('来源 / 费用 / 工作流', { exact: true }).first()
+    await summary.click()
+    await expect(page.getByText('Legacy / provenance unavailable · approved', { exact: true })).toBeVisible()
+    const result = await page.evaluate(({ projectId, versionId }) => window.desktop!.workspace.request({ action: 'compatibility', command: { op: 'lineage', projectId, versionId } }), { projectId: legacy.project.id, versionId: legacy.version.id })
+    if (!result.ok) throw new Error(result.message)
+    expect(lineageSchema.parse(result.data).links.recordId).toBeNull()
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const readiness = page.getByRole('region', { name: 'Tool readiness' })
+    await expect(readiness.getByText('real-local-validated', { exact: true })).toBeVisible()
+    await expect(readiness.getByText('real-generation-partially-validated', { exact: true })).toBeVisible()
+    await expect(readiness.getByText('not-validated', { exact: true })).toBeVisible()
+    await expect(readiness.getByText('development-test-only', { exact: true }).first()).toBeVisible()
+    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await expect(page.getByText(/Legacy Task ·/)).toBeVisible()
+    expect(errors).toEqual([])
+  } finally { await application.close(); await rm(directory, { recursive: true, force: true }) }
 })

@@ -29,8 +29,9 @@ export async function loadImageProfiles(
 export function imageAdapters(
   profiles: StoredProfile[],
   credentials: CredentialStore,
+  allowReference = false,
 ) {
-  return profiles.map((p) => {
+  return profiles.filter(p => allowReference || 'adapter' in p).map((p) => {
     const credential = async () => {
       if (!p.credentialRef) throw new Error('credential missing')
       return credentials.get(p.credentialRef)
@@ -56,6 +57,7 @@ export async function importImageProfile(
   if (raw.length > 64000) throw new Error('Profile too large')
   const p = storedProfileSchema.parse(JSON.parse(raw)),
     u = new URL('endpoint' in p ? p.endpoint : 'https://cf.api.fan/v1')
+  if (!('adapter' in p)) throw new Error('Development / Reference profiles are not production providers')
   if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash)
     throw new Error('HTTPS endpoint required')
   const key = await readFile(keyFile, 'utf8')

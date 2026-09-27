@@ -86,7 +86,7 @@ export function VideoPanel({
   }
   return (
     <section className="video-panel" aria-label={'视频生产 ' + shot.name}>
-      <h4>视频生产</h4>
+      <h4>视频生产 · Legacy compatibility</h4><p>新生产使用“生成”页的 Tool / Workflow 入口。</p>
       {shot.confirmedVideoAssetVersionId && (
         <>
           <p>已确认视频（固定版本）</p>

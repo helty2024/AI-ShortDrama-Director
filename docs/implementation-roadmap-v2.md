@@ -117,6 +117,8 @@ v7 的新记录暂只在隔离测试中启用；付费工具产品入口必须�
 | 07-09 最小编排 | workflows/{service,repository}.ts、v9、旧批次 service 桥接 | 一个场次多镜头，步骤关联任务，人工采用才正式绑定；失败定位和已知任务恢复；唯一 scheduler |
 | 07-10 兼容收口 | ipc/index、services/、现有任务/结果页必要入口、文档及测试 | 老项目和老任务可读；新生产记录可查；完整回归通过；尚未真实验收的 adapter 不标 Ready |
 
+07-01 至 07-10 已全部完成，当前状态为 **0.7 architecture frozen**。最终兼容、来源、readiness、备份矩阵与真实 Provider 验证边界见 [compatibility-closeout.md](compatibility-closeout.md)。其中 Image/Video API 的 “COMPLETE” 指架构闭环；真实 Provider 状态单独记录，不能据此宣称全部供应商生产可用。
+
 07-01 至 07-03 是 **0.7.0 第一阶段**：仅契约、模拟工具、路由与预检。无数据库迁移、无真实收费请求、无全局 UI 重构。07-04 后才进入持久化；07-05 完成前不开放新付费提交。每步独立 Conventional Commit，可单独审查及关闭新能力。
 
 07-06/07-07 的供应商协议核对和付费测试分别管理：没有用户付费授权时，可完成代码/模拟测试，但真实验收保持未完成，不绕过顺序用 ComfyUI 冒充 API 验证。07-08 的本地工作流也需真实素材测试，不以连接成功替代生成验收。

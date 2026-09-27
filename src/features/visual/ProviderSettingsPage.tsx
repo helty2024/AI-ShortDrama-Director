@@ -1,3 +1,4 @@
+import { ToolReadinessPanel } from '../operations/ProvenancePanel'
 import { ProductionSettings } from '../video/ProductionSettings'
 import { useState } from 'react'
 import { useWorkspace } from '../workspace/state'
@@ -14,6 +15,7 @@ export function ProviderSettingsPage() {
   ) : (
     <>
       <h1>Provider 设置</h1>
+      <ToolReadinessPanel />
       <p>请先打开项目。</p>
     </>
   )
@@ -23,6 +25,7 @@ function Settings({ projectId }: { projectId: string }) {
   return (
     <>
       <h1>Provider 设置</h1>
+      <ToolReadinessPanel />
       <p>
         配置存于主进程数据库，仅支持图像生成。本地 ComfyUI
         需要已安装模型和相应节点。
