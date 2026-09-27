@@ -14,6 +14,60 @@ import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
 
+test('Story and Script creator pages keep scene context and render both target widths', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-story-script-'))
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('button', { name: '载入开发示例' }).click()
+    await expect(page.getByRole('region', { name: '故事编辑器' })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: '上下文检查器' }).getByText('故事属性')).toBeVisible()
+    await page.screenshot({ path: 'test-results/Story-2560.png' })
+    await page.getByRole('textbox', { name: '一句话概念' }).fill('一封信改变三个人的命运')
+    await page.getByRole('textbox', { name: '故事梗概' }).fill('雨夜车站的重逢。')
+    await page.getByRole('textbox', { name: '风格' }).fill('悬疑写实')
+    await page.getByRole('textbox', { name: '世界观' }).fill('临海小城')
+    await page.getByRole('textbox', { name: '创作要求' }).fill('每集结尾留下悬念')
+    await expect(page.getByRole('status')).toHaveText('尚未保存')
+    await expect(page.getByRole('status')).toHaveText('已保存到本地')
+    const projectId = await page.getByRole('combobox', { name: '切换项目' }).inputValue()
+    const persisted = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'projects.get', id }), projectId)
+    expect(persisted).toMatchObject({ ok: true, data: { logline: '一封信改变三个人的命运', description: '雨夜车站的重逢。', style: '悬疑写实', worldview: '临海小城', creativeRequirements: '每集结尾留下悬念' } })
+    await page.getByRole('button', { name: '进入剧本' }).click()
+    await expect(page.getByRole('region', { name: '分集场次树' })).toBeVisible()
+    const sceneButtons = page.locator('.scene-tree-list > li > button')
+    await expect(sceneButtons).toHaveCount(2)
+    await sceneButtons.nth(1).click()
+    await expect(sceneButtons.nth(1)).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByRole('complementary', { name: '上下文检查器' }).getByText('场次编号')).toBeVisible()
+    await page.screenshot({ path: 'test-results/Script-2560.png' })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '故事', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: '一句话概念' })).toHaveValue('一封信改变三个人的命运')
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '剧本', exact: true }).click()
+    await expect(page.locator('.scene-tree-list > li > button').nth(1)).toHaveAttribute('aria-current', 'true')
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.getByRole('button', { name: '关闭检查器' }).click()
+    const mainWidth = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
+    await page.screenshot({ path: 'test-results/Script-1920.png' })
+    await page.getByRole('button', { name: '切换检查器' }).click()
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toBeVisible()
+    expect(await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)).toBe(mainWidth)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toHaveCount(0)
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '故事', exact: true }).click()
+    await page.screenshot({ path: 'test-results/Story-1920.png' })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '剧本', exact: true }).click()
+    page.once('dialog', (dialog) => void dialog.accept())
+    await page.locator('.scene-tree-list > li').nth(1).getByRole('button', { name: /删除场次/ }).click()
+    await expect(page.locator('.scene-tree-list > li')).toHaveCount(1)
+    await expect(page.locator('.scene-tree-list > li > button').first()).toHaveAttribute('aria-current', 'true')
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('creator shell starts in compact 1920 layout', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-creator-compact-'))
   const application = await launch(directory)
@@ -141,7 +195,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
         command: { operation: 'about' },
       }),
     )
-    expect(about).toMatchObject({ ok: true, data: { version: '0.7.0', schema: 9 } })
+    expect(about).toMatchObject({ ok: true, data: { version: '0.7.0', schema: 10 } })
     const isolation = await page.evaluate(() => ({
       bridge: Boolean(window.desktop?.workspace),
       require: typeof Reflect.get(window, 'require'),
@@ -165,15 +219,11 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     await page.getByLabel('名称', { exact: true }).fill('重命名短剧')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await page.getByRole('button', { name: '打开项目', exact: true }).click()
-    await expect(
-      page.getByRole('heading', { name: '重命名短剧', exact: true }),
-    ).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '故事名称' })).toHaveValue('重命名短剧')
     await application.close()
     application = await launch(directory)
     page = await application.firstWindow()
-    await expect(
-      page.getByRole('heading', { name: '重命名短剧', exact: true }),
-    ).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '故事名称' })).toHaveValue('重命名短剧')
     await expect(page.locator('.topbar strong')).toHaveText('重命名短剧')
     await page.getByRole('button', { name: '返回项目列表' }).click()
     await page.getByRole('button', { name: '删除', exact: true }).click()
@@ -326,6 +376,7 @@ test('script editing, import preview, breakdown review, Bible merge and Shot con
     page.once('dialog', (dialog) => void dialog.accept())
     await page.getByRole('button', { name: '放弃本地修改并重新载入' }).click()
     await expect(page.getByRole('status')).toHaveText('已保存到本地')
+    await page.getByText('导入与智能拆解', { exact: true }).click()
     await page
       .getByRole('button', { name: '剧本解析 / 导入', exact: true })
       .click()

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { entitySchema, projectSchema, workspaceSchema } from '../shared/domain'
+import { entitySchema, projectInputSchema, projectSchema, workspaceSchema } from '../shared/domain'
 import type { DraftInput, ProjectInput, ProjectUpdate } from '../shared/domain'
 import type { Request } from '../shared/api'
 
@@ -14,7 +14,7 @@ export const workspaceService = {
   get: (id: string) => request({ action: 'projects.get', id }, projectSchema),
   open: (id: string) => request({ action: 'projects.open', id }, projectSchema),
   create: (input: ProjectInput) =>
-    request({ action: 'projects.create', input }, projectSchema),
+    request({ action: 'projects.create', input: projectInputSchema.parse(input) }, projectSchema),
   update: (input: ProjectUpdate) =>
     request({ action: 'projects.update', input }, projectSchema),
   delete: (id: string) => request({ action: 'projects.delete', id }, z.null()),

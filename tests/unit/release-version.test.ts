@@ -32,7 +32,7 @@ test('0.7.0 release metadata and database schema remain consistent', async () =>
       Number(
         database.connection.prepare('PRAGMA user_version').get()?.user_version,
       ),
-      9,
+      10,
     )
   } finally {
     database.close()

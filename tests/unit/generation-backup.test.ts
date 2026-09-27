@@ -31,7 +31,7 @@ test('v7 backup restores all provenance identities, multiple outputs and separat
     await media(visual.storage.root, f.versions)
     const folder = await backupProject(visual, f.project.id, dir)
     const manifest = JSON.parse(await readFile(join(folder, 'manifest.json'), 'utf8'))
-    assert.equal(manifest.format, 4); assert.equal(manifest.schema, 9)
+    assert.equal(manifest.format, 5); assert.equal(manifest.schema, 10)
     const restored = await restoreProject(visual, folder)
     assert.notEqual(restored.id, f.project.id)
     const records = f.repository.list('generation_records', restored.id)

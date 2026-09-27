@@ -17,7 +17,7 @@ function v8(path: string) {
   migrateApproval(db); db.exec('COMMIT; PRAGMA foreign_keys=ON')
   return { old, db }
 }
-const content = (db: DatabaseSync) => Object.fromEntries(['projects','entities','ai_tasks','asset_versions','generation_records','approval_reservations'].map(t => [t, db.prepare(`SELECT * FROM ${t}`).all()]))
+const content = (db: DatabaseSync) => Object.fromEntries(['projects','entities','ai_tasks','asset_versions','generation_records','approval_reservations'].map(t => [t, db.prepare(`SELECT * FROM ${t}`).all().map(row => t === 'projects' ? { ...row, data: JSON.stringify((({ logline: _logline, style: _style, worldview: _worldview, creativeRequirements: _requirements, ...rest }) => rest)(JSON.parse(String(row.data)))) } : row)]))
 test('published v8 -> v9 preserves old projects, tasks, media and is idempotent', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workflow-v9-')), path = join(dir, 'db.sqlite')
   try {
@@ -27,7 +27,7 @@ test('published v8 -> v9 preserves old projects, tasks, media and is idempotent'
     for (let i = 0; i < 2; i++) {
       const db = new ProjectDatabase(path)
       try {
-        assert.equal(db.connection.prepare('PRAGMA user_version').get()!.user_version, 9)
+        assert.equal(db.connection.prepare('PRAGMA user_version').get()!.user_version, 10)
         assert.deepEqual(content(db.connection), before)
         assert.equal(db.connection.prepare('SELECT count(*) n FROM workflow_runs').get()!.n, 0)
         assert.equal(db.connection.prepare('SELECT count(*) n FROM step_runs').get()!.n, 0)
@@ -59,7 +59,7 @@ for (const complete of [false, true]) test(`v9 backup remaps ${complete ? 'compl
     if (complete) { await f.review(first.run.id, 'approve-candidate'); await f.review(first.run.id, 'adopt-candidate') }
     const folder = await backupProject(f.services.visual, f.project.id, f.dir)
     const manifest = JSON.parse(await readFile(join(folder, 'manifest.json'), 'utf8'))
-    assert.equal(manifest.format, 4); assert.equal(manifest.schema, 9)
+    assert.equal(manifest.format, 5); assert.equal(manifest.schema, 10)
     const restored = await restoreProject(f.services.visual, folder)
     const [run] = f.services.workflow.repository.list(restored.id)
     assert.equal(run.executionAllowed, false)

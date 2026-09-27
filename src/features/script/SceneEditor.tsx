@@ -377,9 +377,9 @@ export function SceneEditor({
       ))}
       {(['narration', 'notes'] as const).map((field) => (
         <label key={field}>
-          {field === 'narration' ? '旁白' : '备注'}
+          {field === 'narration' ? '旁白' : '导演说明 / 备注'}
           <textarea
-            aria-label={field === 'narration' ? '旁白' : '备注'}
+            aria-label={field === 'narration' ? '旁白' : '导演说明 / 备注'}
             value={value[field]}
             maxLength={100000}
             onChange={(e) => change({ ...value, [field]: e.target.value })}

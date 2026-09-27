@@ -61,6 +61,7 @@ interface Store {
   setEditorOwner: (id: string | null) => void
   setEditorStatus: (status: EditorStatus) => void
   acceptEntity: (entity: Entity) => void
+  acceptProject: (project: Project) => void
   state: State
   navigate: (module: Module) => boolean
   modal: (modal: Modal) => void

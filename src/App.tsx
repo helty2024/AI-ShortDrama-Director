@@ -8,6 +8,7 @@ import { ProductionBoard } from './features/production/ProductionBoard'
 import { AssetsPage } from './features/visual/AssetsPage'
 import { ProviderSettingsPage } from './features/visual/ProviderSettingsPage'
 import { ScriptPage } from './features/script/ScriptPage'
+import { StoryPage } from './features/story/StoryPage'
 import { WorkspaceProvider } from './features/workspace/store'
 import { useWorkspace } from './features/workspace/state'
 import {
@@ -18,24 +19,6 @@ import './features/visual/visual.css'
 import './features/script/script.css'
 import './App.css'
 
-function StoryCompatibility() {
-  const { state, modal } = useWorkspace()
-  const project = state.workspace?.project
-  if (!project) return null
-  return (
-    <section aria-label="故事">
-      <div className="page-heading">
-        <h1>故事</h1>
-        <button onClick={() => modal({ type: 'rename', project })}>编辑项目名称</button>
-      </div>
-      <div className="creator-story-summary">
-        <h2>{project.name}</h2>
-        <p>{project.description || '暂无故事简介。'}</p>
-        <p>类型：{project.genre || '未设置'} · 画幅：{project.aspectRatio} · 语言：{project.language}</p>
-      </div>
-    </section>
-  )
-}
 function AssetsCompatibility() {
   const [tab, setTab] = useState<'characters' | 'locations' | 'props'>('characters')
   const pages = { characters: CharactersPage, locations: LocationsPage, props: PropsPage }
@@ -76,7 +59,7 @@ function CreatorPages() {
     throw new Error('Creator workspace test error')
   }
   const pages = {
-    story: StoryCompatibility, scripts: ScriptPage, assetsHub: AssetsCompatibility,
+    story: StoryPage, scripts: ScriptPage, assetsHub: AssetsCompatibility,
     storyboard: StoryboardPage, generation: GenerationPage, shotVideos: ProductionBoard,
     settings: ProviderSettingsPage, operations: OperationsPage,
   }

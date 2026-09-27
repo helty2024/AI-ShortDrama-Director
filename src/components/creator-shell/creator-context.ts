@@ -18,6 +18,7 @@ export interface CreatorState extends CreatorSelection {
   setTaskDrawerOpen: (open: boolean) => void
   navigateCreator: (module: CreatorModule, selection?: CreatorSelection) => void
   select: (selection: CreatorSelection) => void
+  selectScene: (sceneId: string | undefined) => void
 }
 export const CreatorContext = createContext<CreatorState | null>(null)
 export function useCreator() {

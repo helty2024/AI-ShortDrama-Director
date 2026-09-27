@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWorkspace } from '../workspace/state'
+import { useCreator } from '../../components/creator-shell/creator-context'
 import { SceneEditor } from './SceneEditor'
 import { useIntelligence } from './use-intelligence'
 import { ImportPanel } from './ImportPanel'
@@ -33,6 +34,7 @@ function ScriptWorkspace({
   entities: Entity[]
 }) {
   const { state, modal, reload, setEditorStatus } = useWorkspace()
+  const { sceneId: selectedSceneId, selectScene, navigateCreator } = useCreator()
   const ai = useIntelligence(projectId)
   const [scriptId, setScriptId] = useState(''),
     [episodeId, setEpisodeId] = useState(''),
@@ -42,19 +44,24 @@ function ScriptWorkspace({
     [tab, setTab] = useState<'analysis' | 'import'>('analysis'),
     [showReviewed, setShowReviewed] = useState(false)
   const scripts = entities.filter((e) => e.kind === 'script')
-  const script = scripts.find((e) => e.id === scriptId) ?? scripts[0]
+  const contextScene = entities.find((e): e is Scene => e.kind === 'scene' && e.id === selectedSceneId)
+  const contextEpisode = entities.find((e): e is Episode => e.kind === 'episode' && e.id === contextScene?.episodeId)
+  const script = scripts.find((e) => e.id === scriptId) ?? scripts.find((e) => e.id === contextEpisode?.scriptId) ?? scripts[0]
   const episodes = entities
     .filter(
       (e): e is Episode => e.kind === 'episode' && e.scriptId === script?.id,
     )
     .sort((a, b) => a.order - b.order)
-  const episode = episodes.find((e) => e.id === episodeId) ?? episodes[0]
+  const episode = episodes.find((e) => e.id === episodeId) ?? episodes.find((e) => e.id === contextScene?.episodeId) ?? episodes[0]
   const scenes = entities
     .filter(
       (e): e is Scene => e.kind === 'scene' && e.episodeId === episode?.id,
     )
     .sort((a, b) => a.order - b.order)
-  const scene = scenes.find((e) => e.id === sceneId) ?? scenes[0]
+  const scene = scenes.find((e) => e.id === sceneId) ?? scenes.find((e) => e.id === selectedSceneId) ?? scenes[0]
+  useEffect(() => {
+    if (scene && scene.id !== selectedSceneId) selectScene(scene.id)
+  }, [scene, selectedSceneId, selectScene])
   const safe = () => {
     if (state.editorStatus === 'saving') {
       setError('正在保存，请稍候')
@@ -87,7 +94,7 @@ function ScriptWorkspace({
       <div className="page-heading">
         <div>
           <h1>剧本</h1>
-          <p>结构化创作 → 智能草稿 → 人工审核 → 生产数据</p>
+          <p>按分集组织场次，在这里写下动作、对白与导演说明。</p>
         </div>
         <button
           onClick={() => {
@@ -114,6 +121,7 @@ function ScriptWorkspace({
                   setScriptId(e.target.value)
                   setEpisodeId('')
                   setSceneId('')
+                  selectScene(undefined)
                   setEpoch((n) => n + 1)
                 }
               }}
@@ -145,6 +153,7 @@ function ScriptWorkspace({
                 if (safe()) {
                   setEpisodeId(e.target.value)
                   setSceneId('')
+                  selectScene(undefined)
                   setEpoch((n) => n + 1)
                 }
               }}
@@ -159,6 +168,9 @@ function ScriptWorkspace({
               ))}
             </select>
           </label>
+          <ol className="episode-tree-list" aria-label="分集列表">
+            {episodes.map((item, index) => <li key={item.id}><button aria-current={episode?.id === item.id ? 'true' : undefined} onClick={() => { if (item.id !== episode?.id && safe()) { setEpisodeId(item.id); setSceneId(''); selectScene(undefined); setEpoch((n) => n + 1) } }}>第{index + 1}集 · {item.name}</button></li>)}
+          </ol>
           {episode && (
             <EpisodeName
               key={episode.id + ':' + episode.revision}
@@ -193,7 +205,7 @@ function ScriptWorkspace({
               新建场次
             </button>
           </div>
-          {!scenes.length && <p>尚无场次，可新增或从右侧导入。</p>}
+          {!scenes.length && <p>尚无场次，可新增或从“导入与智能拆解”导入。</p>}
           <ol className="scene-tree-list">
             {scenes.map((item, index) => (
               <li key={item.id}>
@@ -202,6 +214,7 @@ function ScriptWorkspace({
                   onClick={() => {
                     if (item.id !== scene?.id && safe()) {
                       setSceneId(item.id)
+                      selectScene(item.id)
                       setEpoch((n) => n + 1)
                     }
                   }}
@@ -258,6 +271,7 @@ function ScriptWorkspace({
             ))}
           </ol>
         </section>
+        <div className="script-editor-column">
         {scene ? (
           <SceneEditor
             key={scene.id + ':' + epoch}
@@ -270,9 +284,8 @@ function ScriptWorkspace({
             <p>新建剧本、分集和场次，或导入已有文本。</p>
           </section>
         )}
-        <section className="intelligence-panel" aria-label="智能分析面板">
-          <h2>智能分析</h2>
-          <p className="muted">Provider：{ai.snapshot.provider || '加载中'}</p>
+        <details className="intelligence-panel" aria-label="导入与智能拆解">
+          <summary>导入与智能拆解</summary>
           <div className="actions">
             <button
               aria-pressed={tab === 'analysis'}
@@ -422,7 +435,9 @@ function ScriptWorkspace({
             </>
           )}
           <TaskList tasks={ai.snapshot.tasks} execute={ai.execute} />
-        </section>
+        </details>
+        <div className="script-next-actions"><button onClick={() => navigateCreator('assetsHub')}>查看角色与场景资产 →</button></div>
+        </div>
       </div>
     </>
   )

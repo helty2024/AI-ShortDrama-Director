@@ -26,6 +26,10 @@ const base = {
 export const projectInputSchema = z.strictObject({
   name,
   description: z.string().max(4000),
+  logline: z.string().max(1000).default(''),
+  style: z.string().max(2000).default(''),
+  worldview: z.string().max(10000).default(''),
+  creativeRequirements: z.string().max(10000).default(''),
   genre: z.string().trim().min(1).max(80),
   aspectRatio: z.enum(['9:16', '16:9', '1:1', '4:3']),
   language: z.string().trim().min(1).max(40),
@@ -182,8 +186,8 @@ export const draftInputSchema = z.strictObject({
   sceneId: idSchema.optional(),
 })
 export type Project = z.infer<typeof projectSchema>
-export type ProjectInput = z.infer<typeof projectInputSchema>
-export type ProjectUpdate = z.infer<typeof projectUpdateSchema>
+export type ProjectInput = z.input<typeof projectInputSchema>
+export type ProjectUpdate = z.input<typeof projectUpdateSchema>
 export type Script = z.infer<typeof scriptSchema>
 export type Episode = z.infer<typeof episodeSchema>
 export type Scene = z.infer<typeof sceneSchema>

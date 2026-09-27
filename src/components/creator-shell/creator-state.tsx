@@ -43,6 +43,7 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
       setSelection((old) => normalize({ ...old, ...next }))
       setInspectorOpen(true)
     },
+    selectScene: (sceneId) => setSelection((old) => ({ ...old, sceneId: valid(sceneId, 'scene') })),
     navigateCreator: (module, next) => {
       if (navigate(module) && next) {
         setContextNotice(next.shotId && !valid(next.shotId, 'shot') ? '所选镜头已不存在，请重新选择。' : null)

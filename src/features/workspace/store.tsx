@@ -105,6 +105,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
               },
             })
         },
+        acceptProject: (project) => {
+          if (state.workspace?.project.id === project.id)
+            patch({
+              workspace: { ...state.workspace, project },
+              projects: state.projects.map((old) => old.id === project.id ? project : old),
+            })
+        },
         navigate: (module) => {
           if (module === state.module) return true
           if (locked.current || !guard()) return false

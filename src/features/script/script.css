@@ -1,9 +1,10 @@
 .script-layout {
   display: grid;
-  grid-template-columns: 180px minmax(300px, 1fr) 310px;
+  grid-template-columns: 254px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
+.script-editor-column { min-width: 0; display: grid; gap: 16px; }
 .script-tree,
 .scene-editor,
 .intelligence-panel {
@@ -24,6 +25,9 @@
 .script-tree h3 {
   font-size: 14px;
 }
+.episode-tree-list { list-style: none; margin: 12px 0; padding: 0; }
+.episode-tree-list button { width: 100%; text-align: left; }
+.episode-tree-list button[aria-current="true"] { color: #bce5af; border-color: #bce5af; }
 .scene-tree-list {
   list-style: none;
   padding: 0;
@@ -67,6 +71,8 @@
 .intelligence-panel {
   font-size: 13px;
 }
+.intelligence-panel > summary { font-size: 14px; font-weight: 600; }
+.script-next-actions { display: flex; justify-content: flex-end; }
 .intelligence-panel h2 {
   margin-top: 0;
 }
@@ -133,10 +139,7 @@ pre {
 }
 @media (max-width: 1250px) {
   .script-layout {
-    grid-template-columns: 170px minmax(280px, 1fr);
-  }
-  .intelligence-panel {
-    grid-column: 1 / -1;
+    grid-template-columns: 220px minmax(0, 1fr);
   }
   .analysis-actions {
     grid-template-columns: repeat(3, 1fr);
@@ -145,9 +148,6 @@ pre {
 @media (max-width: 900px) {
   .script-layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .intelligence-panel {
-    grid-column: auto;
   }
   .field-grid,
   .bible-fields {

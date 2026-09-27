@@ -158,6 +158,7 @@ const manifestSchema = z.discriminatedUnion('format', [
   z.strictObject({ ...manifestFields, format: z.literal(2), schema: z.literal(7) }),
   z.strictObject({ ...manifestFields, format: z.literal(3), schema: z.literal(8) }),
   z.strictObject({ ...manifestFields, format: z.literal(4), schema: z.literal(9) }),
+  z.strictObject({ ...manifestFields, format: z.literal(5), schema: z.literal(10) }),
 ])
 export async function backupProject(
   visual: VisualRepository,
@@ -231,7 +232,7 @@ export async function backupProject(
     }
   await writeFile(
     join(folder, 'manifest.json'),
-    JSON.stringify({ format: 4, projectId: p, schema: 9, files }, null, 2),
+    JSON.stringify({ format: 5, projectId: p, schema: 10, files }, null, 2),
     { flag: 'wx' },
   )
   return folder
