@@ -8,6 +8,8 @@
 
 正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。
 
+当前候选版本为 **0.7.0 Release Candidate**，冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。
+
 07-01 已新增独立契约：`src/shared/tools.ts`、`capabilities/`、`routing.ts`、`generation.ts` 和 `electron/main/tools/`。九个生命周期动作与八种版本化能力均有类型/schema；新增 27 项纯契约测试。尚未接入应用调用、Routing 算法或数据库。package version 保持 0.6.0。
 
 07-02 新增 [测试专用模拟工具](tests/fixtures/tools/README.md)：同步 Image 与异步 Video，34 项行为测试验证无副作用预检、状态链、未知提交防重提、请求归属、输出校验、取消/恢复与 Abort。运行 `npx tsx --test tests/unit/tool-behavior.test.ts`，或执行 `npm run test:unit` 运行完整测试。模拟工具仅在测试中使用，不代表真实服务验收，也未实现生产 Broker。
@@ -149,15 +151,15 @@ npm run dev
 | npm run dist       | 生成当前平台分发包                                 |
 
 开发启动脚本会清除 ELECTRON_RUN_AS_NODE。Vite 固定在 electron-vite 5 支持的 7.x 系列。
-分发使用 electron-builder；Windows 0.6.0 已配置 NSIS 安装包及临时应用图标，当前未代码签名。
+分发使用 electron-builder；Windows 0.7.0 RC 已配置 x64 NSIS 安装包及临时应用图标，当前未代码签名。
 
 ## Windows Installation
 
-运行 `release/AI-ShortDrama-Director-Setup-0.6.0-x64.exe`。安装到当前用户，无需管理员权限，默认创建开始菜单和桌面快捷方式；安装结束后通过快捷方式启动。当前未签名，Windows SmartScreen 可能显示未知发布者。仅运行你确认来源的安装包。
+运行 `release/AI-ShortDrama-Director-Setup-0.7.0-x64.exe`。安装到当前用户，无需管理员权限，默认创建开始菜单和桌面快捷方式；安装结束后通过快捷方式启动。当前未签名，Windows SmartScreen 可能显示未知发布者。仅运行你确认来源的安装包。
 
 ## First Launch
 
-首次启动自动创建本地目录并迁移 SQLite，进入 Setup Wizard / 项目工作台。可新建项目并先使用 Mock；无需 ComfyUI、Seedance Key 或外部 Node.js。`验收与维护 → About / 检查环境` 显示版本 0.6.0。
+首次启动自动创建本地目录并迁移 SQLite，进入 Setup Wizard / 项目工作台。可新建项目并先使用 Mock；无需 ComfyUI、Seedance Key 或外部 Node.js。`验收与维护 → About / 检查环境` 显示版本 0.7.0。
 
 ## FFmpeg Requirement
 
@@ -182,7 +184,7 @@ npm run dist        # 当前平台安装包
 npm run dist:win    # Windows x64 NSIS，禁止自动发布
 ```
 
-主要交付物：`release/AI-ShortDrama-Director-Setup-0.6.0-x64.exe`；未安装目录：`release/win-unpacked`。图标可用 `node scripts/create-icons.mjs` 重新生成。构建工具首次使用可能需要网络下载，离线缓存配置、验证命令、签名与升级策略见 [Windows 发布说明](docs/windows-release.md)。
+主要交付物：`release/AI-ShortDrama-Director-Setup-0.7.0-x64.exe`；未安装目录：`release/win-unpacked`。图标可用 `node scripts/create-icons.mjs` 重新生成。构建工具首次使用可能需要网络下载，离线缓存配置、验证命令、签名与升级策略见 [Windows 发布说明](docs/windows-release.md)。
 
 ## 数据存储与测试隔离
 

@@ -29,6 +29,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdirSync } from 'node:fs'
 import { ProjectDatabase } from './database.js'
 import { registerWorkspaceIPC } from './ipc.js'
+import { isolatedUserData } from './release-validation.js'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -52,9 +53,10 @@ const rendererUrl =
 // Stable across development, installation and future product-name changes.
 app.setPath('userData', join(app.getPath('appData'), 'ai-shortdrama-director'))
 app.setAppUserModelId('com.aishortdrama.director')
-// A test harness can isolate the entire userData directory; renderer never chooses a path.
-if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA)
-  app.setPath('userData', process.env.DIRECTOR_TEST_USER_DATA)
+// Release validation is opt-in and confined to the OS temp test root. The renderer
+// never chooses this path; normal packaged launches always use the stable userData.
+const testUserData = isolatedUserData(app.isPackaged, process.env)
+if (testUserData) app.setPath('userData', testUserData)
 
 async function createWindow() {
   const window = new BrowserWindow({
