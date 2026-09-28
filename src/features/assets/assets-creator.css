@@ -1,0 +1,47 @@
+.assets-creator { min-width: 0; }
+.assets-creator-heading { align-items: center; margin-bottom: 20px; }
+.assets-creator-heading p { color: var(--text-secondary); }
+.assets-creator-toolbar { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--border-default); padding-bottom: 15px; margin-bottom: 20px; }
+.assets-creator-tabs { display: flex; gap: 4px; margin-right: auto; }
+.assets-creator-tabs button { background: transparent; border-color: transparent; border-radius: 0; padding: 9px 16px; white-space: nowrap; }
+.assets-creator-tabs button[aria-selected="true"] { color: var(--accent-primary); border-bottom: 2px solid var(--accent-primary); }
+.assets-creator-tabs span { color: var(--text-muted); margin-left: 5px; }
+.assets-creator-search, .assets-creator-filter { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
+.assets-creator-search input { width: 200px; margin: 0; }
+.assets-creator-filter select { width: 132px; margin: 0; }
+.assets-creator-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(206px, 1fr)); gap: 14px; }
+.creator-asset-card { text-align: left; min-width: 0; padding: 0; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: 10px; }
+.creator-asset-card:hover, .creator-asset-card[aria-pressed="true"] { border-color: var(--accent-primary); }
+.creator-asset-card-image { position: relative; height: 156px; background: #121a22; display: grid; place-items: center; overflow: hidden; }
+.creator-asset-card-image img { width: 100%; height: 100%; max-width: none; object-fit: cover; border-radius: 0; }
+.creator-asset-card-image.is-character img { object-position: center 28%; }
+.creator-asset-card-image.is-location img { object-position: center; }
+.creator-asset-card-image.is-prop img { object-fit: contain; }
+.creator-asset-placeholder { color: #81949e; font-size: 26px; font-weight: 600; letter-spacing: 6px; }
+.creator-candidate-mark { position: absolute; right: 8px; top: 8px; padding: 3px 7px; border-radius: 5px; background: #1b2635e8; color: #e4c47b; font-size: 11px; }
+.creator-asset-card-info { padding: 12px 12px 0; display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+.creator-asset-card-info > div { display: grid; gap: 4px; min-width: 0; }
+.creator-asset-card-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.creator-asset-card-info small { color: var(--text-muted); }
+.creator-asset-card > p { color: var(--text-secondary); margin: 12px; font-size: 12px; }
+.assets-creator-empty { max-width: 500px; margin: 70px auto; text-align: center; border: 1px dashed var(--border-strong); border-radius: 10px; padding: 34px; }
+.assets-creator-empty p { color: var(--text-secondary); }
+.creator-asset-inspector { display: grid; gap: 19px; }
+.creator-asset-inspector section { border-bottom: 1px solid var(--border-default); padding-bottom: 18px; }
+.creator-asset-inspector h3 { font-size: 14px; margin: 0 0 10px; }
+.creator-asset-inspector p { line-height: 1.6; color: var(--text-secondary); }
+.creator-asset-inspector .asset-thumbnail, .creator-asset-inspector .asset-preview { width: 100%; height: auto; max-height: 250px; object-fit: contain; background: #121a22; }
+.creator-asset-inspector .actions { display: flex; gap: 7px; flex-wrap: wrap; margin: 9px 0; }
+.creator-candidate-strip { display: flex; gap: 9px; overflow-x: auto; padding-bottom: 6px; }
+.creator-candidate-thumb { flex: 0 0 92px; min-width: 0; padding: 5px; text-align: center; }
+.creator-candidate-thumb img { width: 78px; height: 65px; object-fit: cover; }
+.creator-candidate-thumb[aria-pressed="true"] { border-color: var(--accent-primary); }
+.creator-candidate-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.creator-candidate-compare figure { margin: 0; min-width: 0; }
+.creator-candidate-compare img { width: 100%; max-height: 210px; object-fit: contain; }
+.creator-candidate-compare figcaption { color: var(--text-muted); font-size: 11px; }
+.creator-source-details dl { display: grid; grid-template-columns: 85px minmax(0, 1fr); gap: 6px; }
+.creator-source-details dd { margin: 0; overflow-wrap: anywhere; }
+.creator-source-details dt { color: var(--text-muted); }
+.creator-source-details pre { max-height: 180px; overflow: auto; font-size: 10px; }
+@media (max-width: 700px) { .assets-creator-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); } .assets-creator-search input { width: 150px; } }

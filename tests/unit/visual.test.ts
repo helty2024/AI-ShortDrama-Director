@@ -39,6 +39,7 @@ import {
 } from '../../src/shared/visual.js'
 import { aiTaskSchema } from '../../src/shared/intelligence.js'
 import type { Shot } from '../../src/shared/domain.js'
+import { adoptedReferences } from '../../src/features/assets/creator-assets.js'
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), 'director-visual-'))
   const db = new ProjectDatabase(':memory:')
@@ -115,7 +116,7 @@ async function generate(
   )
 }
 
-test('image import validates MIME, copies originals, hashes duplicates and creates a real thumbnail', async () => {
+test('image import validates MIME, copies originals, and creates a real thumbnail', async () => {
   const app = await setup()
   try {
     const version = await importImage(app)
@@ -133,8 +134,13 @@ test('image import validates MIME, copies originals, hashes duplicates and creat
       320,
     )
     const duplicate = await importImage(app)
-    assert.equal(duplicate.id, version.id)
-    assert.equal(app.visual.versions(app.project.id).length, 1)
+    assert.notEqual(duplicate.assetId, version.assetId)
+    assert.notEqual(duplicate.id, version.id)
+    assert.equal(duplicate.hash, version.hash)
+    assert.equal(app.visual.versions(app.project.id).length, 2)
+    const sameAsset = await importImage(app, version.assetId)
+    assert.equal(sameAsset.id, version.id)
+    assert.equal(app.visual.versions(app.project.id).length, 2)
     await rm(join(app.directory, 'test.png'))
     assert.ok((await app.storage.read(version.storageKey)).length)
     assert.ok((await app.visual.scan()).length >= 2)
@@ -149,6 +155,59 @@ test('image import validates MIME, copies originals, hashes duplicates and creat
   } finally {
     await app.close()
   }
+})
+
+test('asset.import keeps a current primary while equal-byte new imports become separate candidates', async () => {
+  const app = await setup()
+  try {
+    const path = join(app.directory, 'same.png')
+    await writeFile(path, await image())
+    const a = await app.visual.importFile(app.project.id, path, 'A', null)
+    app.visual.review(app.project.id, a.id, a.revision, 'approved', null, null)
+    const character = target(app, 'character')
+    assert.equal(character.kind, 'character')
+    if (character.kind !== 'character') throw new Error('missing character')
+    app.visual.saveReferences(app.project.id, character.id, character.revision, [
+      { assetId: a.assetId, role: 'fullBodyReference', primary: true },
+    ])
+    const importer = new VisualService(app.visual, app.queue, {
+      images: async () => [path], workflow: async () => null,
+    })
+    const [bId] = await importer.execute({ operation: 'asset.import', projectId: app.project.id, assetId: null, targetId: character.id }) as string[]
+    assert.notEqual(a.assetId, bId)
+    const b = app.visual.versions(app.project.id).find((v) => v.assetId === bId)
+    assert.ok(b)
+    assert.equal(b.hash, a.hash)
+    const afterNew = app.repo.entity(app.project.id, character.id)
+    assert.equal(afterNew.kind, 'character')
+    if (afterNew.kind !== 'character') throw new Error('missing character')
+    assert.deepEqual(afterNew.visualReferences, [
+      { assetId: a.assetId, role: 'fullBodyReference', primary: true },
+      { assetId: bId, role: 'faceReference', primary: false },
+    ])
+    await importer.execute({ operation: 'asset.import', projectId: app.project.id, assetId: a.assetId, targetId: character.id })
+    await writeFile(path, await sharp({ create: { width: 640, height: 480, channels: 3, background: '#334455' } }).png().toBuffer())
+    await importer.execute({ operation: 'asset.import', projectId: app.project.id, assetId: a.assetId, targetId: character.id })
+    assert.equal(app.visual.versions(app.project.id).filter((version) => version.assetId === a.assetId).length, 2)
+    const afterExisting = app.repo.entity(app.project.id, character.id)
+    assert.equal(afterExisting.kind, 'character')
+    if (afterExisting.kind !== 'character') throw new Error('missing character')
+    assert.deepEqual(afterExisting.visualReferences, afterNew.visualReferences)
+    assert.ok(afterExisting.visualReferences.filter((ref) => ref.primary).length <= 1)
+    app.visual.review(app.project.id, b.id, b.revision, 'approved', null, null)
+    const afterApproval = app.repo.entity(app.project.id, character.id)
+    assert.equal(afterApproval.kind, 'character')
+    if (afterApproval.kind !== 'character') throw new Error('missing character')
+    assert.deepEqual(afterApproval.visualReferences, afterNew.visualReferences)
+    app.visual.saveReferences(app.project.id, character.id, afterApproval.revision, adoptedReferences(afterApproval, bId))
+    const afterAdoption = app.repo.entity(app.project.id, character.id)
+    assert.equal(afterAdoption.kind, 'character')
+    if (afterAdoption.kind !== 'character') throw new Error('missing character')
+    assert.deepEqual(afterAdoption.visualReferences, [
+      { assetId: a.assetId, role: 'fullBodyReference', primary: false },
+      { assetId: bId, role: 'faceReference', primary: true },
+    ])
+  } finally { await app.close() }
 })
 
 test('JPG and WEBP imports decode with real MIME and no original path dependence', async () => {

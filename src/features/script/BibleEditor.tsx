@@ -2,42 +2,8 @@ import { useState } from 'react'
 import type { Character, Location, Prop, Entity } from '../../shared/domain'
 import { useWorkspace } from '../workspace/state'
 import { intelligenceService } from '../../services/intelligence'
+import { bibleLabels } from './bible-labels'
 
-const labels: Record<string, string> = {
-  aliases: '别名（逗号分隔）',
-  age: '年龄',
-  gender: '性别',
-  height: '身高',
-  build: '体型',
-  facialFeatures: '面部特征',
-  hairstyle: '发型',
-  skinTone: '肤色',
-  personality: '性格',
-  costume: '服装',
-  accessories: '配饰',
-  makeup: '妆容',
-  behavioralHabits: '行为习惯',
-  expressionHabits: '表情习惯',
-  voiceDescription: '声音描述',
-  continuityNotes: '连续性备注',
-  visualPrompt: '视觉提示词',
-  negativePrompt: '负面提示词',
-  type: '类型',
-  interiorExterior: '内景 / 外景',
-  geography: '地理 / 空间描述',
-  architecture: '建筑与材质',
-  colors: '色彩',
-  lighting: '光线',
-  timeState: '时间状态',
-  weather: '天气',
-  fixedAreas: '固定区域',
-  appearance: '外观',
-  material: '材质',
-  size: '尺寸',
-  condition: '状态',
-  usedByCharacterIds: '使用角色',
-  sceneIds: '出现场次',
-}
 export function BibleEditor({
   entity,
   entities,
@@ -87,7 +53,7 @@ export function BibleEditor({
             <summary>Bible 详情</summary>
             {Object.entries(entity.bible).map(([key, value]) => (
               <p key={key}>
-                <strong>{labels[key] ?? key}：</strong>
+                <strong>{bibleLabels[key] ?? key}：</strong>
                 {Array.isArray(value)
                   ? value
                       .map((v) => entities.find((e) => e.id === v)?.name ?? v)
@@ -140,7 +106,7 @@ export function BibleEditor({
           <div className="bible-fields">
             {Object.entries(bible).map(([key, value]) => (
               <label key={key}>
-                {labels[key] ?? key}
+                {bibleLabels[key] ?? key}
                 {Array.isArray(value) ? (
                   key === 'aliases' ? (
                     <input
@@ -186,7 +152,7 @@ export function BibleEditor({
                   )
                 ) : (
                   <textarea
-                    aria-label={labels[key] ?? key}
+                    aria-label={bibleLabels[key] ?? key}
                     value={value}
                     onChange={(e) => {
                       setBible({ ...bible, [key]: e.target.value })

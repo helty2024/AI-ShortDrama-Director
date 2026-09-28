@@ -77,11 +77,11 @@ export class VisualService {
               target.kind === 'character' ||
               target.kind === 'location' ||
               target.kind === 'prop'
-            )
+            ) {
+              if (target.visualReferences.some((r) => r.assetId === version.assetId))
+                continue
               this.visual.saveReferences(p, target.id, target.revision, [
-                ...target.visualReferences.filter(
-                  (r) => r.assetId !== version.assetId,
-                ),
+                ...target.visualReferences,
                 {
                   assetId: version.assetId,
                   role:
@@ -91,6 +91,7 @@ export class VisualService {
                   primary: false,
                 },
               ])
+            }
           }
         }
         return ids

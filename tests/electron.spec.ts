@@ -2,6 +2,9 @@ import { imageServer } from './fixtures/image-http.js'
 import { createV6 } from './fixtures/provenance.js'
 import { lineageSchema } from '../src/shared/compatibility.js'
 import { ProjectDatabase, metadata } from '../electron/main/database.js'
+import { IntelligenceRepository } from '../electron/main/intelligence/repository.js'
+import { VisualRepository } from '../electron/main/visual/repository.js'
+import { MediaStorage } from '../electron/main/visual/storage.js'
 import { buildSeed } from '../electron/main/seed.js'
 import { aiTaskSchema } from '../src/shared/intelligence.js'
 import { assetVersionSchema } from '../src/shared/visual.js'
@@ -13,6 +16,87 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
+
+test('Assets creator reviews a separate candidate before explicit primary adoption', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-assets-creator-'))
+  const db = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+  const project = db.seed(buildSeed)
+  db.open(project.id)
+  const visual = new VisualRepository(new IntelligenceRepository(db), new MediaStorage(join(directory, 'media')))
+  const character = db.workspace(project.id).entities.find((entity) => entity.kind === 'character')!
+  if (character.kind !== 'character') throw new Error('fixture')
+  const path = join(directory, 'portrait.png')
+  await writeFile(path, await sharp({ create: { width: 480, height: 640, channels: 3, background: '#587680' } }).png().toBuffer())
+  const a = await visual.importFile(project.id, path, '当前参考', null)
+  visual.review(project.id, a.id, a.revision, 'approved', null, null)
+  const withPrimary = visual.saveReferences(project.id, character.id, character.revision, [{ assetId: a.assetId, role: 'faceReference', primary: true }])
+  if (withPrimary.kind !== 'character') throw new Error('fixture')
+  const b = await visual.importFile(project.id, path, '候选参考', null)
+  visual.saveReferences(project.id, character.id, withPrimary.revision, [...withPrimary.visualReferences, { assetId: b.assetId, role: 'costumeReference', primary: false }])
+  for (const [index, name] of ['阿青', '白露', '许岚', '老徐', '赵叔'].entries()) {
+    const extra = db.createDraft({ projectId: project.id, kind: 'character', name })
+    if (extra.kind !== 'character' || index >= 3) continue
+    const extraPath = join(directory, `portrait-${index}.png`)
+    await writeFile(extraPath, await sharp({ create: { width: 480, height: 640, channels: 3, background: ['#a47762', '#82759a', '#779076'][index]! } }).png().toBuffer())
+    const version = await visual.importFile(project.id, extraPath, name, null)
+    visual.review(project.id, version.id, version.revision, 'approved', null, null)
+    visual.saveReferences(project.id, extra.id, extra.revision, [{ assetId: version.assetId, role: 'faceReference', primary: true }])
+  }
+  db.close()
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '资产', exact: true }).click()
+    await expect(page.getByRole('tablist', { name: '资产类型' }).getByRole('tab')).toHaveCount(3)
+    await expect(page.locator('.creator-asset-card')).toHaveCount(8)
+    await page.locator('.creator-asset-card').first().click()
+    const inspector = page.getByRole('complementary', { name: '上下文检查器' })
+    await expect(inspector.getByRole('heading', { name: '当前主参考' })).toBeVisible()
+    await expect(inspector.getByRole('heading', { name: /候选版本/ })).toBeVisible()
+    await page.screenshot({ path: 'test-results/Assets-2560.png' })
+    await inspector.getByRole('button', { name: '批准', exact: true }).click()
+    await expect(inspector.getByRole('button', { name: '设为主参考' })).toBeVisible()
+    const read = async () => {
+      const result = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workspace.get', id }), project.id)
+      if (!result.ok) throw new Error(result.message)
+      return workspaceSchema.parse(result.data)
+    }
+    const approved = await read()
+    const approvedCharacter = approved.entities.find((entity) => entity.id === character.id)
+    expect(approvedCharacter?.kind === 'character' && approvedCharacter.visualReferences.find((ref) => ref.primary)?.assetId).toBe(a.assetId)
+    await inspector.getByRole('button', { name: '设为主参考' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '已设为主参考' })).toBeVisible()
+    const adopted = await read()
+    const adoptedCharacter = adopted.entities.find((entity) => entity.id === character.id)
+    expect(adoptedCharacter?.kind === 'character' && adoptedCharacter.visualReferences.find((ref) => ref.primary)?.assetId).toBe(b.assetId)
+    expect(adoptedCharacter?.kind === 'character' && adoptedCharacter.visualReferences.find((ref) => ref.assetId === b.assetId)?.role).toBe('costumeReference')
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '剧本', exact: true }).click()
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '资产', exact: true }).click()
+    await expect(page.locator('.creator-asset-card').first()).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('textbox', { name: '搜索创作资产' }).fill(character.name)
+    await expect(page.locator('.creator-asset-card')).toHaveCount(1)
+    await page.getByRole('textbox', { name: '搜索创作资产' }).fill('')
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.getByRole('button', { name: '关闭检查器' }).click()
+    const gridWidth = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
+    await page.locator('.creator-asset-card').first().click()
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toBeVisible()
+    expect(await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)).toBe(gridWidth)
+    await page.screenshot({ path: 'test-results/Assets-1920.png' })
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: '上下文检查器' })).toHaveCount(0)
+    await page.getByRole('tab', { name: /场景/ }).click()
+    await expect(page.locator('.creator-asset-card')).toHaveCount(2)
+    await expect(page.getByRole('button', { name: '新增场景' })).toBeVisible()
+    await page.getByRole('tab', { name: /道具/ }).click()
+    await expect(page.locator('.creator-asset-card')).toHaveCount(2)
+    await expect(page.getByRole('button', { name: '新增道具' })).toBeVisible()
+  } finally {
+    await application.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test('Story and Script creator pages keep scene context and render both target widths', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-story-script-'))
@@ -170,8 +254,8 @@ async function launch(directory: string, imageFixtureOrigin?: string) {
 }
 
 async function openAssetTab(page: Page, name: '角色' | '场景' | '道具') {
-  await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '资产', exact: true }).click()
-  await page.getByRole('tab', { name, exact: true }).click()
+  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+  await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name, exact: true }).click()
 }
 async function openLegacy(page: Page, name: '生产看板' | '素材库') {
   await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()

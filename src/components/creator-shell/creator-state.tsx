@@ -18,11 +18,14 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
   const normalize = (next: CreatorSelection): CreatorSelection => {
     const shotId = valid(next.shotId, 'shot')
     const shot = entities.find((entity) => entity.id === shotId)
+    const targetId = next.targetKind ? valid(next.targetId, next.targetKind) : undefined
     return {
       sceneId: valid(next.sceneId ?? (shot?.kind === 'shot' ? shot.sceneId : undefined), 'scene'),
       shotId,
       assetId: next.assetId && entities.some((entity) => entity.id === next.assetId && ['character', 'location', 'prop', 'asset'].includes(entity.kind)) ? next.assetId : undefined,
       candidateId: next.shotId && !shotId ? undefined : next.candidateId,
+      targetKind: targetId ? next.targetKind : undefined,
+      targetId,
     }
   }
   const visibleSelection = normalize(selection)
@@ -44,6 +47,11 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
       setInspectorOpen(true)
     },
     selectScene: (sceneId) => setSelection((old) => ({ ...old, sceneId: valid(sceneId, 'scene') })),
+    selectCreatorAsset: (targetKind, targetId) => {
+      const id = targetKind ? valid(targetId, targetKind) : undefined
+      setSelection((old) => ({ ...old, assetId: id, targetKind: id ? targetKind : undefined, targetId: id, candidateId: undefined }))
+      if (id) setInspectorOpen(true)
+    },
     navigateCreator: (module, next) => {
       if (navigate(module) && next) {
         setContextNotice(next.shotId && !valid(next.shotId, 'shot') ? '所选镜头已不存在，请重新选择。' : null)

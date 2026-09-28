@@ -216,10 +216,13 @@ export class VisualRepository {
     const id = assetId ?? randomUUID()
     if (assetId) this.asset(projectId, assetId)
     const stored = await this.storage.importFile(projectId, id, path)
-    // Content deduplication reuses an existing Asset when importing as a new asset.
-    const duplicate = this.versions(projectId).find(
-      (v) => v.hash === stored.hash && (!assetId || v.assetId === assetId),
-    )
+    // A new import is a new domain Asset even when its bytes match existing media.
+    // Only an explicit import into an existing Asset may deduplicate its versions.
+    const duplicate = assetId
+      ? this.versions(projectId).find(
+          (v) => v.assetId === assetId && v.hash === stored.hash,
+        )
+      : undefined
     if (duplicate) return duplicate
     return this.repo.database.transaction(() => {
       if (!assetId)

@@ -9,6 +9,7 @@ import { AssetsPage } from './features/visual/AssetsPage'
 import { ProviderSettingsPage } from './features/visual/ProviderSettingsPage'
 import { ScriptPage } from './features/script/ScriptPage'
 import { StoryPage } from './features/story/StoryPage'
+import { AssetsCreatorPage } from './features/assets/AssetsCreatorPage'
 import { WorkspaceProvider } from './features/workspace/store'
 import { useWorkspace } from './features/workspace/state'
 import {
@@ -19,26 +20,6 @@ import './features/visual/visual.css'
 import './features/script/script.css'
 import './App.css'
 
-function AssetsCompatibility() {
-  const [tab, setTab] = useState<'characters' | 'locations' | 'props'>('characters')
-  const pages = { characters: CharactersPage, locations: LocationsPage, props: PropsPage }
-  const Page = pages[tab]
-  const labels = { characters: '角色', locations: '场景', props: '道具' }
-  return (
-    <section aria-label="资产工作区">
-      <div className="page-heading">
-        <h1>资产</h1>
-        <div className="actions" role="tablist" aria-label="资产类型">
-          {(['characters', 'locations', 'props'] as const).map((key) => (
-            <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{labels[key]}</button>
-          ))}
-        </div>
-      </div>
-      <Page />
-      <details><summary>其他素材</summary><AssetsPage /></details>
-    </section>
-  )
-}
 function LegacyLinks() {
   const { state, navigate } = useWorkspace()
   if (state.module !== 'settings' && state.module !== 'operations') return null
@@ -59,7 +40,7 @@ function CreatorPages() {
     throw new Error('Creator workspace test error')
   }
   const pages = {
-    story: StoryPage, scripts: ScriptPage, assetsHub: AssetsCompatibility,
+    story: StoryPage, scripts: ScriptPage, assetsHub: AssetsCreatorPage,
     storyboard: StoryboardPage, generation: GenerationPage, shotVideos: ProductionBoard,
     settings: ProviderSettingsPage, operations: OperationsPage,
   }
