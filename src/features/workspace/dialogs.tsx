@@ -10,7 +10,6 @@ const parents: Partial<Record<EntityKind, EntityKind>> = {
   episode: 'script',
   scene: 'episode',
   storyboard: 'episode',
-  shot: 'storyboard',
 }
 export function WorkspaceDialog() {
   const { state, modal, mutate } = useWorkspace()
@@ -36,13 +35,7 @@ export function WorkspaceDialog() {
   const parentKind =
     current?.type === 'entity' ? parents[current.kind] : undefined
   const entities = state.workspace?.entities ?? []
-  const selectedBoard = entities.find((entity) => entity.id === parentId)
-  const scenes = entities.filter(
-    (entity) =>
-      entity.kind === 'scene' &&
-      selectedBoard?.kind === 'storyboard' &&
-      entity.episodeId === selectedBoard.episodeId,
-  )
+  const scenes = entities.filter((entity) => entity.kind === 'scene')
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!current) return
@@ -85,15 +78,20 @@ export function WorkspaceDialog() {
     } else if (state.workspace) {
       const projectId = state.workspace.project.id
       void mutate(async () => {
-        await workspaceService.createDraft({
-          projectId,
-          kind: current.kind,
-          name,
-          ...(parentId ? { parentId } : {}),
-          ...(form.get('sceneId')
-            ? { sceneId: String(form.get('sceneId')) }
-            : {}),
-        })
+        if (current.kind === 'shot') {
+          const scene = entities.find((entity) => entity.kind === 'scene' && entity.id === form.get('sceneId'))
+          if (!scene || scene.kind !== 'scene') throw new Error('请先选择有效场次')
+          const existing = entities.find((entity) => entity.kind === 'storyboard' && entity.episodeId === scene.episodeId)
+          const board = existing ?? await workspaceService.createDraft({ projectId, kind: 'storyboard', name: '分镜表', parentId: scene.episodeId })
+          await workspaceService.createDraft({ projectId, kind: 'shot', name, parentId: board.id, sceneId: scene.id })
+        } else {
+          await workspaceService.createDraft({
+            projectId,
+            kind: current.kind,
+            name,
+            ...(parentId ? { parentId } : {}),
+          })
+        }
         return undefined
       })
     }
@@ -182,7 +180,7 @@ export function WorkspaceDialog() {
           <label>
             所属场次
             <select name="sceneId" required key={parentId}>
-              <option value="">请选择同一集中的场次</option>
+              <option value="">请选择场次</option>
               {scenes.map((scene) => (
                 <option key={scene.id} value={scene.id}>
                   {scene.name}

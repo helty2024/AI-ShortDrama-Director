@@ -52,7 +52,7 @@ test('v7 backup restores all provenance identities, multiple outputs and separat
   } finally { f.db.close(); await rm(dir, { recursive: true, force: true }) }
 })
 
-for (const schema of [6, 7, 8]) test(`old v${schema} backup restores into v9 without inventing provenance`, async () => {
+for (const schema of [6, 7, 8]) test(`old v${schema} backup restores into v10 without inventing provenance`, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'old-provenance-backup-')), folder = join(dir, 'old'), db = new ProjectDatabase(':memory:')
   try {
     await mkdir(folder)
@@ -64,6 +64,7 @@ for (const schema of [6, 7, 8]) test(`old v${schema} backup restores into v9 wit
     await writeFile(join(folder, 'manifest.json'), JSON.stringify({ format: schema - 5, schema, projectId: legacy.project.id, files }))
     const visual = new VisualRepository(new IntelligenceRepository(db), new MediaStorage(join(dir, 'restored-media')))
     const project = await restoreProject(visual, folder), repo = new GenerationRepository(db)
+    assert.equal(Number(db.connection.prepare('PRAGMA user_version').get()!.user_version), 10)
     assert.equal(repo.list('generation_records', project.id).length, 0)
     assert.equal(repo.list('import_provenance', project.id).length, 0)
     assert.equal(visual.versions(project.id).length, 1)

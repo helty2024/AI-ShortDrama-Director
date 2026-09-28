@@ -29,9 +29,9 @@ function SourceDetails({ version }: { version: AssetVersion }) {
       .catch(() => { if (active) setError('来源详情暂不可用') })
     return () => { active = false }
   }, [version.id, version.projectId])
-  return <div className="creator-source-details"><dl><dt>来源方式</dt><dd>{lineage?.source ?? (error ? '来源暂不可用' : '核验中…')}</dd><dt>工具</dt><dd>{version.provider || '—'}</dd><dt>模型</dt><dd>{version.model || '—'}</dd><dt>生成时间</dt><dd>{new Date(version.createdAt).toLocaleString('zh-CN')}</dd><dt>费用</dt><dd>{version.cost.actualCost === null ? '未记录' : `${version.cost.currency ?? ''} ${version.cost.actualCost}`}</dd></dl>
+  return <details className="creator-source-details"><summary>来源详情</summary><dl><dt>来源方式</dt><dd>{lineage?.source ?? (error ? '来源暂不可用' : '核验中…')}</dd><dt>工具</dt><dd>{version.provider || '—'}</dd><dt>模型</dt><dd>{version.model || '—'}</dd><dt>生成时间</dt><dd>{new Date(version.createdAt).toLocaleString('zh-CN')}</dd><dt>费用</dt><dd>{version.cost.actualCost === null ? '未记录' : `${version.cost.currency ?? ''} ${version.cost.actualCost}`}</dd></dl>
     <details><summary>技术信息</summary>{error && <p role="alert">{error}</p>}{lineage ? <><p>{lineage.source}</p><dl>{lineage.fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl><pre>{JSON.stringify({ links: lineage.links, prompt: version.prompt, promptVersion: version.promptVersion, metadata: version.metadata }, null, 2)}</pre></> : <p>正在读取来源…</p>}</details>
-  </div>
+  </details>
 }
 
 export function AssetsInspector({ target }: { target: CreatorAsset }) {
@@ -92,6 +92,6 @@ export function AssetsInspector({ target }: { target: CreatorAsset }) {
       const version = view.candidates.find((item) => item.id === id)
       return version ? <figure key={id}><AssetImage projectId={target.projectId} versionId={id} thumbnail={false} alt={`对比候选 v${version.versionNumber}`} /><figcaption>候选 v{version.versionNumber}</figcaption></figure> : null
     })}</div>}</>}</section>
-    {view.history.length > 0 && <section><details><summary>版本历史 / Legacy versions（{view.history.length}）</summary><p>当前主参考所在 raw Asset 的其它版本不进入此处的批准/采用流程。可从高级素材库使用旧版审核。</p>{view.history.map((version) => <p key={version.id}>v{version.versionNumber} · {version.status} · {sourceLabels[version.sourceType]}</p>)}</details></section>}
+    {view.history.length > 0 && <section><details><summary>版本历史（{view.history.length}）</summary><p>当前主参考所在素材的其它版本不进入此处的批准/采用流程。可从高级素材库使用旧版审核。</p>{view.history.map((version) => <p key={version.id}>v{version.versionNumber} · {version.status} · {sourceLabels[version.sourceType]}</p>)}</details></section>}
   </div>
 }
