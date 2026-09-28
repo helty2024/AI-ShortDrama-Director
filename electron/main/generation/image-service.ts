@@ -314,6 +314,8 @@ export class ImageGenerationService {
       tool: adapter.profile.displayName,
       model: decision.selectedModel ?? adapter.profile.modelId,
       prompt: compiled.positivePrompt,
+      negativePrompt: compiled.negativePrompt,
+      compilerVersion: prompt.compilerVersion,
       count: input.count,
       resolution: input.resolution,
       referenceCount: references.length,

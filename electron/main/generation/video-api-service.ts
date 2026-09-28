@@ -339,6 +339,8 @@ export class VideoApiGenerationService {
       model: adapter.profile.modelId,
       mode: input.mode,
       prompt: promptText,
+      negativePrompt: '',
+      compilerVersion: prompt.compilerVersion,
       inputImageCount: frames.length,
       durationSeconds: input.durationSeconds,
       aspectRatio: input.aspectRatio,

@@ -7,6 +7,7 @@ export const creatorLabels: Record<CreatorModule, string> = {
 const legacyOwner: Record<string, CreatorModule> = {
   characters: 'assetsHub', locations: 'assetsHub', props: 'assetsHub', assets: 'assetsHub',
   production: 'generation',
+  legacyGeneration: 'generation',
 }
 export function creatorModuleOf(module: string): CreatorModule {
   return (legacyOwner[module] ?? (module in creatorLabels ? module : 'story')) as CreatorModule

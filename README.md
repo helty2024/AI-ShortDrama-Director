@@ -8,9 +8,11 @@
 
 正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。
 
-当前候选版本为 **0.7.0 Release Candidate**，冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。
+当前正式版本为 **0.7.0 RELEASED**；冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。0.8 Creator UI 仍在开发，不改变已发布包版本。
 
-0.8 Story / Script / Assets Creator pages implemented on the Creator Shell; other content pages remain compatibility mounts. See [08-03 implementation notes](docs/story-script-creator-0.8.md) and [08-04 Assets notes](docs/assets-creator-0.8.md). Package remains 0.7.0; current development database schema is 10 and backup format is 5.
+0.8 Story / Script / Assets / Storyboard / Generate Creator pages are implemented on the Creator Shell. Technical panels remain available through compatibility entries. See [08-03 notes](docs/story-script-creator-0.8.md), [08-04 Assets notes](docs/assets-creator-0.8.md), and [08-05 Storyboard / Generate notes](docs/storyboard-generate-creator-0.8.md). The packaged desktop currently has no registered real Video Tool; Shot Video generation is unavailable until a separately validated integration exists. Package remains 0.7.0; schema is 10 and backup format is 5.
+
+`npm run test:unit` runs test files serially because several local HTTP fixtures share process-level resources; individual test cases still execute normally.
 
 07-01 已新增独立契约：`src/shared/tools.ts`、`capabilities/`、`routing.ts`、`generation.ts` 和 `electron/main/tools/`。九个生命周期动作与八种版本化能力均有类型/schema；新增 27 项纯契约测试。尚未接入应用调用、Routing 算法或数据库。package version 保持 0.6.0。
 

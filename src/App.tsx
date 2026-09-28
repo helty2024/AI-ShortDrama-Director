@@ -10,10 +10,12 @@ import { ProviderSettingsPage } from './features/visual/ProviderSettingsPage'
 import { ScriptPage } from './features/script/ScriptPage'
 import { StoryPage } from './features/story/StoryPage'
 import { AssetsCreatorPage } from './features/assets/AssetsCreatorPage'
+import { StoryboardCreatorPage } from './features/storyboard/StoryboardCreatorPage'
+import { GenerateCreatorPage } from './features/generate/GenerateCreatorPage'
 import { WorkspaceProvider } from './features/workspace/store'
 import { useWorkspace } from './features/workspace/state'
 import {
-  ProjectPage, CharactersPage, LocationsPage, PropsPage, StoryboardPage, GenerationPage,
+  ProjectPage, CharactersPage, LocationsPage, PropsPage, GenerationPage,
 } from './features/workspace/pages'
 import { WorkspaceDialog } from './features/workspace/dialogs'
 import './features/visual/visual.css'
@@ -23,11 +25,11 @@ import './App.css'
 function LegacyLinks() {
   const { state, navigate } = useWorkspace()
   if (state.module !== 'settings' && state.module !== 'operations') return null
-  const labels = { characters: '角色', locations: '场景', props: '道具', assets: '素材库', production: '生产看板', generation: '生成' }
+  const labels = { characters: '角色', locations: '场景', props: '道具', assets: '素材库', production: '生产看板', legacyGeneration: '旧版生成' }
   return (
     <section className="creator-compat-links" aria-label="旧版兼容入口">
       <span>旧版兼容入口</span>
-      {(['characters', 'locations', 'props', 'assets', 'production', 'generation'] as const).map((module) => (
+      {(['characters', 'locations', 'props', 'assets', 'production', 'legacyGeneration'] as const).map((module) => (
         <button key={module} onClick={() => navigate(module)}>{labels[module]}</button>
       ))}
     </section>
@@ -41,18 +43,18 @@ function CreatorPages() {
   }
   const pages = {
     story: StoryPage, scripts: ScriptPage, assetsHub: AssetsCreatorPage,
-    storyboard: StoryboardPage, generation: GenerationPage, shotVideos: ProductionBoard,
+    storyboard: StoryboardCreatorPage, generation: GenerateCreatorPage, shotVideos: ProductionBoard,
     settings: ProviderSettingsPage, operations: OperationsPage,
   }
   const legacy = {
     characters: CharactersPage, locations: LocationsPage, props: PropsPage,
-    assets: AssetsPage, production: ProductionBoard,
+    assets: AssetsPage, production: ProductionBoard, legacyGeneration: GenerationPage,
   }
   const Page = state.module in legacy
     ? legacy[state.module as keyof typeof legacy]
     : pages[currentModule]
   const shots = state.workspace?.entities.filter((entity) => entity.kind === 'shot') ?? []
-  const showShotContext = ['storyboard', 'generation', 'shotVideos'].includes(currentModule) && shots.length > 0
+  const showShotContext = currentModule === 'shotVideos' && shots.length > 0
   return (
     <>
       <MediaEnvironmentNotice />
@@ -65,8 +67,6 @@ function CreatorPages() {
               {shots.map((shot) => <option key={shot.id} value={shot.id}>{shot.name}</option>)}
             </select>
           </label>
-          {shotId && currentModule === 'storyboard' && <button onClick={() => navigateCreator('generation', { shotId })}>去生成</button>}
-          {shotId && currentModule === 'generation' && <button onClick={() => navigateCreator('storyboard', { shotId })}>查看分镜</button>}
           {shotId && currentModule === 'shotVideos' && <button onClick={() => navigateCreator('generation', { shotId })}>重新生成</button>}
         </div>
       )}

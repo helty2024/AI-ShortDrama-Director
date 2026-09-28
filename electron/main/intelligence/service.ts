@@ -31,6 +31,18 @@ export class IntelligenceService {
         )
       case 'tree.delete':
         return this.repo.deleteTree(p, command.id, command.expectedRevision)
+      case 'shot.save': {
+        const shot = this.repo.entity(p, command.id)
+        if (shot.kind !== 'shot') throw new DomainError('INVALID_INPUT', '目标不是镜头')
+        return this.repo.updateEntity(p, command.id, command.expectedRevision, {
+          description: command.description,
+          plan: command.plan,
+        })
+      }
+      case 'shot.delete':
+        return this.repo.deleteShot(p, command.id, command.expectedRevision)
+      case 'shots.reorder':
+        return this.repo.reorderShots(p, command.id, command.expectedRevision, command.shotIds)
       case 'scenes.reorder':
         return this.repo.reorder(
           p,

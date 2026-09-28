@@ -304,6 +304,39 @@ export class IntelligenceRepository {
       return null
     })
   }
+  reorderShots(projectId: string, sceneId: string, revision: number, shotIds: string[]) {
+    return this.database.transaction(() => {
+      const scene = this.entity(projectId, sceneId)
+      if (scene.kind !== 'scene') throw new DomainError('CONFLICT', '请选择场次')
+      this.checkRevision(scene.revision, revision)
+      const shots = this.database.workspace(projectId).entities.filter((entity) => entity.kind === 'shot' && entity.sceneId === sceneId)
+      if (shotIds.length !== shots.length || new Set(shotIds).size !== shots.length || shots.some((shot) => !shotIds.includes(shot.id)))
+        throw new DomainError('CONFLICT', '镜头排序必须包含本场全部镜头且不能重复')
+      for (const shot of shots) this.updateEntity(projectId, shot.id, shot.revision, { order: shotIds.indexOf(shot.id) })
+      return this.updateEntity(projectId, sceneId, revision, {})
+    })
+  }
+  deleteShot(projectId: string, id: string, revision: number) {
+    return this.database.transaction(() => {
+      const shot = this.entity(projectId, id)
+      if (shot.kind !== 'shot') throw new DomainError('CONFLICT', '目标不是镜头')
+      this.checkRevision(shot.revision, revision)
+      if (shot.approvedKeyframeVersionId || shot.confirmedVideoAssetVersionId ||
+        this.database.workspace(projectId).entities.some((entity) => entity.kind === 'generationTask' && entity.shotId === id))
+        throw new DomainError('CONFLICT', '此镜头已有生产记录，请保留历史')
+      for (const table of ['workflow_runs', 'generation_records', 'ai_tasks', 'asset_versions'] as const) {
+        const rows = this.database.connection.prepare(`SELECT data FROM ${table} WHERE project_id=?`).all(projectId)
+        if (rows.some((row) => {
+          const value = JSON.parse(String(row.data)) as Record<string, unknown>
+          return value.targetObjectId === id || (typeof value.input === 'object' && value.input !== null && 'targetId' in value.input && value.input.targetId === id) ||
+            (typeof value.metadata === 'object' && value.metadata !== null && 'targetId' in value.metadata && value.metadata.targetId === id)
+        })) throw new DomainError('CONFLICT', '此镜头已有生产记录，请保留历史')
+      }
+      this.database.connection.prepare('DELETE FROM entities WHERE id=? AND project_id=?').run(id, projectId)
+      this.rebuildReferences(projectId)
+      return null
+    })
+  }
   saveBible(
     projectId: string,
     id: string,

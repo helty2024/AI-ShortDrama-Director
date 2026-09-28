@@ -30,12 +30,14 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
   }
   const visibleSelection = normalize(selection)
   const missingShot = Boolean(selection.shotId && !visibleSelection.shotId)
+  const missingTarget = Boolean(selection.targetId && !visibleSelection.targetId)
   return <CreatorContext.Provider value={{
     ...visibleSelection, currentModule, inspectorOpen, taskDrawerOpen,
-    contextNotice: contextNotice ?? (missingShot ? '所选镜头已不存在，请重新选择。' : null),
+    contextNotice: contextNotice ?? (missingShot ? '所选镜头已不存在，请重新选择。' : missingTarget ? '所选资产已不存在，请重新选择。' : null),
     clearContextNotice: () => {
       setContextNotice(null)
       if (missingShot) setSelection((old) => ({ ...old, shotId: undefined, candidateId: undefined }))
+      if (missingTarget) setSelection((old) => ({ ...old, targetId: undefined, targetKind: undefined, assetId: undefined, candidateId: undefined }))
     },
     openInspector: () => setInspectorOpen(true),
     closeInspector,

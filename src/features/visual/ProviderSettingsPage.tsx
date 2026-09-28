@@ -1,6 +1,7 @@
 import { ToolReadinessPanel } from '../operations/ProvenancePanel'
 import { ProductionSettings } from '../video/ProductionSettings'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { videoCommand, videoProfilesSchema } from '../generate/generation-api'
 import { useWorkspace } from '../workspace/state'
 import { useVisual } from './use-visual'
 import type {
@@ -22,10 +23,17 @@ export function ProviderSettingsPage() {
 }
 function Settings({ projectId }: { projectId: string }) {
   const visual = useVisual(projectId)
+  const [videoTools, setVideoTools] = useState<number | null>(null)
+  useEffect(() => {
+    let active = true
+    void videoCommand({ op: 'profiles' }).then((result) => { if (active) setVideoTools(videoProfilesSchema.parse(result).length) }).catch(() => { if (active) setVideoTools(null) })
+    return () => { active = false }
+  }, [projectId])
   return (
     <>
       <h1>Provider 设置</h1>
       <ToolReadinessPanel />
+      <section aria-label="视频工具状态"><h2>Video Tools：{videoTools ?? '核验中'}</h2>{videoTools === 0 && <p>当前版本尚未注册视频生成工具。此处不提供尚未实现的 Video Profile 导入。</p>}</section>
       <p>
         配置存于主进程数据库，仅支持图像生成。本地 ComfyUI
         需要已安装模型和相应节点。

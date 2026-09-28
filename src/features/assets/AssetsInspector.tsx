@@ -81,7 +81,7 @@ export function AssetsInspector({ target }: { target: CreatorAsset }) {
     {(error || visual.error || intelligence.error) && <p className="error" role="alert">{error || visual.error || intelligence.error}</p>}
     <section><h3>{assetLabels[target.kind]}设定</h3><p>{target.description || '暂无简介，可在设定中补充。'}</p>{target.kind === 'character' && <p>外观：{target.appearance || '未填写'}</p>}{bibleSummary.map(([key, value]) => <p key={key}>{bibleLabels[key] ?? key}：{Array.isArray(value) ? value.join('、') : String(value)}</p>)}<details><summary>查看 / 编辑设定</summary><BibleEditor key={`${target.id}:${target.revision}`} entity={target} entities={entities} /></details></section>
     <section><h3>当前主参考</h3>{view.primaryVersion ? <><AssetImage projectId={target.projectId} versionId={view.primaryVersion.id} alt={`${target.name}主参考`} /><p>已确认 · {roleLabels[view.primaryReference!.role]}</p><SourceDetails key={view.primaryVersion.id} version={view.primaryVersion} /></> : <p>{view.brokenPrimary ? '主参考暂不可用，请在历史记录中检查引用。' : '尚未设置主参考。批准候选后可明确设为主参考。'}</p>}
-      <div className="actions"><button disabled={blocked} onClick={importReference}>导入参考图</button><button onClick={() => navigateCreator('generation', { targetKind: target.kind, targetId: target.id, assetId: target.id })}>生成参考图 →</button></div>
+      <div className="actions"><button disabled={blocked} onClick={importReference}>导入参考图</button><button onClick={() => navigateCreator('generation', { targetKind: target.kind, targetId: target.id, assetId: target.id, shotId: undefined })}>生成参考图 →</button></div>
     </section>
     {target.visualReferences.some((ref) => !ref.primary) && <section><h3>其它参考图</h3>{target.visualReferences.filter((ref) => !ref.primary).map((ref) => {
       const asset = assets.get(ref.assetId)

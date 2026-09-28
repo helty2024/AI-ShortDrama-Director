@@ -1,4 +1,5 @@
 import { imageServer } from './fixtures/image-http.js'
+import { videoServer } from './fixtures/video-http.js'
 import { createV6 } from './fixtures/provenance.js'
 import { lineageSchema } from '../src/shared/compatibility.js'
 import { ProjectDatabase, metadata } from '../electron/main/database.js'
@@ -16,6 +17,175 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
+
+test('Storyboard and Generate Creator keep Shot context and block unconfigured Video Workflow', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-storyboard-generate-'))
+  const db = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+  const project = db.seed(buildSeed)
+  db.open(project.id)
+  const entities = db.workspace(project.id).entities
+  const board = entities.find((entity) => entity.kind === 'storyboard')!
+  const scenes = entities.filter((entity) => entity.kind === 'scene')
+  const shot = entities.find((entity) => entity.kind === 'shot')!
+  if (shot.kind !== 'shot') throw new Error('fixture')
+  const repo = new IntelligenceRepository(db)
+  repo.updateEntity(project.id, shot.id, shot.revision, { imagePrompt: 'LEGACY_NOT_AUTHORITATIVE', videoPrompt: 'VIDEO_PROMPT_SOURCE' })
+  for (let index = entities.filter((entity) => entity.kind === 'shot').length; index < 10; index++) db.createDraft({ projectId: project.id, kind: 'shot', name: `镜头 ${index + 1}`, parentId: board.id, sceneId: scenes[index % scenes.length]!.id })
+  db.close()
+  const application = await launch(directory)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+    await page.getByRole('combobox', { name: '筛选场次' }).selectOption('')
+    await expect(page.locator('.storyboard-shot-card')).toHaveCount(10)
+    await page.locator('.storyboard-shot-card').first().click()
+    await expect(page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '编辑分镜描述' })).toBeVisible()
+    await page.screenshot({ path: 'test-results/Storyboard-2560.png' })
+    await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
+    await expect(page.locator('.generate-queue-shot').first()).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('heading', { name: '生成依据' })).toBeVisible()
+    await expect(page.getByText('LEGACY_NOT_AUTHORITATIVE')).toHaveCount(0)
+    await page.screenshot({ path: 'test-results/Generate-Keyframe-2560.png' })
+    await page.getByRole('tab', { name: '镜头视频' }).click()
+    await expect(page.getByText('尚未配置可用的视频生成工具')).toBeVisible()
+    await expect(page.getByText('VIDEO_PROMPT_SOURCE')).toBeVisible()
+    await expect(page.getByRole('button', { name: '预览生成镜头视频' })).toHaveCount(0)
+    await page.screenshot({ path: 'test-results/Generate-Video-2560.png' })
+    const runs = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workflow', command: { op: 'listWorkflowRuns', projectId: id } }), project.id)
+    expect(runs).toMatchObject({ ok: true, data: [] })
+    await page.getByRole('button', { name: '前往项目设置' }).click()
+    await expect(page.getByRole('heading', { name: 'Provider 设置' })).toBeVisible()
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+    await page.getByRole('combobox', { name: '筛选场次' }).selectOption('')
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.screenshot({ path: 'test-results/Storyboard-1920.png' })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '生成', exact: true }).click()
+    await page.screenshot({ path: 'test-results/Generate-1920.png' })
+  } finally { await application.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('test-only Reference Video Tool drives Creator preview, approval and explicit adoption', async () => {
+  const server = await videoServer('ok')
+  const directory = await mkdtemp(join(tmpdir(), 'director-video-creator-'))
+  const db = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+  const project = db.seed(buildSeed)
+  db.open(project.id)
+  const shot = db.workspace(project.id).entities.find((entity) => entity.kind === 'shot')!
+  db.close()
+  const application = await launch(directory, undefined, server.origin)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+    await page.locator('.storyboard-shot-card').first().click()
+    await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
+    await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByRole('radio', { name: '文生视频' }).check()
+    await page.getByRole('button', { name: '预览生成镜头视频' }).click()
+    const dialog = page.getByRole('dialog', { name: '确认生成' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText('Local Reference Video Fixture (test only)')).toBeVisible()
+    await dialog.getByRole('button', { name: '取消' }).click()
+    expect(server.counts.submit).toBe(0)
+    await page.getByRole('button', { name: '继续确认' }).click()
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('textbox', { name: '单次费用上限' }).fill('0.01')
+    await dialog.getByRole('checkbox', { name: /允许费用未知/ }).check()
+    await dialog.getByRole('checkbox', { name: /我确认本次/ }).check()
+    await dialog.getByRole('button', { name: '确认生成' }).click()
+    await expect(page.locator('.generate-candidate-main')).toBeVisible({ timeout: 30000 })
+    await page.locator('.generate-candidate-main').getByRole('button', { name: '批准' }).click()
+    const current = async () => {
+      const result = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workspace.get', id }), project.id)
+      if (!result.ok) throw new Error(result.message)
+      return workspaceSchema.parse(result.data).entities.find((entity) => entity.id === shot.id)
+    }
+    const beforeAdopt = await current()
+    expect(beforeAdopt?.kind === 'shot' && beforeAdopt.confirmedVideoAssetVersionId).toBeFalsy()
+    await page.locator('.generate-candidate-main').getByRole('button', { name: '设为当前镜头视频' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '已设为当前镜头视频' })).toBeVisible()
+    const afterAdopt = await current()
+    expect(afterAdopt?.kind === 'shot' && afterAdopt.confirmedVideoAssetVersionId).toBeTruthy()
+    expect(server.counts.submit).toBe(1)
+  } finally { await application.close(); await server.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('Creator unknown video submission offers query-only recovery and never resubmits', async () => {
+  const server = await videoServer('unknown-submit')
+  const directory = await mkdtemp(join(tmpdir(), 'director-video-unknown-'))
+  const db = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+  const project = db.seed(buildSeed)
+  db.open(project.id)
+  db.close()
+  const application = await launch(directory, undefined, server.origin)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+    await page.locator('.storyboard-shot-card').first().click()
+    await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
+    await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByRole('radio', { name: '文生视频' }).check()
+    await page.getByRole('button', { name: '预览生成镜头视频' }).click()
+    const dialog = page.getByRole('dialog', { name: '确认生成' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('textbox', { name: '单次费用上限' }).fill('0.01')
+    await dialog.getByRole('checkbox', { name: /允许费用未知/ }).check()
+    await dialog.getByRole('checkbox', { name: /我确认本次/ }).check()
+    await dialog.getByRole('button', { name: '确认生成' }).click()
+    await expect(page.getByRole('alert').filter({ hasText: '系统不会自动重试' })).toBeVisible({ timeout: 30000 })
+    expect(server.counts.submit).toBe(1)
+    await page.getByRole('alert').filter({ hasText: '系统不会自动重试' }).getByRole('button', { name: '刷新状态' }).click()
+    expect(server.counts.submit).toBe(1)
+  } finally { await application.close(); await server.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('Creator Keyframe preview shows compiled prompt and keeps candidate separate from official pin', async () => {
+  const server = await imageServer()
+  const directory = await mkdtemp(join(tmpdir(), 'director-keyframe-creator-'))
+  const db = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+  const project = db.seed(buildSeed)
+  db.open(project.id)
+  const shot = db.workspace(project.id).entities.find((entity) => entity.kind === 'shot')!
+  if (shot.kind !== 'shot') throw new Error('fixture')
+  new IntelligenceRepository(db).updateEntity(project.id, shot.id, shot.revision, { imagePrompt: 'LEGACY_ONLY' })
+  db.close()
+  const application = await launch(directory, server.origin)
+  try {
+    const page = await application.firstWindow()
+    await page.setViewportSize({ width: 2560, height: 1440 })
+    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+    await page.locator('.storyboard-shot-card').first().click()
+    await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
+    await expect(page.getByRole('heading', { name: '生成依据' })).toBeVisible()
+    await expect(page.getByText('LEGACY_ONLY')).toHaveCount(0)
+    await page.getByRole('button', { name: '预览生成关键帧' }).click()
+    const dialog = page.getByRole('dialog', { name: '确认生成' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByText('高级生成 · 实际编译 Prompt').click()
+    await expect(dialog.getByText('Compiler Version')).toBeVisible()
+    await expect(dialog.getByText('当前预览未返回')).toHaveCount(0)
+    await dialog.getByRole('textbox', { name: '单次费用上限' }).fill('0.01')
+    await dialog.getByRole('checkbox', { name: /允许费用未知/ }).check()
+    await dialog.getByRole('checkbox', { name: /我确认本次/ }).check()
+    await dialog.getByRole('button', { name: '确认生成' }).click()
+    await expect(page.locator('.generate-candidate-main')).toBeVisible({ timeout: 30000 })
+    await page.screenshot({ path: 'test-results/Generate-Keyframe-2560.png' })
+    const read = async () => {
+      const response = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workspace.get', id }), project.id)
+      if (!response.ok) throw new Error(response.message)
+      return workspaceSchema.parse(response.data).entities.find((entity) => entity.id === shot.id)
+    }
+    await page.locator('.generate-candidate-main').getByRole('button', { name: '批准' }).click()
+    const before = await read()
+    expect(before?.kind === 'shot' && before.approvedKeyframeVersionId).toBeFalsy()
+    await page.locator('.generate-candidate-main').getByRole('button', { name: '设为镜头关键帧' }).click()
+    const after = await read()
+    expect(after?.kind === 'shot' && after.approvedKeyframeVersionId).toBeTruthy()
+    expect(server.counts.submit).toBe(1)
+  } finally { await application.close(); await server.close(); await rm(directory, { recursive: true, force: true }) }
+})
 
 test('Assets creator reviews a separate candidate before explicit primary adoption', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-assets-creator-'))
@@ -192,12 +362,13 @@ test('creator shell navigation, context, overlays and project round trip', async
     await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '验收与维护' }).click()
     await expect(page.getByRole('heading', { name: '生产验收与维护' })).toBeVisible()
     await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
-    const shot = await page.getByRole('combobox', { name: '当前镜头' }).locator('option').nth(1).getAttribute('value')
-    await page.getByRole('combobox', { name: '当前镜头' }).selectOption(shot!)
-    await page.getByRole('main', { name: '主工作区' }).getByRole('button', { name: '去生成' }).click()
-    await expect(page.getByRole('combobox', { name: '当前镜头' })).toHaveValue(shot!)
+    const shot = await page.locator('.storyboard-shot-card').first().getAttribute('aria-pressed')
+    expect(shot).toBe('false')
+    await page.locator('.storyboard-shot-card').first().click()
+    await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
+    await expect(page.locator('.generate-queue-shot').first()).toHaveAttribute('aria-pressed', 'true')
     await page.getByRole('main', { name: '主工作区' }).getByRole('button', { name: '查看分镜' }).click()
-    await expect(page.getByRole('combobox', { name: '当前镜头' })).toHaveValue(shot!)
+    await expect(page.locator('.storyboard-shot-card').first()).toHaveAttribute('aria-pressed', 'true')
     await page.screenshot({ path: 'test-results/CreatorShell-2560.png' })
     const mainWidth = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
     await page.setViewportSize({ width: 1920, height: 1080 })
@@ -240,14 +411,16 @@ test('creator shell navigation, context, overlays and project round trip', async
   }
 })
 
-async function launch(directory: string, imageFixtureOrigin?: string) {
+async function launch(directory: string, imageFixtureOrigin?: string, videoFixtureOrigin?: string) {
   const environment: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env))
     if (value !== undefined) environment[key] = value
   delete environment.ELECTRON_RUN_AS_NODE
   delete environment.ELECTRON_RENDERER_URL
   delete environment.DIRECTOR_TEST_IMAGE_ORIGIN
+  delete environment.DIRECTOR_TEST_VIDEO_ORIGIN
   if(imageFixtureOrigin)environment.DIRECTOR_TEST_IMAGE_ORIGIN=imageFixtureOrigin
+  if(videoFixtureOrigin)environment.DIRECTOR_TEST_VIDEO_ORIGIN=videoFixtureOrigin
   environment.DIRECTOR_TEST_USER_DATA = directory
   environment.DIRECTOR_TEXT_PROVIDER = 'mock'
   return electron.launch({ args: ['.'], env: environment })
@@ -260,6 +433,14 @@ async function openAssetTab(page: Page, name: '角色' | '场景' | '道具') {
 async function openLegacy(page: Page, name: '生产看板' | '素材库') {
   await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
   await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name, exact: true }).click()
+}
+async function openLegacyGeneration(page: Page) {
+  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+  await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name: '旧版生成' }).click()
+}
+async function openLegacyStoryboard(page: Page) {
+  await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
+  await page.getByRole('button', { name: '更多操作' }).click()
 }
 
 test('project workspace persists CRUD, seed relations and safe IPC', async () => {
@@ -328,7 +509,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     await expect(
       page.getByRole('region', { name: '角色列表' }).getByRole('listitem'),
     ).toHaveCount(4)
-    await page.getByRole('button', { name: '分镜', exact: true }).click()
+    await openLegacyStoryboard(page)
     await expect(
       page.getByRole('region', { name: '镜头列表' }).getByRole('listitem'),
     ).toHaveCount(6)
@@ -610,7 +791,7 @@ test('visual production imports, generates, reviews versions and pins Shot keyfr
     await expect(firstVersion.getByRole('img').first()).toBeVisible()
     await firstVersion.getByRole('button', { name: '批准 / Promote' }).click()
     await expect(visual.getByText(/★ 主参考/)).toBeAttached()
-    await page.getByRole('button', { name: '分镜', exact: true }).click()
+    await openLegacyStoryboard(page)
     const shot = page
       .getByRole('region', { name: '镜头列表', exact: true })
       .getByRole('listitem')
@@ -749,7 +930,7 @@ test('batch keyframes and playable video versions require explicit Shot confirma
         exact: true,
       }),
     ).toBeVisible()
-    await page.getByRole('button', { name: '分镜', exact: true }).click()
+    await openLegacyStoryboard(page)
     await page.getByText('批量关键帧生产', { exact: true }).click()
     const batch = page.locator('.batch-panel')
     await batch.locator('input[type=checkbox]').nth(0).check()
@@ -1031,7 +1212,7 @@ test('simple production validation, task center, backup restore and diagnostics 
     expect(await media.getAttribute('src')).toMatch(
       /^director-media:\/\/asset\//,
     )
-    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     await expect(
       page.getByRole('heading', { name: '任务中心', exact: true }),
     ).toBeVisible()
@@ -1189,14 +1370,14 @@ test('large project startup, switching and paged workspaces handle the productio
     )
     await openLegacy(page, '素材库')
     await expect(page.locator('.asset-tile')).toHaveCount(2)
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     await expect(page.getByText('共 500 个任务 · 第 1 页')).toBeVisible()
     await page.getByRole('button', { name: '下一页任务' }).click()
     await expect(page.getByText('共 500 个任务 · 第 2 页')).toBeVisible()
     await page.getByLabel('切换项目', { exact: true }).selectOption(other.id)
     await expect(page.locator('.topbar strong')).toHaveText('切换目标')
     await page.getByLabel('切换项目', { exact: true }).selectOption(p.id)
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     await expect(page.getByText('共 500 个任务 · 第 1 页')).toBeVisible()
   } finally {
     await application.close()
@@ -1210,7 +1391,7 @@ test('Image API desktop preview requires explicit confirmation and review before
   try{
     let page=await application.firstWindow()
     await page.getByRole('button',{name:'载入开发示例'}).click()
-    await page.getByRole('button',{name:'生成',exact:true}).click()
+    await openLegacyGeneration(page)
     const panel=page.getByRole('region',{name:'图像 API 生成'})
     await panel.getByLabel('API 生成目标').selectOption({index:1})
     await panel.getByLabel('图片数量').selectOption('4')
@@ -1232,7 +1413,7 @@ test('Image API desktop preview requires explicit confirmation and review before
     const denied=await page.evaluate(()=>window.desktop!.workspace.request({action:'imageApi',command:{op:'preview',endpoint:'file:///secret',input:{}}} as never))
     expect(denied.ok).toBe(false)
     await application.close();application=await launch(directory,server.origin);page=await application.firstWindow()
-    await page.getByRole('button',{name:'生成',exact:true}).click()
+    await openLegacyGeneration(page)
     await expect(page.getByRole('region',{name:'图像 API 生成'}).getByText('v1 · approved',{exact:true})).toBeVisible()
     expect(server.counts.submit).toBe(1)
   }finally{await application.close();await server.close();await rm(directory,{recursive:true,force:true})}
@@ -1251,7 +1432,7 @@ test('workflow desktop creates, confirms once, resumes review after restart and 
     const workspace = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workspace.get', id }), projectId)
     if (!workspace.ok) throw new Error('missing workspace')
     const shot = workspaceSchema.parse(workspace.data).entities.find(e => e.kind === 'shot')!
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     const image = page.getByRole('region', { name: '图像 API 生成' })
     await image.getByLabel('API 生成目标').selectOption(shot.id)
     await image.getByLabel('宽', { exact: true }).fill('32')
@@ -1271,7 +1452,7 @@ test('workflow desktop creates, confirms once, resumes review after restart and 
     await application.close()
     application = await launch(directory, server.origin)
     page = await application.firstWindow()
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     workflow = page.getByRole('region', { name: '制作工作流' })
     await workflow.getByRole('button', { name: '批准候选（尚不绑定）' }).click()
     await workflow.getByRole('button', { name: '采用到 Shot', exact: true }).click()
@@ -1288,7 +1469,7 @@ test('workflow desktop creates, confirms once, resumes review after restart and 
     await workflow.getByText('来源 / 费用 / 工作流', { exact: true }).first().click()
     await expect(workflow.getByText('Generated · succeeded', { exact: true })).toBeVisible()
     await page.reload()
-    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     await expect(page.getByRole('region', { name: '制作工作流' }).getByRole('status')).toContainText('已完成')
     expect(server.counts.submit).toBe(1)
     const denied = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workflow', command: { op: 'resumeWorkflowRun', projectId: id, runId: id, status: 'succeeded' } } as never), projectId)
@@ -1323,7 +1504,7 @@ test('pre-v7 project opens legacy Bible, storyboard, generation, tasks and missi
     await expect(readiness.getByText('real-generation-partially-validated', { exact: true })).toBeVisible()
     await expect(readiness.getByText('not-validated', { exact: true })).toBeVisible()
     await expect(readiness.getByText('development-test-only', { exact: true }).first()).toBeVisible()
-    await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '生成', exact: true }).click()
+    await openLegacyGeneration(page)
     await expect(page.getByText(/Legacy Task ·/)).toBeVisible()
     expect(errors).toEqual([])
   } finally { await application.close(); await rm(directory, { recursive: true, force: true }) }

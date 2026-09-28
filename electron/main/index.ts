@@ -5,6 +5,7 @@ import { ComfyUIToolAdapter } from './tools/adapters/comfyui.js'
 import { validateLocalComfyUrl } from './tools/adapters/comfyui-runtime.js'
 import { builtinComfyProfile } from './tools/adapters/comfyui-template.js'
 import { VideoApiGenerationService } from './generation/video-api-service.js'
+import { VideoApiAdapter } from './tools/adapters/video-api.js'
 import { loadImageProfiles, imageAdapters, importImageProfile } from './generation/image-profiles.js'
 import { MediaBroker } from './media-broker.js'
 import { protocol } from 'electron'
@@ -198,6 +199,21 @@ app
       comfyAdapter,
     ])
     const videoApi = new VideoApiGenerationService(visual, [])
+    // Explicit test composition only. Packaged desktop always keeps adapters=[].
+    if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_VIDEO_ORIGIN) {
+      const origin = new URL(process.env.DIRECTOR_TEST_VIDEO_ORIGIN)
+      if (origin.protocol !== 'http:' || origin.hostname !== '127.0.0.1' || origin.href !== `${origin.origin}/`) throw new Error('Invalid video fixture origin')
+      videoApi.register(new VideoApiAdapter({
+        toolId: 'reference.video', displayName: 'Local Reference Video Fixture (test only)', baseEndpoint: origin.origin,
+        modelId: 'reference-video-v1', credentialRef: null,
+        supportedCapabilities: ['video.textToVideo', 'video.imageToVideo'], supportedDurations: [1],
+        supportedAspectRatios: ['1:1'], supportedResolutions: [{ width: 32, height: 32 }], resolutionMode: 'exact',
+        durationToleranceSeconds: 0.2, supportsLastFrame: true, supportsReferenceImages: false, maxOutputCount: 4,
+        polling: { initialIntervalMs: 50, maxIntervalMs: 75, maxWaitMs: 300 }, maxDownloadBytes: 10 * 1024 * 1024,
+        allowedDownloadHosts: [], allowedDownloadHostSuffixes: [], currency: 'USD', estimateSupport: 'unknown',
+        cancelSupport: true, recoverSupport: true,
+      }, async () => 'VIDEO_FIXTURE_SECRET', new ImageHttpTransport({ fixtureOrigin: origin.origin, timeoutMs: 300 })))
+    }
     // Test composition only: isolated userData + unpackaged app + exact loopback origin.
     // Never derives a real endpoint/key from a test flag or registers this in packaged builds.
     if(!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_IMAGE_ORIGIN){

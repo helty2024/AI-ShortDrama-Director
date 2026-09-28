@@ -91,6 +91,8 @@ export const videoApiPreviewSchema = z.strictObject({
   model: z.string().min(1),
   mode: z.enum(['text-to-video', 'image-to-video']),
   prompt: z.string().min(1),
+  negativePrompt: z.string().optional(),
+  compilerVersion: z.string().min(1).optional(),
   inputImageCount: z.number().int().min(0).max(2),
   durationSeconds: z.number().positive(),
   aspectRatio: aspectRatioSchema,

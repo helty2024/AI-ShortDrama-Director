@@ -16,6 +16,7 @@ export const navigation = {
   storyboard: '分镜',
   production: '生产看板',
   generation: '生成',
+  legacyGeneration: '旧版生成',
   shotVideos: '分镜视频',
   assets: '素材库',
   settings: '设置',

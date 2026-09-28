@@ -13,6 +13,7 @@ export const workflowPreviewSchema = z.union([
   videoApiPreviewSchema,
   z.strictObject({
     id: z.uuid(), projectId: z.uuid(), target: z.string(), tool: z.string(), model: z.string(), prompt: z.string(),
+    negativePrompt: z.string().optional(), compilerVersion: z.string().min(1).optional(),
     count: z.number().int().positive(), resolution: z.object({ width: z.number(), height: z.number() }),
     referenceCount: z.number().int().nonnegative(), currency: z.string(), estimate: z.string(), expiresAt: z.iso.datetime(),
     disclosure: z.string(), executionMode: z.enum(['cloud', 'local-service']), knownFree: z.boolean(),

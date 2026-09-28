@@ -279,6 +279,9 @@ export const intelligenceCommandSchema = z.discriminatedUnion('operation', [
     name: title,
   }),
   z.strictObject({ ...versioned, operation: z.literal('tree.delete') }),
+  z.strictObject({ ...versioned, operation: z.literal('shot.save'), description: text, plan: shotPlanSchema.nullable() }),
+  z.strictObject({ ...versioned, operation: z.literal('shot.delete') }),
+  z.strictObject({ ...versioned, operation: z.literal('shots.reorder'), shotIds: z.array(id).max(1000) }),
   z.strictObject({
     ...versioned,
     operation: z.literal('scenes.reorder'),

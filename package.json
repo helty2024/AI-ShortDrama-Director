@@ -12,7 +12,7 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "test:smoke": "playwright test",
-    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "test:unit": "tsx --test --test-concurrency=1 tests/unit/*.test.ts",
     "validate:packy-paid": "node scripts/packy-paid-validation.mjs",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },

@@ -79,6 +79,8 @@ export interface ImageApiPreview {
   tool: string
   model: string
   prompt: string
+  negativePrompt?: string
+  compilerVersion?: string
   count: number
   resolution: { width: number; height: number }
   referenceCount: number
