@@ -1,0 +1,59 @@
+.shot-videos-creator { min-width: 0; display: grid; gap: 18px; }
+.shot-videos-heading { align-items: center; }
+.shot-videos-heading small, .shot-videos-main-head small { color: var(--accent-primary); letter-spacing: .1em; font-size: 10px; }
+.shot-videos-heading h1 { margin: 4px 0; }
+.shot-videos-heading p { margin: 0; color: var(--text-secondary); }
+.shot-videos-empty { min-height: 420px; display: grid; justify-items: center; align-content: center; gap: 10px; border: 1px solid var(--border-default); border-radius: var(--radius-2); background: var(--bg-panel); text-align: center; }
+.shot-videos-empty p { color: var(--text-secondary); }
+.shot-videos-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 18px; min-width: 0; }
+.shot-videos-list, .shot-videos-main, .shot-videos-sequence { min-width: 0; }
+.shot-videos-list { max-height: calc(100vh - 270px); overflow-y: auto; padding: 10px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-2); }
+.shot-videos-list-head, .shot-videos-section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.shot-videos-list-head { padding: 4px 6px 10px; }
+.shot-videos-list-head h2, .shot-videos-section-head h3 { margin: 0; font-size: 14px; }
+.shot-videos-list-head small, .shot-videos-section-head span { color: var(--text-muted); font-size: 11px; }
+.shot-videos-list-item { display: grid; gap: 4px; width: 100%; margin-bottom: 4px; padding: 9px; text-align: left; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-1); }
+.shot-videos-list-item[aria-pressed="true"] { border-color: var(--accent-primary); background: #253329; }
+.shot-videos-list-item .shot-videos-number { color: var(--accent-primary); font-size: 11px; font-weight: 700; }
+.shot-videos-list-item strong { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-size: 12px; }
+.shot-videos-list-item small { display: flex; align-items: center; justify-content: space-between; color: var(--text-secondary); }
+.shot-videos-main { display: grid; gap: 15px; align-content: start; }
+.shot-videos-main-head { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+.shot-videos-main-head h2 { margin: 5px 0 0; font-size: 17px; }
+.shot-videos-main-head .actions { display: flex; gap: 8px; white-space: nowrap; }
+.shot-videos-screen { min-width: 0; padding: 14px; background: #090e14; border: 1px solid var(--border-default); border-radius: var(--radius-2); }
+.shot-videos-screen-top { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 11px; margin-bottom: 10px; }
+.shot-video-player { position: relative; display: grid; place-items: center; width: min(100%, 950px); max-height: min(36vh, 520px); margin: auto; background: #05080b; }
+.shot-video-player video { display: block; width: 100%; height: 100%; max-height: min(36vh, 520px); object-fit: contain; }
+.shot-video-playback-error { display: grid; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
+.shot-video-playback-error .actions { display: flex; gap: 8px; }
+.shot-videos-screen-empty { display: grid; justify-items: center; align-content: center; gap: 10px; min-height: 300px; text-align: center; color: var(--text-secondary); }
+.shot-videos-screen-empty > span { font-size: 40px; color: var(--border-strong); }
+.shot-videos-screen-empty strong { color: var(--text-primary); font-size: 17px; }
+.shot-videos-screen-empty p { max-width: 420px; }
+.shot-videos-return { margin-top: 10px; }
+.shot-videos-candidates, .shot-videos-sequence, .shot-videos-history, .shot-videos-source, .shot-videos-confirmed-source { padding: 14px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-2); }
+.shot-videos-candidates > p { color: var(--text-muted); }
+.shot-videos-candidate-strip { display: flex; overflow-x: auto; gap: 10px; padding-top: 13px; }
+.shot-videos-candidate { flex: 0 0 210px; min-width: 0; padding: 8px; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-1); }
+.shot-videos-candidate[data-active="true"] { border-color: var(--accent-primary); }
+.shot-videos-candidate-pick { display: grid; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; }
+.shot-videos-candidate-pick img { width: 100%; height: 110px; object-fit: cover; background: #101820; }
+.shot-videos-candidate-pick span { display: flex; justify-content: space-between; padding-top: 6px; font-weight: 700; }
+.shot-videos-candidate-pick em { font-size: 11px; color: var(--status-warning); font-style: normal; }
+.shot-videos-candidate > small { color: var(--text-muted); }
+.shot-videos-candidate .actions { display: flex; gap: 6px; margin: 8px 0; }
+.shot-videos-candidate .actions button { padding: 5px 7px; font-size: 11px; }
+.shot-videos-candidate details { font-size: 11px; }
+.shot-videos-candidate .generate-source { overflow-wrap: anywhere; }
+.shot-videos-sequence { padding-bottom: 11px; }
+.shot-videos-sequence-scroll { display: flex; overflow-x: auto; gap: 9px; padding-top: 12px; }
+.shot-videos-sequence-scroll > button { flex: 0 0 118px; display: grid; gap: 3px; padding: 5px; text-align: left; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-1); }
+.shot-videos-sequence-scroll > button[aria-pressed="true"] { border-color: var(--accent-primary); }
+.shot-videos-sequence-thumb { position: relative; display: grid; place-items: center; height: 60px; overflow: hidden; background: #101820; color: var(--text-muted); }
+.shot-videos-sequence-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.shot-videos-sequence-thumb em { position: absolute; top: 3px; right: 3px; padding: 1px 4px; background: #846527; color: #fff; font-size: 10px; font-style: normal; }
+.shot-videos-sequence-scroll strong { font-size: 11px; }
+.shot-videos-sequence-scroll small { color: var(--text-muted); font-size: 10px; }
+@media (max-width: 2199px) { .shot-videos-layout { grid-template-columns: minmax(195px, 220px) minmax(0, 1fr); } }
+@media (max-width: 850px) { .shot-videos-layout { grid-template-columns: 1fr; } .shot-videos-list { max-height: 220px; } }

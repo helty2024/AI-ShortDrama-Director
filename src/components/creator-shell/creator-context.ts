@@ -7,6 +7,7 @@ export interface CreatorSelection {
   candidateId?: string
   targetKind?: 'character' | 'location' | 'prop'
   targetId?: string
+  generationMode?: 'keyframe' | 'video' | 'asset'
 }
 export interface CreatorState extends CreatorSelection {
   currentModule: CreatorModule

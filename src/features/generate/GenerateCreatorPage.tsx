@@ -18,6 +18,7 @@ import { imageCommand, imageProfilesSchema, videoCommand, videoProfilesSchema, d
 import { GenerationConfirm } from './GenerationConfirm'
 import { CandidateSource } from './GenerationSource'
 import { videoToolReady } from './readiness'
+import { reviewCreatorCandidate } from './candidate-actions'
 import './generate-creator.css'
 
 type Mode = 'keyframe' | 'video'
@@ -32,7 +33,7 @@ export function GenerateCreatorPage() {
 
 function GenerateWorkspace({ projectId }: { projectId: string }) {
   const { state, reload } = useWorkspace()
-  const { shotId, targetId, targetKind, select, navigateCreator } = useCreator()
+  const { shotId, targetId, targetKind, generationMode, select, navigateCreator } = useCreator()
   const toast = useToast()
   const visual = useVisual(projectId), ai = useIntelligence(projectId), allRuns = useWorkflowRuns(projectId)
   const entities = state.workspace?.entities ?? []
@@ -62,7 +63,7 @@ function GenerateWorkspace({ projectId }: { projectId: string }) {
   const [compare, setCompare] = useState<string[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const mode: Mode = shot && modeChoice?.shotId === shot.id ? modeChoice.mode : shot && officialVersion(shot, 'keyframe', entities, versions) ? 'video' : 'keyframe'
+  const mode: Mode = shot && modeChoice?.shotId === shot.id ? modeChoice.mode : shot && generationMode === 'video' ? 'video' : shot && officialVersion(shot, 'keyframe', entities, versions) ? 'video' : 'keyframe'
   const profiles = mode === 'video' && shot ? videoProfiles : imageProfiles
   const toolId = profiles.some((profile) => profile.toolId === toolChoice) ? toolChoice : profiles[0]?.toolId ?? ''
   const videoReady = videoToolReady(videoProfiles, toolId)
@@ -129,12 +130,8 @@ function GenerateWorkspace({ projectId }: { projectId: string }) {
   })
   const review = (version: AssetVersion, action: 'approve' | 'reject' | 'adopt') => void act(async () => {
     if (!target) throw new Error('目标不存在')
-    if (shot && run && step?.relatedAssetVersionId === version.id && run.status === 'waiting-user') {
-      await workflow.act({ op: 'submitWorkflowUserDecision', projectId, runId: run.id, expectedRevision: run.revision, decision: { action: action === 'approve' ? 'approve-candidate' : action === 'reject' ? 'reject-candidate' : 'adopt-candidate', versionId: version.id, versionRevision: version.revision, targetRevision: shot.revision } })
-    } else if (!shot) {
-      if (action === 'reject') await visual.execute({ operation: 'version.review', projectId, id: version.id, expectedRevision: version.revision, status: 'rejected', targetId: null, targetRevision: null })
-      else await imageCommand({ op: 'review', projectId, versionId: version.id, revision: version.revision, adopt: action === 'adopt', targetRevision: target.revision })
-    } else throw new Error('请从当前镜头工作流审核候选')
+    if (target.kind !== 'shot' && target.kind !== 'character' && target.kind !== 'location' && target.kind !== 'prop') throw new Error('目标类型不支持审核')
+    await reviewCreatorCandidate({ projectId, target, version, action, workflow: shot ? workflow.snapshot : null, tasks: ai.snapshot.tasks })
     await Promise.all([reload(), visual.refresh(), ai.refresh()])
     toast('success', action === 'approve' ? '候选已批准，尚未采用' : action === 'reject' ? '候选已拒绝，历史仍保留' : shot ? mode === 'keyframe' ? '已设为镜头关键帧' : '已设为当前镜头视频' : '已设为主参考')
   })

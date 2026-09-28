@@ -26,6 +26,7 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
       candidateId: next.shotId && !shotId ? undefined : next.candidateId,
       targetKind: targetId ? next.targetKind : undefined,
       targetId,
+      generationMode: next.generationMode,
     }
   }
   const visibleSelection = normalize(selection)

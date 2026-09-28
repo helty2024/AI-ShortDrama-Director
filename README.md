@@ -10,7 +10,7 @@
 
 当前正式版本为 **0.7.0 RELEASED**；冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。0.8 Creator UI 仍在开发，不改变已发布包版本。
 
-0.8 Story / Script / Assets / Storyboard / Generate Creator pages are implemented on the Creator Shell. Technical panels remain available through compatibility entries. See [08-03 notes](docs/story-script-creator-0.8.md), [08-04 Assets notes](docs/assets-creator-0.8.md), and [08-05 Storyboard / Generate notes](docs/storyboard-generate-creator-0.8.md). The packaged desktop currently has no registered real Video Tool; Shot Video generation is unavailable until a separately validated integration exists. Package remains 0.7.0; schema is 10 and backup format is 5.
+0.8 Creator primary pages are implemented through Shot Videos on the Creator Shell. Technical panels remain available through compatibility entries. See [08-03 notes](docs/story-script-creator-0.8.md), [08-04 Assets notes](docs/assets-creator-0.8.md), [08-05 Storyboard / Generate notes](docs/storyboard-generate-creator-0.8.md), and [08-06 Shot Videos notes](docs/shot-videos-creator-0.8.md). The packaged desktop currently has no registered real Video Tool; new Shot Video generation is unavailable until a separately validated integration exists, while historical confirmed videos remain reviewable. 0.8 is not released. Package remains 0.7.0; schema is 10 and backup format is 5.
 
 `npm run test:unit` runs test files serially because several local HTTP fixtures share process-level resources; individual test cases still execute normally.
 

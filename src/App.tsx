@@ -12,6 +12,7 @@ import { StoryPage } from './features/story/StoryPage'
 import { AssetsCreatorPage } from './features/assets/AssetsCreatorPage'
 import { StoryboardCreatorPage } from './features/storyboard/StoryboardCreatorPage'
 import { GenerateCreatorPage } from './features/generate/GenerateCreatorPage'
+import { ShotVideosCreatorPage } from './features/shot-videos/ShotVideosCreatorPage'
 import { WorkspaceProvider } from './features/workspace/store'
 import { useWorkspace } from './features/workspace/state'
 import {
@@ -37,13 +38,13 @@ function LegacyLinks() {
 }
 function CreatorPages() {
   const { state } = useWorkspace()
-  const { currentModule, shotId, navigateCreator, select } = useCreator()
+  const { currentModule } = useCreator()
   if (window.desktop?.development && localStorage.getItem('director-test-render-error') === '1') {
     throw new Error('Creator workspace test error')
   }
   const pages = {
     story: StoryPage, scripts: ScriptPage, assetsHub: AssetsCreatorPage,
-    storyboard: StoryboardCreatorPage, generation: GenerateCreatorPage, shotVideos: ProductionBoard,
+    storyboard: StoryboardCreatorPage, generation: GenerateCreatorPage, shotVideos: ShotVideosCreatorPage,
     settings: ProviderSettingsPage, operations: OperationsPage,
   }
   const legacy = {
@@ -53,24 +54,9 @@ function CreatorPages() {
   const Page = state.module in legacy
     ? legacy[state.module as keyof typeof legacy]
     : pages[currentModule]
-  const shots = state.workspace?.entities.filter((entity) => entity.kind === 'shot') ?? []
-  const showShotContext = currentModule === 'shotVideos' && shots.length > 0
   return (
     <>
       <MediaEnvironmentNotice />
-      {showShotContext && (
-        <div className="creator-context-strip" aria-label="镜头上下文">
-          <label>
-            当前镜头
-            <select aria-label="当前镜头" value={shotId ?? ''} onChange={(event) => select({ shotId: event.target.value || undefined })}>
-              <option value="">选择镜头</option>
-              {shots.map((shot) => <option key={shot.id} value={shot.id}>{shot.name}</option>)}
-            </select>
-          </label>
-          {shotId && currentModule === 'shotVideos' && <button onClick={() => navigateCreator('generation', { shotId })}>重新生成</button>}
-        </div>
-      )}
-      {currentModule === 'shotVideos' && <h1>分镜视频</h1>}
       <Page key={`${state.workspace?.project.id}:${state.module}:${state.editorEpoch}`} />
       <LegacyLinks />
     </>
