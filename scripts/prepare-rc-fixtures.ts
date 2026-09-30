@@ -104,6 +104,21 @@ try {
   )
   const folder = join(root, 'backups', 'format-4')
   await rename(generated, folder)
+  const snapshotPath = join(folder, 'project.sqlite')
+  const snapshot = new DatabaseSync(snapshotPath)
+  try {
+    const row = snapshot.prepare('SELECT id,data FROM projects').get()!
+    const data = JSON.parse(String(row.data)) as Record<string, unknown>
+    for (const key of ['logline', 'style', 'worldview', 'creativeRequirements']) delete data[key]
+    snapshot.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify(data), row.id)
+    snapshot.exec('PRAGMA user_version=9')
+  } finally { snapshot.close() }
+  const manifestPath = join(folder, 'manifest.json')
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { format: number; schema: number; files: Record<string, string> }
+  manifest.format = 4
+  manifest.schema = 9
+  manifest.files['project.sqlite'] = hash(await readFile(snapshotPath))
+  await writeFile(manifestPath, JSON.stringify(manifest))
   backups.push({
     format: 4,
     schema: 9,

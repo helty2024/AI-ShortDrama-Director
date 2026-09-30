@@ -8,9 +8,9 @@
 
 正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。
 
-当前正式版本为 **0.7.0 RELEASED**；冻结边界、实测范围和发布验收见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)。0.8 Creator UI 仍在开发，不改变已发布包版本。
+当前正式稳定版为 **v0.7.0 RELEASED**；当前候选版为 **v0.8.0-rc.1**，并非正式 0.8 Release。稳定版边界见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)，候选版验收见 [0.8 RC 说明](docs/release-0.8.0-rc.1.md)。
 
-0.8 Creator primary pages are implemented through Shot Videos on the Creator Shell. Technical panels remain available through compatibility entries. See [08-03 notes](docs/story-script-creator-0.8.md), [08-04 Assets notes](docs/assets-creator-0.8.md), [08-05 Storyboard / Generate notes](docs/storyboard-generate-creator-0.8.md), [08-06 Shot Videos notes](docs/shot-videos-creator-0.8.md), and the [full-chain closeout](docs/creator-ui-closeout-0.8.md). The Creator route can now create the first Shot in a fresh project without visiting a Legacy storyboard page. The packaged desktop currently has no registered real Video Tool; new Shot Video generation is unavailable until a separately validated integration exists, while historical confirmed videos remain reviewable. 0.8 is not released. Package remains 0.7.0; schema is 10 and backup format is 5.
+0.8 Creator 主流程为**故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**；技术面板仍通过兼容入口可达。详见 [08-03](docs/story-script-creator-0.8.md)、[08-04](docs/assets-creator-0.8.md)、[08-05](docs/storyboard-generate-creator-0.8.md)、[08-06](docs/shot-videos-creator-0.8.md) 与 [Closeout](docs/creator-ui-closeout-0.8.md)。全新项目可直接在 Creator 界面创建首个镜头。打包桌面端尚无正式 Video Tool：新视频生成不可用，历史已确认视频仍可审看。候选版 package 为 `0.8.0-rc.1`，SQLite schema `10`，backup format `5`。
 
 `npm run test:unit` runs test files serially because several local HTTP fixtures share process-level resources; individual test cases still execute normally.
 

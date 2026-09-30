@@ -803,7 +803,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
         command: { operation: 'about' },
       }),
     )
-    expect(about).toMatchObject({ ok: true, data: { version: '0.7.0', schema: 10 } })
+    expect(about).toMatchObject({ ok: true, data: { version: '0.8.0-rc.1', schema: 10 } })
     const isolation = await page.evaluate(() => ({
       bridge: Boolean(window.desktop?.workspace),
       require: typeof Reflect.get(window, 'require'),
