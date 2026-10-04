@@ -7,7 +7,7 @@ import { ProjectDatabase } from '../../electron/main/database.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
-test('0.8.0-rc.1 package metadata and database schema remain consistent', async () => {
+test('0.8.0 package metadata and database schema remain consistent', async () => {
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
     version: string
   }
@@ -19,7 +19,7 @@ test('0.8.0-rc.1 package metadata and database schema remain consistent', async 
   const database = new ProjectDatabase(':memory:')
 
   try {
-    assert.equal(manifest.version, '0.8.0-rc.1')
+    assert.equal(manifest.version, '0.8.0')
     assert.equal(lock.version, manifest.version)
     assert.equal(lock.packages['']?.version, manifest.version)
     assert.match(builder, /^productName: AI ShortDrama Director$/m)

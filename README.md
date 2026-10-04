@@ -8,9 +8,11 @@
 
 正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。
 
-当前正式稳定版为 **v0.7.0 RELEASED**；当前候选版为 **v0.8.0-rc.1**，并非正式 0.8 Release。稳定版边界见 [0.7.0 RC 说明](docs/release-0.7.0-rc.md)，候选版验收见 [0.8 RC 说明](docs/release-0.8.0-rc.1.md)。
+当前正式稳定版为 **v0.8.0 RELEASED**。版本边界、安装升级与验收记录见 [0.8.0 Release 说明](docs/release-0.8.0.md)；历史候选版验收见 [0.8 RC 说明](docs/release-0.8.0-rc.1.md)。
 
-0.8 Creator 主流程为**故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**；技术面板仍通过兼容入口可达。详见 [08-03](docs/story-script-creator-0.8.md)、[08-04](docs/assets-creator-0.8.md)、[08-05](docs/storyboard-generate-creator-0.8.md)、[08-06](docs/shot-videos-creator-0.8.md) 与 [Closeout](docs/creator-ui-closeout-0.8.md)。全新项目可直接在 Creator 界面创建首个镜头。打包桌面端尚无正式 Video Tool：新视频生成不可用，历史已确认视频仍可审看。候选版 package 为 `0.8.0-rc.1`，SQLite schema `10`，backup format `5`。
+0.8 Creator 主流程为**故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**；技术面板仍通过兼容入口可达。详见 [08-03](docs/story-script-creator-0.8.md)、[08-04](docs/assets-creator-0.8.md)、[08-05](docs/storyboard-generate-creator-0.8.md)、[08-06](docs/shot-videos-creator-0.8.md) 与 [Closeout](docs/creator-ui-closeout-0.8.md)。全新项目可直接在 Creator 界面创建首个镜头。打包桌面端尚无正式 Video Tool：新视频生成不可用，历史已确认视频仍可审看。正式版 package 为 `0.8.0`，SQLite schema `10`，backup format `5`。
+
+Windows 隔离安装验收复用 `scripts/verify-0.8-rc.mjs`（可选第六参数 `0.8.0`）；`scripts/verify-0.8-final-upgrade.mjs` 用已安装的 0.7.0 / rc.1 创建含 confirmed 视频的临时项目，再验证正式包升级、媒体读取与离线诊断。用法和安全边界见正式 Release 文档，不使用真实用户项目或付费 Provider。
 
 `npm run test:unit` runs test files serially because several local HTTP fixtures share process-level resources; individual test cases still execute normally.
 

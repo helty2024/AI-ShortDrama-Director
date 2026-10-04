@@ -6,13 +6,13 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import sharp from 'sharp'
 
-const [mode, executableArg, userDataArg, fixtureRootArg, reportArg] = process.argv.slice(2)
+const [mode, executableArg, userDataArg, fixtureRootArg, reportArg, expectedVersion = '0.8.0-rc.1'] = process.argv.slice(2)
 if (!mode || !executableArg || !userDataArg || !fixtureRootArg || !reportArg)
-  throw new Error('Usage: node scripts/verify-0.8-rc.mjs <seed07|fresh08|upgrade08|restore08|retained08> <installed-exe> <isolated-userData> <fixture-root> <report>')
+  throw new Error('Usage: node scripts/verify-0.8-rc.mjs <seed07|fresh08|upgrade08|restore08|retained08> <installed-exe> <isolated-userData> <fixture-root> <report> [expected-version]')
 const root = resolve(tmpdir(), 'ai-shortdrama-director-release-tests')
 const userData = resolve(userDataArg)
 const fixtureRoot = resolve(fixtureRootArg)
-for (const target of [userData, fixtureRoot]) {
+for (const target of [userData, fixtureRoot, resolve(reportArg)]) {
   const scope = relative(root, target)
   if (!scope || scope.startsWith('..') || isAbsolute(scope)) throw new Error('Path must be within dedicated release-test temp root')
 }
@@ -50,7 +50,7 @@ try {
   assert.equal(await application.evaluate(({ app }) => app.getPath('userData')), userData)
   const info = await about(page)
   result.about = info
-  assert.equal(info.version, mode === 'seed07' ? '0.7.0' : '0.8.0-rc.1')
+  assert.equal(info.version, mode === 'seed07' ? '0.7.0' : expectedVersion)
   assert.equal(info.schema, mode === 'seed07' ? 9 : 10)
 
   if (mode === 'seed07') {
@@ -77,6 +77,7 @@ try {
     result.database = databaseFacts()
     assert.equal(result.database.schema, 9)
   } else if (mode === 'fresh08') {
+    await page.setViewportSize({ width: 2560, height: 1440 })
     await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '新建项目', exact: true }).click()
     await page.getByLabel('名称', { exact: true }).fill('RC 全新安装项目')
