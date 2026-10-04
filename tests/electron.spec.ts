@@ -152,6 +152,7 @@ test('Creator context is isolated across projects', async () => {
   const application = await launch(directory)
   try {
     const page = await application.firstWindow()
+    await page.setViewportSize({ width: 1920, height: 1080 })
     await page.getByRole('button', { name: '打开项目' }).first().click()
     const nav = page.getByRole('navigation', { name: '创作阶段' })
     await nav.getByRole('button', { name: '剧本', exact: true }).click()
@@ -160,9 +161,11 @@ test('Creator context is isolated across projects', async () => {
     await nav.getByRole('button', { name: '资产', exact: true }).click()
     await page.locator('.creator-asset-card').first().click()
     await expect(page.locator('.creator-asset-card').first()).toHaveAttribute('aria-pressed', 'true')
+    await closeCreatorInspectorOverlay(page)
     await nav.getByRole('button', { name: '分镜', exact: true }).click()
     await page.locator('.storyboard-shot-card').last().click()
     await expect(page.locator('.storyboard-shot-card').last()).toHaveAttribute('aria-pressed', 'true')
+    await closeCreatorInspectorOverlay(page)
     await page.getByRole('button', { name: '返回项目列表' }).click()
     await page.getByRole('button', { name: '新建项目', exact: true }).click()
     await page.getByLabel('名称', { exact: true }).fill('隔离项目 B')
@@ -188,6 +191,7 @@ test('Shot Videos Creator handles empty project and broken confirmed binding wit
   const application = await launch(directory)
   try {
     const page = await application.firstWindow()
+    await page.setViewportSize({ width: 1920, height: 1080 })
     await page.getByRole('button', { name: '新建项目', exact: true }).click()
     await page.getByLabel('名称', { exact: true }).fill('空镜头项目')
     await page.getByRole('button', { name: '保存', exact: true }).click()
@@ -226,11 +230,14 @@ test('Shot Videos Creator handles empty project and broken confirmed binding wit
   const brokenApp = await launch(brokenDirectory)
   try {
     const page = await brokenApp.firstWindow()
+    await page.setViewportSize({ width: 1920, height: 1080 })
     await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜视频', exact: true }).click()
     await expect(page.getByText('当前确认视频不可用')).toBeVisible()
     await expect(page.locator('.shot-video-player video')).toHaveCount(0)
+    await closeCreatorInspectorOverlay(page)
     await page.locator('.shot-videos-list-item').nth(1).click()
     await expect(page.getByRole('alert').filter({ hasText: '视频暂时无法播放' })).toBeVisible()
+    await closeCreatorInspectorOverlay(page)
     await page.getByRole('button', { name: '重试加载' }).click()
     await expect(page.getByRole('alert').filter({ hasText: '视频暂时无法播放' })).toBeVisible()
     await page.getByRole('button', { name: '查看来源' }).click()
@@ -767,6 +774,13 @@ async function launch(directory: string, imageFixtureOrigin?: string, videoFixtu
   environment.DIRECTOR_TEST_USER_DATA = directory
   environment.DIRECTOR_TEXT_PROVIDER = 'mock'
   return electron.launch({ args: ['.'], env: environment })
+}
+
+async function closeCreatorInspectorOverlay(page: Page) {
+  const overlay = page.getByRole('dialog', { name: '上下文检查器', exact: true })
+  await expect(overlay).toHaveAttribute('aria-modal', 'true')
+  await page.keyboard.press('Escape')
+  await expect(overlay).toHaveCount(0)
 }
 
 async function openAssetTab(page: Page, name: '角色' | '场景' | '道具') {
