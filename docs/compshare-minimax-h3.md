@@ -1,0 +1,62 @@
+# 09-00 · CompShare MiniMax H3
+
+Real Video Provider Non-Paid Integration Baseline，基于正式 v0.8.0 / `bbba06ab156a299865f04212555865bb72434c02`。
+
+## 状态与边界
+
+原生协议实现及本地 fixture 验证完成。**真实鉴权、真实生成、供应商 CDN 与费用结算均未验收**。本轮没有读取用户已有密钥、调用真实任务接口或提交付费视频。`REAL_PAID_VIDEO_TEST=false`。
+
+package 保持 `0.8.0`、SQLite schema `10`、backup format `5`。不新增数据库迁移，不改变旧 Provider、Tool Protocol、Approval/Reservation 或 Workflow 数据结构。历史已确认视频仍可审看。
+
+## 协议依据
+
+2026-10-12 核对 [CompShare 官方 MiniMax H3 视频任务 API](https://www.compshare.cn/docs/minimax-h3/api/minimax-h3-video-api)。这是 CompShare 专用协议，不是旧 Reference Video Protocol，也不代表直连 MiniMax、Hailuo 2.3 或其他网关兼容。
+
+| 动作 | 固定路径 / 原生字段 |
+| --- | --- |
+| submit | `POST https://cp.compshare.cn/minimax/v2/video_generation`；`task_id` |
+| status / result / recover | `GET /minimax/v2/query/video_generation/{task_id}`；`task.id/status/content.url` |
+| cancel | `DELETE /minimax/v2/video_generation/{task_id}`；`task_id/action/status` |
+| 手动只读检测 | `GET /minimax/v2/query/point_usage_summary` |
+
+独立 `CompShareMiniMaxH3Adapter` 复用既有 Video Adapter 的授权归属、异步生命周期及受控输出下载；供应商路径、请求与响应映射留在子类。Reference 默认协议保持不变，同时加强工具/版本身份检查与不明响应冻结。
+
+本地支持子集：`MiniMax-H3`；文生视频与项目内首帧/首尾帧；4–30 秒整数；一条 MP4 输出；原生 `480P`。公开契约支持的五种画幅只采用官方尺寸表：16:9 为 864×480、9:16 为 480×864、1:1 为 480×480、4:3 为 640×480、3:4 为 480×640。
+
+首尾帧由主进程读取项目 AssetVersion 字节并映射为 Data URL，明确上传授权后才允许 fixture 提交。图片 MIME 白名单、单图 30 MiB 和总请求 72 MiB 上限在本地检查。设置 `mute_audio=true`、`use_context_ir=false`。seed、独立 negativePrompt、有声生成、21:9/adaptive、多模态参考、Skill、Context-IR、回调和超分档位不开放；不会默默丢弃非空 seed/negativePrompt。官方未明确输出 FPS 控制，因此不发送 fps，也不将输入 fps 宣称为已验证的输出帧率。
+
+## 非付费门禁
+
+正式 Adapter 的 `generationEnabled=false`，无配置项、环境变量或 renderer 开关可以打开真实 submit。服务在预览创建 Prompt/Task 前拒绝；适配器在读取凭据、上传或发出 POST 前再次拒绝。Broker health 保持 unknown/unavailable，因此不会成为可执行 AUTO 候选。
+
+`profiles` 只投影可执行工具，Creator 仍显示“尚未配置可用的视频生成工具”；单独的 `configuration` 投影只用于设置页展示已注册但禁用的配置。不能用配置存在代替生成就绪。
+
+只有显式构造、精确 `http://127.0.0.1:<port>` 的 fixture transport 才能走本地协议测试。应用组合不会为 CompShare 注入该 transport。正式远端取消同样关闭；本地模拟取消响应为 running 时返回 unknown，保留任务与预算，不能把请求取消当成已取消。
+
+官方示例未提供可核实的生产输出 CDN，生产下载 host 白名单留空并拒绝远端下载。fixture 下载复用既有 HTTPS/DNS/SSRF/重定向/大小约束、MP4 magic、FFprobe 和 thumbnail 入库；下载不带 API Key。真实 CDN 验证留给后续步骤。
+
+## 本地配置与只读检测
+
+打开项目 → 项目设置 → CompShare · MiniMax H3 → **导入 CompShare API Key（加密保存）**，通过系统文件选择器选择包含 `sk-ml-` 模型密钥的本地文本文件。文件不会复制进项目，密钥仅由主进程读取并交给既有 CredentialStore / Electron safeStorage；加密不可用时拒绝保存。请在导入后妥善处理原始密钥文件，不要提交到 Git。
+
+`%APPDATA%/ai-shortdrama-director/video-api-profiles.json` 只保存固定 adapter/tool/model 与 credential UUID。导入不会探测网络；启动不自动请求云端 API；恢复配置仍为不可执行。当前只支持首次配置，不提供密钥替换；重复和并发导入拒绝，已有配置文件保持原样。
+
+**检测鉴权与积分（不生成）** 是用户主动的 GET，返回脱敏积分汇总、检查时间和错误代码。不会创建 AITask、GenerationRecord、Approval 或 Reservation，也不上传项目素材。成功仅证明当次积分接口鉴权，不证明模型生成权限、质量、CDN 或付费 E2E；重启不保留这次探测结果。工具状态刷新只检查本地凭据，仍标记 configured-unverified。
+
+积分与 `usage.total_seconds` 不作为 CNY actual cost，不虚构免费/零费用。基线估价为 unknown；本地 fixture 成功也继续持有待核对的预算。submit 超时、断连或无有效 task_id 冻结为 unknown-submission，禁止重提。已知任务恢复只查询原 ID。
+
+## 验证
+
+```powershell
+npx tsx --test tests/unit/compshare-minimax-h3.test.ts
+npm run lint
+npm run build
+npm run test:unit
+npm run test:smoke
+```
+
+专用 25 项行为测试覆盖字段映射、预检零副作用、生成门禁、帧上传许可、积分错误、HTTP 401/429/500、任务身份、未知提交、重启 submitCount=1、无认证输出下载、HTML/损坏 MP4/危险 URL、真实 FFprobe、Candidate → Review → Adopt、配置持久化、并发导入保护及窄 IPC。测试 MP4 由 FFmpeg 在临时目录生成，不提交二进制媒体。Electron 新增配置恢复、设置状态及 IPC 注入拒绝验证，全程隔离 userData。
+
+2026-10-12 本机最终门禁：lint / build 通过，unit **422/422**，Electron smoke **23/23**。桌面门禁在允许 Electron 子进程的本机环境运行。新增重启测试已修正为等待页面完成加载再退出，避免加载途中关闭引发 ERR_FAILED。中间一轮既有 ComfyUI workflow 取消恢复用例发生间歇失败，单独复核及最终完整回归均通过；未改动该用例或 ComfyUI 生产实现。构建仅有既有 Zod 注释 annotation 提示。
+
+后续真实验收需要独立任务：确认生产输出域名、真实能力与费用证据，完成一次明确授权的视频 E2E，再决定是否开放真实生成。本轮不发布新版本或安装包。

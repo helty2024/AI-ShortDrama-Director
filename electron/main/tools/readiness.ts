@@ -4,6 +4,7 @@ import { ComfyUIToolAdapter } from './adapters/comfyui.js'
 import { PackyImage25Adapter } from './adapters/packy-image-25.js'
 import { ImageApiAdapter } from './adapters/image-api.js'
 import { VideoApiAdapter } from './adapters/video-api.js'
+import { CompShareMiniMaxH3Adapter } from './adapters/compshare-minimax-h3.js'
 import type { ToolRegistry } from './registry.js'
 import { requestFingerprint } from './fingerprint.js'
 
@@ -36,6 +37,10 @@ export async function toolReadiness(registries: ToolRegistry[], hasCredential: (
       row.validation = 'real-generation-partially-validated'
       row.runtime = await hasCredential(descriptor.id).catch(() => false) ? 'configured-unverified' : 'configuration-required'
       row.detail = 'real provider response observed; full live asset-ingestion/adoption not yet validated. 凭据仅本地检查；真实提交仍受独立验证授权门禁。'
+    } else if (adapter instanceof CompShareMiniMaxH3Adapter) {
+      row.validation = 'simulated-validated'
+      row.runtime = await hasCredential(descriptor.id).catch(() => false) ? 'configured-unverified' : 'configuration-required'
+      row.detail = '09-00：原生协议已实现、本地 fixture 验证；真实连通性与生成未验证。真实提交关闭，积分不折算为货币费用。'
     } else if (adapter instanceof ImageApiAdapter || adapter instanceof VideoApiAdapter) {
       row.validation = 'simulated-validated'; row.runtime = 'development-test-only'
       row.detail = 'Development / Reference：仅协议 fixture 验证，不代表真实供应商。'
@@ -47,5 +52,6 @@ export async function toolReadiness(registries: ToolRegistry[], hasCredential: (
   for (const kind of ['Image', 'Video']) if (!rows.some(r => r.runtime === 'development-test-only' && r.capabilities.some(c => c.startsWith(kind.toLowerCase()))))
     rows.push({ toolId: `reference.${kind.toLowerCase()}`, name: `Reference ${kind}`, capabilities: kind === 'Image' ? ['image.generate', 'image.referenceGenerate'] : ['video.textToVideo', 'video.imageToVideo'], validation: 'simulated-validated', runtime: 'development-test-only', detail: 'Development / Reference：未注册为正式生产选项。', checkedAt })
   rows.push({ toolId: 'real-video', name: 'Real Video Provider', capabilities: ['video.textToVideo', 'video.imageToVideo'], validation: 'not-validated', runtime: 'configuration-required', detail: '未配置、未验证；Reference fixture 不代表 Seedance / Kling / Veo。', checkedAt })
+  if (!rows.some(row => row.toolId === 'compshare.minimax-h3')) rows.push({ toolId: 'compshare.minimax-h3', name: 'CompShare · MiniMax H3', capabilities: ['video.textToVideo', 'video.imageToVideo'], validation: 'simulated-validated', runtime: 'configuration-required', detail: '09-00 非付费基线：原生协议与本地 fixture；真实连通性和生成未验证、真实提交关闭。', checkedAt })
   return readinessSchema.parse(rows)
 }

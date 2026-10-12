@@ -2,6 +2,7 @@ import { ToolReadinessPanel } from '../operations/ProvenancePanel'
 import { ProductionSettings } from '../video/ProductionSettings'
 import { useEffect, useState } from 'react'
 import { videoCommand, videoProfilesSchema } from '../generate/generation-api'
+import { compshareProbeSchema, videoConfigurationSchema } from '../../shared/video-api'
 import { useWorkspace } from '../workspace/state'
 import { useVisual } from './use-visual'
 import type {
@@ -33,9 +34,10 @@ function Settings({ projectId }: { projectId: string }) {
     <>
       <h1>Provider 设置</h1>
       <ToolReadinessPanel />
-      <section aria-label="视频工具状态"><h2>Video Tools：{videoTools ?? '核验中'}</h2>{videoTools === 0 && <p>当前版本尚未注册视频生成工具。此处不提供尚未实现的 Video Profile 导入。</p>}</section>
+      <section aria-label="视频工具状态"><h2>Video Tools：{videoTools ?? '核验中'}</h2>{videoTools === 0 && <p>尚未配置可执行的视频生成工具。CompShare H3 当前仅开放非付费接入。</p>}</section>
+      <CompShareSettings />
       <p>
-        配置存于主进程数据库，仅支持图像生成。本地 ComfyUI
+        下方为原有图像 Provider 配置，存于本地数据库。本地 ComfyUI
         需要已安装模型和相应节点。
       </p>
       {visual.error && (
@@ -54,6 +56,38 @@ function Settings({ projectId }: { projectId: string }) {
       <ProductionSettings projectId={projectId} />
     </>
   )
+}
+function CompShareSettings() {
+  const [configured, setConfigured] = useState(false), [loaded, setLoaded] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('')
+  const [probe, setProbe] = useState<ReturnType<typeof compshareProbeSchema.parse> | null>(null)
+  useEffect(() => {
+    let active = true
+    void videoCommand({ op: 'configuration' }).then(result => {
+      const rows = videoConfigurationSchema.parse(result)
+      if (active) { setConfigured(rows.some(row => row.toolId === 'compshare.minimax-h3')); setLoaded(true) }
+    }).catch(() => { if (active) setMessage('读取视频配置失败') })
+    return () => { active = false }
+  }, [])
+  const run = async (importKey: boolean) => {
+    setBusy(true); setMessage('')
+    try {
+      if (importKey) {
+        await videoCommand({ op: 'importCompShareCredential' })
+        const rows = videoConfigurationSchema.parse(await videoCommand({ op: 'configuration' }))
+        const saved = rows.some(row => row.toolId === 'compshare.minimax-h3')
+        setConfigured(saved); setMessage(saved ? '凭据已加密保存，真实生成仍关闭。' : '已取消导入。')
+      } else setProbe(compshareProbeSchema.parse(await videoCommand({ op: 'probe', toolId: 'compshare.minimax-h3' })))
+    } catch { setMessage('操作失败，请检查配置文件或重新检测。') } finally { setBusy(false) }
+  }
+  return <section aria-label="CompShare H3 非付费接入"><h2>CompShare · MiniMax H3</h2>
+    <p>协议已实现并通过本地模拟验证。真实生成未验证，当前不能生成视频。积分不等于货币费用。</p>
+    <p>{!loaded ? '读取配置中' : configured ? '已保存配置' : '尚未配置'} · 真实生成关闭</p>
+    <button disabled={!loaded || busy || configured} onClick={() => void run(true)}>导入 CompShare API Key（加密保存）</button>
+    <button disabled={!configured || busy} onClick={() => void run(false)}>检测鉴权与积分（不生成）</button>
+    <p>检测仅查询 CompShare 积分余额，不提交任务、不上传素材。请选择含 sk-ml- 密钥的本地文本文件；密钥仅由主进程读取。</p>
+    {message && <p role="status">{message}</p>}
+    {probe && <p role="status">{probe.authenticated && probe.points ? `鉴权查询成功 · 可用积分 ${probe.points.available} · 预占 ${probe.points.reserved} · 总积分 ${probe.points.total}` : `检测失败：${probe.errorCode}`} · 真实生成未验证 · {probe.checkedAt}</p>}
+  </section>
 }
 function SettingsForm({
   projectId,

@@ -20,6 +20,7 @@ import type {
   VideoDiagnosticStage,
 } from '../tools/adapters/video-api.js'
 import { normalizeToolError } from '../tools/errors.js'
+import { CompShareMiniMaxH3Adapter } from '../tools/adapters/compshare-minimax-h3.js'
 import type {
   ToolExecutionContext,
   ToolTaskHandle,
@@ -135,7 +136,7 @@ export class VideoApiGenerationService {
   }
 
   profiles() {
-    return this.registry.list().map((entry) => ({
+    return this.registry.list().filter(entry => this.tools.get(entry.descriptor.id)?.generationEnabled !== false).map((entry) => ({
       toolId: entry.descriptor.id,
       displayName: entry.descriptor.name,
       model: entry.descriptor.capabilities[0].models,
@@ -144,6 +145,16 @@ export class VideoApiGenerationService {
       resolutions: this.tools.get(entry.descriptor.id)?.profile.supportedResolutions ?? [],
       aspectRatios: this.tools.get(entry.descriptor.id)?.profile.supportedAspectRatios ?? [],
     }))
+  }
+
+  async probe(toolId: string) {
+    const adapter = this.tools.get(toolId)
+    if (!(adapter instanceof CompShareMiniMaxH3Adapter)) throw new DomainError('NOT_FOUND', 'CompShare 尚未配置')
+    return adapter.probe(AbortSignal.timeout(10000))
+  }
+
+  configuration() {
+    return this.registry.list().map(entry => ({ toolId: entry.descriptor.id, displayName: entry.descriptor.name, generationEnabled: this.tools.get(entry.descriptor.id)?.generationEnabled !== false }))
   }
 
   async preview(raw: unknown): Promise<VideoApiPreview> {
@@ -155,6 +166,8 @@ export class VideoApiGenerationService {
     const entry = this.registry.list().find((v) => v.descriptor.id === input.toolId)
     if (!adapter || !entry)
       throw new DomainError('NOT_FOUND', 'Video API 未配置')
+    if (adapter.generationEnabled === false)
+      throw new DomainError('FORBIDDEN', '09-00 非付费基线：真实视频生成尚未开放')
     const capability: VideoCapability =
       input.mode === 'image-to-video'
         ? 'video.imageToVideo'

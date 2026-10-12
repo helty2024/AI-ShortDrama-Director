@@ -58,6 +58,7 @@ export interface VideoExecutionAccess {
 }
 export interface VideoApiTool extends ToolAdapter<VideoCapability> {
   readonly profile: VideoApiProfile
+  readonly generationEnabled?: boolean
   authorizeInputs(ctx: ToolExecutionContext, access: VideoExecutionAccess): void
   authorizeRecovery(
     ctx: ToolExecutionContext,
@@ -303,16 +304,31 @@ export class VideoApiAdapter implements VideoApiTool {
     })
   }
 
-  private endpoint(path: string): string {
+  protected endpoint(path: string): string {
     return new URL(path, this.profile.baseEndpoint.endsWith('/') ? this.profile.baseEndpoint : `${this.profile.baseEndpoint}/`).toString()
   }
 
-  private async key(): Promise<string> {
+  protected async key(): Promise<string> {
     try {
       return await this.credential()
     } catch {
       throw transportFailure('authentication', false)
     }
+  }
+
+  protected submitPath() { return 'tasks' }
+  protected taskPath(id: string) { return `tasks/${encodeURIComponent(id)}` }
+  protected resultPath(id: string) { return `${this.taskPath(id)}/result` }
+  protected cancelPath(id: string) { return this.taskPath(id) }
+  protected requestBody<C extends VideoCapability>(capability: C, input: CapabilityInput<C>, context: ToolExecutionContext, frames: { assetVersionId: string; mime: string; base64: string }[]): unknown {
+    return { protocol: 'director-video-reference-v1', capability, model: context.model, input, frames }
+  }
+  protected parseAccepted(raw: unknown) { return acceptedSchema.parse(raw) }
+  protected parseStatus(raw: unknown, _id: string) { return statusSchema.parse(raw) }
+  protected parseResult(raw: unknown, _id: string) { return resultSchema.parse(raw) }
+  protected parseCancel(_raw: unknown, _id: string): ToolCancelResult { return { state: 'cancelled' } }
+  protected owns(handle: ToolTaskHandle) {
+    return handle.toolId === this.profile.toolId && handle.toolVersion === '1.0.0' && this.accepted.has(handle.externalTaskId)
   }
 
   async submit<C extends VideoCapability>(
@@ -341,17 +357,12 @@ export class VideoApiAdapter implements VideoApiTool {
       if (!frame) throw transportFailure('authorization', false)
       return { assetVersionId, mime: frame.mime, base64: frame.bytes.toString('base64') }
     })
+    const body = JSON.stringify(this.requestBody(capability, input, context, uploads))
     try {
-      const response = await this.transport.bytes(this.endpoint('tasks'), signal, {
+      const response = await this.transport.bytes(this.endpoint(this.submitPath()), signal, {
         method: 'POST',
         key: await this.key(),
-        body: JSON.stringify({
-          protocol: 'director-video-reference-v1',
-          capability,
-          model: context.model,
-          input,
-          frames: uploads,
-        }),
+        body,
         limit: 1024 * 1024,
       })
       grant.access.diagnostic('generation-response', {
@@ -360,7 +371,7 @@ export class VideoApiAdapter implements VideoApiTool {
         contentLength: response.diagnostics.contentLength,
       })
       if (response.mime !== 'application/json') throw new Error()
-      const accepted = acceptedSchema.parse(JSON.parse(response.bytes.toString('utf8')))
+      const accepted = this.parseAccepted(JSON.parse(response.bytes.toString('utf8')))
       grant.access.diagnostic('response-envelope', { taskIdPresent: true })
       this.accepted.set(accepted.taskId, grant)
       return {
@@ -382,15 +393,16 @@ export class VideoApiAdapter implements VideoApiTool {
           error: normalizeToolError({ code: 'unknown-submission' }),
           resubmitAllowed: false,
         }
+      if (!isTransportFailure(raw)) return { state: 'unknown', error: normalizeToolError({ code: 'unknown-submission' }), resubmitAllowed: false }
       throw raw
     }
   }
 
   async status(handle: ToolTaskHandle, signal: AbortSignal): Promise<ToolTaskStatus> {
-    if (!this.accepted.has(handle.externalTaskId))
+    if (!this.owns(handle))
       throw normalizeToolError({ code: 'authorization' })
     const response = await this.transport.bytes(
-      this.endpoint(`tasks/${encodeURIComponent(handle.externalTaskId)}`),
+      this.endpoint(this.taskPath(handle.externalTaskId)),
       signal,
       { method: 'GET', key: await this.key(), limit: 1024 * 1024 },
     )
@@ -403,7 +415,7 @@ export class VideoApiAdapter implements VideoApiTool {
         contentType: response.diagnostics.contentType,
       },
     )
-    const status = statusSchema.parse(JSON.parse(response.bytes.toString('utf8')))
+    const status = this.parseStatus(JSON.parse(response.bytes.toString('utf8')), handle.externalTaskId)
     if (status.state === 'failed')
       return {
         state: 'failed',
@@ -420,9 +432,9 @@ export class VideoApiAdapter implements VideoApiTool {
     signal: AbortSignal,
   ): Promise<ToolResult<CapabilityOutput<C>>> {
     const grant = this.accepted.get(handle.externalTaskId)
-    if (!grant) throw normalizeToolError({ code: 'authorization' })
+    if (!grant || !this.owns(handle)) throw normalizeToolError({ code: 'authorization' })
     const response = await this.transport.bytes(
-      this.endpoint(`tasks/${encodeURIComponent(handle.externalTaskId)}/result`),
+      this.endpoint(this.resultPath(handle.externalTaskId)),
       signal,
       { method: 'GET', key: await this.key(), limit: 1024 * 1024 },
     )
@@ -434,7 +446,7 @@ export class VideoApiAdapter implements VideoApiTool {
     let payload: z.infer<typeof resultSchema>
     try {
       if (response.mime !== 'application/json') throw new Error()
-      payload = resultSchema.parse(JSON.parse(response.bytes.toString('utf8')))
+      payload = this.parseResult(JSON.parse(response.bytes.toString('utf8')), handle.externalTaskId)
       grant.access.diagnostic('output-reference', {
         outputCount: payload.videos.length,
       })
@@ -488,15 +500,16 @@ export class VideoApiAdapter implements VideoApiTool {
 
   async cancel(handle: ToolTaskHandle, signal: AbortSignal): Promise<ToolCancelResult> {
     if (!this.profile.cancelSupport) return { state: 'unsupported' }
-    if (!this.accepted.has(handle.externalTaskId))
+    if (!this.owns(handle))
       return { state: 'unknown' }
     try {
-      await this.transport.bytes(
-        this.endpoint(`tasks/${encodeURIComponent(handle.externalTaskId)}`),
+      const response = await this.transport.bytes(
+        this.endpoint(this.cancelPath(handle.externalTaskId)),
         signal,
         { method: 'DELETE', key: await this.key(), limit: 1024 * 1024 },
       )
-      return { state: 'cancelled' }
+      if (response.mime !== 'application/json') throw new Error()
+      return this.parseCancel(JSON.parse(response.bytes.toString('utf8')), handle.externalTaskId)
     } catch (raw) {
       return {
         state: 'failed',
@@ -512,7 +525,7 @@ export class VideoApiAdapter implements VideoApiTool {
     signal: AbortSignal,
   ): Promise<ToolRecoverResult> {
     if (!this.profile.recoverSupport) return { state: 'unsupported' }
-    if (!this.accepted.has(handle.externalTaskId))
+    if (!this.owns(handle))
       return { state: 'unknown', resubmitAllowed: false }
     try {
       return { state: 'recovered', handle, status: await this.status(handle, signal) }

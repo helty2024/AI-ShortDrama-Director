@@ -43,6 +43,7 @@ export function registerWorkspaceIPC(
   videoApi?: VideoApiGenerationService,
   importImage?: () => Promise<null>,
   hasToolCredential: (toolId: string) => Promise<boolean> = async () => false,
+  importVideoCredential?: () => Promise<null>,
 ) {
   const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
   workflows?.runner.recoverUnfinished()
@@ -141,6 +142,16 @@ export function registerWorkspaceIPC(
             const c = request.command
             let data: unknown
             switch (c.op) {
+              case 'configuration':
+                data = videoApi.configuration()
+                break
+              case 'importCompShareCredential':
+                if (!importVideoCredential) throw new DomainError('CONFLICT', '视频凭据导入未配置')
+                data = await importVideoCredential()
+                break
+              case 'probe':
+                data = await videoApi.probe(c.toolId)
+                break
               case 'profiles':
                 data = videoApi.profiles()
                 break

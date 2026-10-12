@@ -10,6 +10,8 @@
 
 当前正式稳定版为 **v0.8.0 RELEASED**。版本边界、安装升级与验收记录见 [0.8.0 Release 说明](docs/release-0.8.0.md)；历史候选版验收见 [0.8 RC 说明](docs/release-0.8.0-rc.1.md)。
 
+09-00 新增 [CompShare MiniMax H3 非付费接入基线](docs/compshare-minimax-h3.md)：独立原生 Video Adapter、首尾帧 Data URL、固定原生 480P 子集、本地异步协议与真实 FFprobe 测试。项目设置可加密导入 `sk-ml-` 凭据并手动 GET 检测鉴权/积分；真实 submit 在服务与 Adapter 双重关闭，配置不会进入 Creator 可执行工具列表。真实服务、CDN 与付费 E2E 均未验证，积分不折算货币费用。package/schema/backup 保持 0.8.0/10/5，没有真实付费提交。专用测试：`npx tsx --test tests/unit/compshare-minimax-h3.test.ts`；新配置目录与操作详见该文档。
+
 0.8 Creator 主流程为**故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**；技术面板仍通过兼容入口可达。详见 [08-03](docs/story-script-creator-0.8.md)、[08-04](docs/assets-creator-0.8.md)、[08-05](docs/storyboard-generate-creator-0.8.md)、[08-06](docs/shot-videos-creator-0.8.md) 与 [Closeout](docs/creator-ui-closeout-0.8.md)。全新项目可直接在 Creator 界面创建首个镜头。打包桌面端尚无正式 Video Tool：新视频生成不可用，历史已确认视频仍可审看。正式版 package 为 `0.8.0`，SQLite schema `10`，backup format `5`。
 
 Windows 隔离安装验收复用 `scripts/verify-0.8-rc.mjs`（可选第六参数 `0.8.0`）；`scripts/verify-0.8-final-upgrade.mjs` 用已安装的 0.7.0 / rc.1 创建含 confirmed 视频的临时项目，再验证正式包升级、媒体读取与离线诊断。用法和安全边界见正式 Release 文档，不使用真实用户项目或付费 Provider。

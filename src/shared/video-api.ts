@@ -35,6 +35,13 @@ export const videoApiProfileSchema = z.strictObject({
 })
 export type VideoApiProfile = z.infer<typeof videoApiProfileSchema>
 
+export const compshareProbeSchema = z.strictObject({
+  toolId: z.literal('compshare.minimax-h3'), checkedAt: z.iso.datetime(), authenticated: z.boolean(),
+  points: z.strictObject({ total: z.number().int().nonnegative(), reserved: z.number().int().nonnegative(), available: z.number().int().nonnegative() }).nullable(),
+  generationEnabled: z.literal(false), realGenerationValidated: z.literal(false), errorCode: z.string().nullable(),
+})
+export const videoConfigurationSchema = z.array(z.strictObject({ toolId: z.string(), displayName: z.string(), generationEnabled: z.boolean() }))
+
 export const videoApiPreviewInputSchema = z.strictObject({
   projectId: z.uuid(),
   targetId: z.uuid(),
@@ -54,6 +61,9 @@ export const videoApiPreviewInputSchema = z.strictObject({
 
 export const videoApiCommandSchema = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('profiles') }),
+  z.strictObject({ op: z.literal('configuration') }),
+  z.strictObject({ op: z.literal('importCompShareCredential') }),
+  z.strictObject({ op: z.literal('probe'), toolId: z.literal('compshare.minimax-h3') }),
   z.strictObject({ op: z.literal('preview'), input: videoApiPreviewInputSchema }),
   z.strictObject({
     op: z.literal('confirm'),

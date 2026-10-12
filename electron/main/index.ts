@@ -6,6 +6,7 @@ import { validateLocalComfyUrl } from './tools/adapters/comfyui-runtime.js'
 import { builtinComfyProfile } from './tools/adapters/comfyui-template.js'
 import { VideoApiGenerationService } from './generation/video-api-service.js'
 import { VideoApiAdapter } from './tools/adapters/video-api.js'
+import { loadVideoProfiles, videoAdapters, importCompShareCredential } from './generation/video-profiles.js'
 import { loadImageProfiles, imageAdapters, importImageProfile } from './generation/image-profiles.js'
 import { MediaBroker } from './media-broker.js'
 import { protocol } from 'electron'
@@ -198,8 +199,9 @@ app
       ...imageAdapters(await loadImageProfiles(imageProfilePath),credentials),
       comfyAdapter,
     ])
-    const videoApi = new VideoApiGenerationService(visual, [])
-    // Explicit test composition only. Packaged desktop always keeps adapters=[].
+    const videoProfilePath = join(app.getPath('userData'), 'video-api-profiles.json')
+    const videoApi = new VideoApiGenerationService(visual, videoAdapters(await loadVideoProfiles(videoProfilePath), credentials))
+    // Explicit test composition only. Packaged desktop never enables fixture generation.
     if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_VIDEO_ORIGIN) {
       const origin = new URL(process.env.DIRECTOR_TEST_VIDEO_ORIGIN)
       if (origin.protocol !== 'http:' || origin.hostname !== '127.0.0.1' || origin.href !== `${origin.origin}/`) throw new Error('Invalid video fixture origin')
@@ -256,8 +258,13 @@ app
         return importImageProfile(imageProfilePath,profile.filePaths[0],key.filePaths[0],credentials,imageApi)
       },
       async (toolId) => {
-        const profile = (await loadImageProfiles(imageProfilePath)).find(p => p.toolId === toolId)
+        const profile = [...await loadImageProfiles(imageProfilePath), ...await loadVideoProfiles(videoProfilePath)].find(p => p.toolId === toolId)
         return Boolean(profile?.credentialRef && safeStorage.isEncryptionAvailable() && await credentials.has(profile.credentialRef))
+      },
+      async () => {
+        const result = await dialog.showOpenDialog({ title: '导入 CompShare H3 API Key（主进程加密保存，不生成视频）', properties: ['openFile'], filters: [{ name: 'Key 文本', extensions: ['txt', 'key'] }] })
+        if (result.canceled || !result.filePaths[0]) return null
+        return importCompShareCredential(videoProfilePath, result.filePaths[0], credentials, videoApi)
       },
     )
     session.defaultSession.setPermissionRequestHandler(

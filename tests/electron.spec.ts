@@ -18,6 +18,42 @@ import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
 
+test('09-00 CompShare configuration stays non-executable across desktop restart and safe IPC', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-h3-smoke-'))
+  await writeFile(join(directory, 'video-api-profiles.json'), JSON.stringify([{ adapter: 'compshare-minimax-h3', toolId: 'compshare.minimax-h3', modelId: 'MiniMax-H3', credentialRef: '6f35f7d1-43cc-44b4-bf72-9f58a450b1ff' }]))
+  let application = await launch(directory)
+  try {
+    let page = await application.firstWindow()
+    const check = async (current: Page) => {
+      await current.waitForURL('**/out/renderer/index.html', { waitUntil: 'load' })
+      await expect(current.locator('#root')).not.toBeEmpty()
+      await expect.poll(() => current.evaluate(() => Boolean(window.desktop))).toBe(true)
+      const configuration = await current.evaluate(() => window.desktop!.workspace.request({ action: 'videoApi', command: { op: 'configuration' } }))
+      expect(configuration.ok).toBe(true)
+      if (configuration.ok) expect(configuration.data).toEqual([{ toolId: 'compshare.minimax-h3', displayName: 'CompShare · MiniMax H3（非付费接入基线）', generationEnabled: false }])
+      const profiles = await current.evaluate(() => window.desktop!.workspace.request({ action: 'videoApi', command: { op: 'profiles' } }))
+      expect(profiles).toEqual({ ok: true, data: [] })
+      const injected = await current.evaluate(() => window.desktop!.workspace.request({ action: 'videoApi', command: { op: 'importCompShareCredential', path: 'C:/secret' } } as unknown as Request))
+      expect(injected.ok).toBe(false)
+    }
+    await check(page)
+    await page.getByRole('button', { name: '新建项目', exact: true }).click()
+    await page.getByLabel('名称', { exact: true }).fill('H3 非付费基线')
+    await page.getByRole('button', { name: '保存', exact: true }).click()
+    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+    const panel = page.getByRole('region', { name: 'CompShare H3 非付费接入' })
+    await expect(panel.getByText('已保存配置 · 真实生成关闭')).toBeVisible()
+    await expect(panel.getByRole('button', { name: '导入 CompShare API Key（加密保存）' })).toBeDisabled()
+    await panel.getByRole('button', { name: '检测鉴权与积分（不生成）' }).click()
+    await expect(panel.getByRole('status')).toContainText('检测失败：authentication')
+    await page.screenshot({ path: 'test-results/compshare-non-paid-settings.png' })
+    await application.close()
+    application = await launch(directory)
+    page = await application.firstWindow()
+    await check(page)
+  } finally { await application.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('Creator closeout fresh project completes Story to Shot Video journey without Legacy detour', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-creator-fresh-'))
   const server = await imageServer()
