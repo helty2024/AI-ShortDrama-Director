@@ -4,7 +4,7 @@ Real Video Provider Non-Paid Integration Baseline，基于正式 v0.8.0 / `bbba0
 
 ## 状态与边界
 
-原生协议实现及本地 fixture 验证完成。**真实鉴权、真实生成、供应商 CDN 与费用结算均未验收**。本轮没有读取用户已有密钥、调用真实任务接口或提交付费视频。`REAL_PAID_VIDEO_TEST=false`。
+原生协议实现及本地 fixture 验证完成。2026-10-12 后续测试已按用户授权导入本机密钥并通过真实积分接口鉴权；**真实生成、供应商 CDN 与费用结算仍未验收**。没有调用真实任务接口或提交付费视频。`REAL_PAID_VIDEO_TEST=false`。
 
 package 保持 `0.8.0`、SQLite schema `10`、backup format `5`。不新增数据库迁移，不改变旧 Provider、Tool Protocol、Approval/Reservation 或 Workflow 数据结构。历史已确认视频仍可审看。
 
@@ -37,6 +37,18 @@ package 保持 `0.8.0`、SQLite schema `10`、backup format `5`。不新增数�
 
 ## 本地配置与只读检测
 
+独立测试入口（无需进入当前设置页）：
+
+```powershell
+npm run validate:compshare                         # 读取已保存的加密凭据，GET 检测
+npm run validate:compshare -- --configure          # 通过系统文件选择器首次导入
+npm run validate:compshare -- --import-key-file "C:\path\minimax-h3-key.txt"
+```
+
+命令只接受上述选项，不允许自定义端点、明文密钥参数或付费开关。隐藏的 Electron 检测进程使用现有 safeStorage，独立于项目 UI；不打开数据库、不启动生成服务、不建立任务。正常启动清除测试 userData / fixture 环境变量；只在显式隔离测试进程注入 loopback fixture。检测结果以脱敏 JSON 写入 userData 下 `diagnostics/compshare-connectivity.json`，不含密钥、认证头、原始响应或素材。
+
+2026-10-12 14:17（北京时间），用户授权从桌面密钥文件首次导入；真实 `GET /minimax/v2/query/point_usage_summary` 返回鉴权成功，总积分 / 预占 / 可用均为 0。这是鉴权与账户余额验证，不证明生成权限、视频质量或免费生成。原始密钥文件保留；没有改动用户项目数据库。
+
 打开项目 → 项目设置 → CompShare · MiniMax H3 → **导入 CompShare API Key（加密保存）**，通过系统文件选择器选择包含 `sk-ml-` 模型密钥的本地文本文件。文件不会复制进项目，密钥仅由主进程读取并交给既有 CredentialStore / Electron safeStorage；加密不可用时拒绝保存。请在导入后妥善处理原始密钥文件，不要提交到 Git。
 
 `%APPDATA%/ai-shortdrama-director/video-api-profiles.json` 只保存固定 adapter/tool/model 与 credential UUID。导入不会探测网络；启动不自动请求云端 API；恢复配置仍为不可执行。当前只支持首次配置，不提供密钥替换；重复和并发导入拒绝，已有配置文件保持原样。
@@ -55,8 +67,10 @@ npm run test:unit
 npm run test:smoke
 ```
 
-专用 25 项行为测试覆盖字段映射、预检零副作用、生成门禁、帧上传许可、积分错误、HTTP 401/429/500、任务身份、未知提交、重启 submitCount=1、无认证输出下载、HTML/损坏 MP4/危险 URL、真实 FFprobe、Candidate → Review → Adopt、配置持久化、并发导入保护及窄 IPC。测试 MP4 由 FFmpeg 在临时目录生成，不提交二进制媒体。Electron 新增配置恢复、设置状态及 IPC 注入拒绝验证，全程隔离 userData。
+专用 27 项行为测试覆盖字段映射、预检零副作用、生成门禁、帧上传许可、积分错误与零余额、HTTP 401/429/500、任务身份、未知提交、重启 submitCount=1、无认证输出下载、HTML/损坏 MP4/危险 URL、真实 FFprobe、Candidate → Review → Adopt、配置持久化、并发导入保护及窄 IPC。测试 MP4 由 FFmpeg 在临时目录生成，不提交二进制媒体。Electron 新增配置恢复、设置状态及 IPC 注入拒绝验证，全程隔离 userData。
 
 2026-10-12 本机最终门禁：lint / build 通过，unit **422/422**，Electron smoke **23/23**。桌面门禁在允许 Electron 子进程的本机环境运行。新增重启测试已修正为等待页面完成加载再退出，避免加载途中关闭引发 ERR_FAILED。中间一轮既有 ComfyUI workflow 取消恢复用例发生间歇失败，单独复核及最终完整回归均通过；未改动该用例或 ComfyUI 生产实现。构建仅有既有 Zod 注释 annotation 提示。
+
+后续真实鉴权测试门禁：lint / build 通过，unit **424/424**，Electron smoke **24/24**。新增独立检测的系统加密、重新启动解密读取、原数据库字节不变、HTTP 401 与脱敏报告验证。真实只读检测在 14:17、14:19（北京时间）两个独立进程中均成功，第二次直接读取已保存的凭据，没有重复导入。
 
 后续真实验收需要独立任务：确认生产输出域名、真实能力与费用证据，完成一次明确授权的视频 E2E，再决定是否开放真实生成。本轮不发布新版本或安装包。

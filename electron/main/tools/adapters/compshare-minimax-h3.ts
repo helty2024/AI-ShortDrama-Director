@@ -15,7 +15,7 @@ export const compshareProfileSchema = z.strictObject({
 })
 export type CompShareProfile = z.infer<typeof compshareProfileSchema>
 const pointsSchema = z.object({ total_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), reserved_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), available_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })
-  .refine(p => p.reserved_points <= p.total_points && p.available_points === p.total_points - p.reserved_points)
+  .refine(p => p.available_points === Math.max(0, p.total_points - p.reserved_points))
 const remoteId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
 const taskSchema = z.object({ task: z.object({
   id: remoteId, model: z.enum(['MiniMax-H3', 'minimax-h3-lite']),

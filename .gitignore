@@ -21,3 +21,11 @@ credentials/
 video-receipts/
 *.key
 *.secret
+
+# Local runtime files only; keep source, docs and fixtures visible.
+/diagnostics/
+/logs/
+*.tmp
+/image-api-profiles.json
+/video-api-profiles.json
+/ai-shortdrama-director/

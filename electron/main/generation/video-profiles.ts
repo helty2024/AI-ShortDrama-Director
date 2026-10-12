@@ -7,12 +7,19 @@ import type { VideoApiGenerationService } from './video-api-service.js'
 import { DomainError } from '../database.js'
 
 const profilesSchema = z.array(compshareProfileSchema).max(1)
-const importing = new WeakSet<VideoApiGenerationService>()
-export async function loadVideoProfiles(path: string): Promise<CompShareProfile[]> {
+type ProfileRegistration = Pick<VideoApiGenerationService, 'registry' | 'register'>
+const importing = new WeakSet<ProfileRegistration>()
+export async function readVideoProfiles(path: string): Promise<CompShareProfile[]> {
   try {
-    if ((await stat(path)).size > 64000) return []
+    if ((await stat(path)).size > 64000) throw new DomainError('INVALID_INPUT', '视频配置文件过大')
     return profilesSchema.parse(JSON.parse(await readFile(path, 'utf8')))
-  } catch { return [] }
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return []
+    throw error
+  }
+}
+export async function loadVideoProfiles(path: string): Promise<CompShareProfile[]> {
+  try { return await readVideoProfiles(path) } catch { return [] }
 }
 export function videoAdapters(profiles: CompShareProfile[], credentials: CredentialStore) {
   return profilesSchema.parse(profiles).map(profile => new CompShareMiniMaxH3Adapter(profile, async () => {
@@ -20,7 +27,7 @@ export function videoAdapters(profiles: CompShareProfile[], credentials: Credent
     return credentials.get(profile.credentialRef)
   }))
 }
-export async function importCompShareCredential(path: string, keyFile: string, credentials: CredentialStore, service: VideoApiGenerationService) {
+export async function importCompShareCredential(path: string, keyFile: string, credentials: CredentialStore, service: ProfileRegistration) {
   if (importing.has(service)) throw new DomainError('CONFLICT', '凭据导入正在进行')
   importing.add(service)
   try {
@@ -28,7 +35,7 @@ export async function importCompShareCredential(path: string, keyFile: string, c
   } finally { importing.delete(service) }
 }
 
-async function saveCredential(path: string, keyFile: string, credentials: CredentialStore, service: VideoApiGenerationService) {
+async function saveCredential(path: string, keyFile: string, credentials: CredentialStore, service: ProfileRegistration) {
   if ((await stat(keyFile)).size > 8192) throw new DomainError('INVALID_INPUT', '密钥文件过大')
   const key = (await readFile(keyFile, 'utf8')).trim()
   if (!/^sk-ml-[a-zA-Z0-9_-]+$/.test(key) || key.length > 8192) throw new DomainError('INVALID_INPUT', '请使用 CompShare sk-ml- 模型密钥')

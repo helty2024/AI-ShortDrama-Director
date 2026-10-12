@@ -5,7 +5,7 @@ import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-export type CompShareMode = 'ok' | 'queued' | 'running' | 'failed' | 'cancelled' | 'unknown-submit' | 'malformed-submit' | 'malformed-status' | 'wrong-id' | 'missing-url' | 'status-401' | 'status-429' | 'status-500' | 'html' | 'truncated' | 'unsafe-url' | 'cancel-running' | 'probe-401' | 'probe-malformed'
+export type CompShareMode = 'ok' | 'queued' | 'running' | 'failed' | 'cancelled' | 'unknown-submit' | 'malformed-submit' | 'malformed-status' | 'wrong-id' | 'missing-url' | 'status-401' | 'status-429' | 'status-500' | 'html' | 'truncated' | 'unsafe-url' | 'cancel-running' | 'probe-401' | 'probe-malformed' | 'probe-empty' | 'probe-over-reserved'
 export async function compshareServer() {
   const directory = await mkdtemp(join(tmpdir(), 'compshare-fixture-'))
   const file = join(directory, 'output.mp4')
@@ -27,7 +27,10 @@ export async function compshareServer() {
     if (request.headers.authorization !== 'Bearer sk-ml-FIXTURE_ONLY') { json({}, 401); return }
     if (request.method === 'GET' && url.pathname === '/minimax/v2/query/point_usage_summary') {
       counts.probe++
-      json(mode === 'probe-malformed' ? { token: 'SECRET', total_points: 100, reserved_points: 150, available_points: 0 } : { total_points: 100, reserved_points: 20, available_points: 80 }, mode === 'probe-401' ? 401 : 200)
+      json(mode === 'probe-malformed' ? { token: 'SECRET', total_points: 100, reserved_points: 150, available_points: 1 }
+        : mode === 'probe-empty' ? { total_points: 0, reserved_points: 0, available_points: 0 }
+          : mode === 'probe-over-reserved' ? { total_points: 100, reserved_points: 150, available_points: 0 }
+            : { total_points: 100, reserved_points: 20, available_points: 80 }, mode === 'probe-401' ? 401 : 200)
       return
     }
     if (request.method === 'POST' && url.pathname === '/minimax/v2/video_generation') {

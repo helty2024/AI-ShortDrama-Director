@@ -14,6 +14,7 @@
     "test:smoke": "playwright test",
     "test:unit": "tsx --test --test-concurrency=1 tests/unit/*.test.ts",
     "validate:packy-paid": "node scripts/packy-paid-validation.mjs",
+    "validate:compshare": "node scripts/compshare-connectivity.mjs",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {

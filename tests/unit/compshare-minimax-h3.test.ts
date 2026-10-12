@@ -19,7 +19,7 @@ import { IntelligenceRepository } from '../../electron/main/intelligence/reposit
 import { VisualRepository } from '../../electron/main/visual/repository.js'
 import { MediaStorage } from '../../electron/main/visual/storage.js'
 import { VideoApiGenerationService } from '../../electron/main/generation/video-api-service.js'
-import { importCompShareCredential, loadVideoProfiles, videoAdapters } from '../../electron/main/generation/video-profiles.js'
+import { importCompShareCredential, readVideoProfiles, loadVideoProfiles, videoAdapters } from '../../electron/main/generation/video-profiles.js'
 import { compshareServer } from '../fixtures/compshare-http.js'
 
 const profile = { adapter: 'compshare-minimax-h3' as const, toolId: 'compshare.minimax-h3' as const, modelId: 'MiniMax-H3' as const, credentialRef: null }
@@ -197,14 +197,15 @@ test('queued/running status, asynchronous cancel and handle ownership use native
   } finally { await f.close() }
 })
 
-for (const mode of ['ok', 'probe-401', 'probe-malformed'] as const) test(`read-only probe ${mode} never creates generation/task/cost or leaks provider data`, async () => {
+for (const mode of ['ok', 'probe-empty', 'probe-over-reserved', 'probe-401', 'probe-malformed'] as const) test(`read-only probe ${mode} never creates generation/task/cost or leaks provider data`, async () => {
   const f = await fixture()
   try {
     f.server.setMode(mode)
     const result = await f.adapter.probe(signal())
-    assert.equal(result.authenticated, mode === 'ok')
+    assert.equal(result.authenticated, ['ok', 'probe-empty', 'probe-over-reserved'].includes(mode))
     assert.equal(result.generationEnabled, false)
     if (mode === 'ok') assert.deepEqual(result.points, { total: 100, reserved: 20, available: 80 })
+    if (mode === 'probe-empty' || mode === 'probe-over-reserved') assert.equal(result.points?.available, 0)
     assert.equal(f.server.counts.submit, 0)
     assert.equal(f.service.generation.list('generation_records', f.project.id).length, 0)
     assert.doesNotMatch(JSON.stringify(result), /SECRET|sk-ml-|signature=/)
@@ -236,6 +237,7 @@ test('configuration persists only credential reference; restart stays non-execut
     assert.equal(f.server.counts.submit, 0)
     await writeFile(profileFile, JSON.stringify([{ ...profile, baseEndpoint: f.server.origin }]))
     assert.deepEqual(await loadVideoProfiles(profileFile), [])
+    await assert.rejects(readVideoProfiles(profileFile))
   } finally { await f.close() }
 })
 

@@ -17,6 +17,49 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Request } from '../src/shared/api.js'
 import { workspaceSchema } from '../src/shared/domain.js'
+import { compshareServer } from './fixtures/compshare-http.js'
+import { build as buildProbe } from 'esbuild'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { createRequire } from 'node:module'
+import { readFile } from 'node:fs/promises'
+
+test('standalone CompShare probe encrypts credentials, preserves database and reuses credentials after restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'director-compshare-probe-'))
+  const server = await compshareServer()
+  try {
+    const bundle = join(directory, 'probe.cjs'), keyFile = join(directory, 'fixture.key')
+    await buildProbe({ entryPoints: ['electron/main/tools/compshare-connectivity.ts'], outfile: bundle, bundle: true, platform: 'node', format: 'cjs', external: ['electron'], logLevel: 'silent' })
+    await writeFile(keyFile, 'sk-ml-FIXTURE_ONLY')
+    await writeFile(join(directory, 'workspace.sqlite'), 'DO_NOT_OPEN_OR_MODIFY')
+    const env: NodeJS.ProcessEnv = { ...process.env, DIRECTOR_TEST_USER_DATA: directory, DIRECTOR_TEST_COMPSHARE_ORIGIN: server.origin }
+    delete env.ELECTRON_RUN_AS_NODE
+    const executable = createRequire(import.meta.url)('electron') as string
+    const execute = promisify(execFile)
+    const first = await execute(executable, [bundle, '--import-key-file', keyFile], { env, windowsHide: true, timeout: 20000 })
+    expect(first.stdout).toContain('"authenticated":true')
+    expect(first.stdout).not.toMatch(/sk-ml-|FIXTURE_ONLY|Authorization/)
+    const saved = await readFile(join(directory, 'video-api-profiles.json'), 'utf8')
+    expect(saved).not.toContain('sk-ml-')
+    const credentials = await readdir(join(directory, 'credentials'))
+    expect(credentials).toHaveLength(1)
+    expect((await readFile(join(directory, 'credentials', credentials[0]!))).includes(Buffer.from('sk-ml-FIXTURE_ONLY'))).toBe(false)
+    const second = await execute(executable, [bundle], { env, windowsHide: true, timeout: 20000 })
+    expect(second.stdout).toContain('"authenticated":true')
+    expect(server.counts.probe).toBe(2)
+    expect(server.counts.submit).toBe(0)
+    expect(await readFile(join(directory, 'workspace.sqlite'), 'utf8')).toBe('DO_NOT_OPEN_OR_MODIFY')
+    const report = JSON.parse(await readFile(join(directory, 'diagnostics', 'compshare-connectivity.json'), 'utf8')) as { evidence: string; generationEnabled: boolean; generationSubmitCount: number }
+    expect(report.evidence).toBe('local-fixture')
+    expect(report.generationEnabled).toBe(false)
+    expect(report.generationSubmitCount).toBe(0)
+    server.setMode('probe-401')
+    await expect(execute(executable, [bundle], { env, windowsHide: true, timeout: 20000 })).rejects.toMatchObject({ code: 1 })
+    const failed = await readFile(join(directory, 'diagnostics', 'compshare-connectivity.json'), 'utf8')
+    expect(failed).toContain('"errorCode": "authentication"')
+    expect(failed).not.toMatch(/sk-ml-|FIXTURE_ONLY|SECRET/)
+  } finally { await server.close(); await rm(directory, { recursive: true, force: true }) }
+})
 
 test('09-00 CompShare configuration stays non-executable across desktop restart and safe IPC', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-h3-smoke-'))
