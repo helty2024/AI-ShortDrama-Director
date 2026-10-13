@@ -2,44 +2,8 @@ import { z } from 'zod'
 import { aspectRatioSchema, resolutionSchema } from './capabilities/common.js'
 import { toolIdSchema } from './tools.js'
 
-export const videoApiProfileSchema = z.strictObject({
-  toolId: toolIdSchema,
-  displayName: z.string().trim().min(1).max(120),
-  baseEndpoint: z.url().max(2000),
-  modelId: z.string().trim().min(1).max(200),
-  credentialRef: z.uuid().nullable(),
-  supportedCapabilities: z
-    .array(z.enum(['video.textToVideo', 'video.imageToVideo']))
-    .min(1)
-    .max(2),
-  supportedDurations: z.array(z.number().positive().max(600)).min(1).max(60),
-  supportedAspectRatios: z.array(aspectRatioSchema).min(1).max(6),
-  supportedResolutions: z.array(resolutionSchema).min(1).max(64),
-  resolutionMode: z.enum(['exact', 'provider-auto']),
-  durationToleranceSeconds: z.number().nonnegative().max(10),
-  supportsLastFrame: z.boolean(),
-  supportsReferenceImages: z.boolean(),
-  maxOutputCount: z.number().int().min(1).max(4),
-  polling: z.strictObject({
-    initialIntervalMs: z.number().int().min(50).max(60000),
-    maxIntervalMs: z.number().int().min(50).max(120000),
-    maxWaitMs: z.number().int().min(100).max(86400000),
-  }),
-  maxDownloadBytes: z.number().int().min(1024).max(1024 * 1024 * 1024),
-  allowedDownloadHosts: z.array(z.string().min(1).max(253)).max(32),
-  allowedDownloadHostSuffixes: z.array(z.string().min(1).max(253)).max(32),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-  estimateSupport: z.literal('unknown'),
-  cancelSupport: z.boolean(),
-  recoverSupport: z.boolean(),
-})
-export type VideoApiProfile = z.infer<typeof videoApiProfileSchema>
+export { videoApiProfileSchema, type VideoApiProfile } from './video-tool-profile.js'
 
-export const compshareProbeSchema = z.strictObject({
-  toolId: z.literal('compshare.minimax-h3'), checkedAt: z.iso.datetime(), authenticated: z.boolean(),
-  points: z.strictObject({ total: z.number().int().nonnegative(), reserved: z.number().int().nonnegative(), available: z.number().int().nonnegative() }).nullable(),
-  generationEnabled: z.literal(false), realGenerationValidated: z.literal(false), errorCode: z.string().nullable(),
-})
 export const videoConfigurationSchema = z.array(z.strictObject({ toolId: z.string(), displayName: z.string(), generationEnabled: z.boolean() }))
 
 export const videoApiPreviewInputSchema = z.strictObject({
@@ -62,8 +26,6 @@ export const videoApiPreviewInputSchema = z.strictObject({
 export const videoApiCommandSchema = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('profiles') }),
   z.strictObject({ op: z.literal('configuration') }),
-  z.strictObject({ op: z.literal('importCompShareCredential') }),
-  z.strictObject({ op: z.literal('probe'), toolId: z.literal('compshare.minimax-h3') }),
   z.strictObject({ op: z.literal('preview'), input: videoApiPreviewInputSchema }),
   z.strictObject({
     op: z.literal('confirm'),

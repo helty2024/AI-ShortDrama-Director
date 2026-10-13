@@ -2,9 +2,8 @@ import { app, dialog, safeStorage } from 'electron'
 import { mkdir, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { EncryptedCredentialStore } from '../video/credentials.js'
-import { readVideoProfiles, importCompShareCredential } from '../generation/video-profiles.js'
+import { compshareProfileFileName, legacyVideoProfileFileName, loadCompShareProfile, importCompShareCredential, createCompShareAdapter } from '../generation/compshare-minimax-h3-profile.js'
 import { ToolRegistry } from './registry.js'
-import { CompShareMiniMaxH3Adapter } from './adapters/compshare-minimax-h3.js'
 import { ImageHttpTransport } from './adapters/image-http.js'
 import { isolatedUserData } from '../release-validation.js'
 
@@ -29,7 +28,8 @@ async function run() {
     encrypt: value => safeStorage.encryptString(value),
     decrypt: value => safeStorage.decryptString(value),
   })
-  const profilePath = join(root, 'video-api-profiles.json')
+  const profilePath = join(root, compshareProfileFileName)
+  const legacyPath = join(root, legacyVideoProfileFileName)
   let keyFile = keyIndex >= 0 ? args[keyIndex + 1] : null
   if (configure) {
     const selected = await dialog.showOpenDialog({
@@ -45,16 +45,16 @@ async function run() {
   if (keyFile) {
     const registry = new ToolRegistry()
     await mkdir(root, { recursive: true })
-    await importCompShareCredential(profilePath, keyFile, credentials, { registry, register: adapter => registry.register(adapter) })
+    await importCompShareCredential(profilePath, legacyPath, keyFile, credentials, { registry, register: adapter => registry.register(adapter) })
     process.stdout.write('CompShare 凭据已加密保存。\n')
   }
-  const [profile] = await readVideoProfiles(profilePath)
+  const profile = await loadCompShareProfile(profilePath, legacyPath)
   if (!profile?.credentialRef) {
     process.stdout.write('CompShare 尚未配置；请运行 npm run validate:compshare -- --configure。\n')
     return 2
   }
   const transport = new ImageHttpTransport(testOrigin ? { fixtureOrigin: testOrigin } : {})
-  const adapter = new CompShareMiniMaxH3Adapter(profile, () => credentials.get(profile.credentialRef!), transport)
+  const adapter = createCompShareAdapter(profile, credentials, transport)
   const result = await adapter.probe(AbortSignal.timeout(15000))
   const report = {
     ...result, provider: 'CompShare', model: 'MiniMax-H3', baseEndpoint: 'https://cp.compshare.cn',

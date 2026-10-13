@@ -2,7 +2,7 @@ import { ToolReadinessPanel } from '../operations/ProvenancePanel'
 import { ProductionSettings } from '../video/ProductionSettings'
 import { useEffect, useState } from 'react'
 import { videoCommand, videoProfilesSchema } from '../generate/generation-api'
-import { compshareProbeSchema, videoConfigurationSchema } from '../../shared/video-api'
+import { compshareCommandSchema, compshareConfigurationSchema, compshareProbeSchema, type CompShareCommand } from '../../shared/compshare-minimax-h3'
 import { useWorkspace } from '../workspace/state'
 import { useVisual } from './use-visual'
 import type {
@@ -10,6 +10,12 @@ import type {
   VisualSnapshot,
   VisualCommand,
 } from '../../shared/visual'
+
+async function compshareCommand(command: CompShareCommand): Promise<unknown> {
+  const result = await window.desktop!.workspace.request({ action: 'compshareH3', command: compshareCommandSchema.parse(command) })
+  if (!result.ok) throw new Error(result.message)
+  return result.data
+}
 export function ProviderSettingsPage() {
   const { state } = useWorkspace()
   return state.workspace ? (
@@ -62,9 +68,9 @@ function CompShareSettings() {
   const [probe, setProbe] = useState<ReturnType<typeof compshareProbeSchema.parse> | null>(null)
   useEffect(() => {
     let active = true
-    void videoCommand({ op: 'configuration' }).then(result => {
-      const rows = videoConfigurationSchema.parse(result)
-      if (active) { setConfigured(rows.some(row => row.toolId === 'compshare.minimax-h3')); setLoaded(true) }
+    void compshareCommand({ op: 'configuration' }).then(result => {
+      const configuration = compshareConfigurationSchema.parse(result)
+      if (active) { setConfigured(configuration.configured); setLoaded(true) }
     }).catch(() => { if (active) setMessage('读取视频配置失败') })
     return () => { active = false }
   }, [])
@@ -72,11 +78,10 @@ function CompShareSettings() {
     setBusy(true); setMessage('')
     try {
       if (importKey) {
-        await videoCommand({ op: 'importCompShareCredential' })
-        const rows = videoConfigurationSchema.parse(await videoCommand({ op: 'configuration' }))
-        const saved = rows.some(row => row.toolId === 'compshare.minimax-h3')
+        await compshareCommand({ op: 'importCredential' })
+        const saved = compshareConfigurationSchema.parse(await compshareCommand({ op: 'configuration' })).configured
         setConfigured(saved); setMessage(saved ? '凭据已加密保存，真实生成仍关闭。' : '已取消导入。')
-      } else setProbe(compshareProbeSchema.parse(await videoCommand({ op: 'probe', toolId: 'compshare.minimax-h3' })))
+      } else setProbe(compshareProbeSchema.parse(await compshareCommand({ op: 'probe' })))
     } catch { setMessage('操作失败，请检查配置文件或重新检测。') } finally { setBusy(false) }
   }
   return <section aria-label="CompShare H3 非付费接入"><h2>CompShare · MiniMax H3</h2>

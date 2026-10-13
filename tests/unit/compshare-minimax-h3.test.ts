@@ -5,12 +5,15 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import sharp from 'sharp'
-import { CompShareMiniMaxH3Adapter, compshareProfileSchema } from '../../electron/main/tools/adapters/compshare-minimax-h3.js'
+import { CompShareMiniMaxH3Adapter, compShareIdempotencyKey } from '../../electron/main/tools/adapters/compshare-minimax-h3.js'
+import { compshareProfileSchema, compshareCommandSchema } from '../../src/shared/compshare-minimax-h3.js'
+import { VideoApiAdapter } from '../../electron/main/tools/adapters/video-api.js'
 import { ImageHttpTransport } from '../../electron/main/tools/adapters/image-http.js'
 import { requestFingerprint } from '../../electron/main/tools/fingerprint.js'
 import { ToolRegistry } from '../../electron/main/tools/registry.js'
 import { toolReadiness } from '../../electron/main/tools/readiness.js'
 import { videoApiCommandSchema } from '../../src/shared/video-api.js'
+import { requestSchema } from '../../src/shared/api.js'
 import type { ToolExecutionContext } from '../../src/shared/tools.js'
 import type { VideoTextToVideoInput } from '../../src/shared/capabilities/video.js'
 import { ProjectDatabase } from '../../electron/main/database.js'
@@ -19,7 +22,7 @@ import { IntelligenceRepository } from '../../electron/main/intelligence/reposit
 import { VisualRepository } from '../../electron/main/visual/repository.js'
 import { MediaStorage } from '../../electron/main/visual/storage.js'
 import { VideoApiGenerationService } from '../../electron/main/generation/video-api-service.js'
-import { importCompShareCredential, readVideoProfiles, loadVideoProfiles, videoAdapters } from '../../electron/main/generation/video-profiles.js'
+import { importCompShareCredential, readCompShareProfile, loadCompShareProfile, createCompShareAdapter, compshareProfileFileName, legacyVideoProfileFileName } from '../../electron/main/generation/compshare-minimax-h3-profile.js'
 import { compshareServer } from '../fixtures/compshare-http.js'
 
 const profile = { adapter: 'compshare-minimax-h3' as const, toolId: 'compshare.minimax-h3' as const, modelId: 'MiniMax-H3' as const, credentialRef: null }
@@ -55,6 +58,7 @@ test('production H3 has hard non-paid gate even with approval, credential and au
   assert.equal(reads, 0)
   assert.equal((await adapter.health(signal())).availability, 'unknown')
   assert.equal(adapter.generationEnabled, false)
+  assert.equal(adapter instanceof VideoApiAdapter, false)
   assert.ok(adapter.describe().capabilities.every(c => c.seed === 'unsupported'))
   assert.throws(() => new CompShareMiniMaxH3Adapter(profile, async () => '', new ImageHttpTransport({ fixtureOrigin: 'https://cp.compshare.cn' })))
 })
@@ -81,13 +85,15 @@ test('native JSON → one async submit → real MP4 probe → candidate → revi
     const result = await f.service.query(f.project.id, task.id)
     assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
     assert.equal(f.server.counts.submit, 1)
+    assert.deepEqual(f.server.submitKeys, [compShareIdempotencyKey(result.task.id)])
+    assert.doesNotMatch(JSON.stringify(f.server.submitKeys), /sk-ml-|Authorization|FIXTURE_ONLY/)
     assert.deepEqual(f.server.body(), { model: 'MiniMax-H3', content: [{ type: 'text', text: input.prompt }], resolution: '480P', duration: 4, ratio: '1:1', mute_audio: true, use_context_ir: false })
     assert.equal(result.versions.length, 1)
     assert.equal(result.versions[0]!.width, 480); assert.equal(result.versions[0]!.height, 480)
     assert.equal(result.versions[0]!.status, 'draft')
     assert.equal(result.record.actualCost, null)
     assert.notEqual(result.reservationStatus, 'consumed')
-    assert.deepEqual(f.server.downloadAuth, [undefined])
+    assert.deepEqual(f.server.downloadAuthorizationPresent, [false])
     assert.doesNotMatch(JSON.stringify(result), /signature=|sk-ml-|SECRET|base64/)
     const adopted = f.service.review(f.project.id, result.versions[0]!.id, result.versions[0]!.revision, true, f.target.revision)
     const shot = f.visual.repo.entity(f.project.id, f.target.id)
@@ -128,6 +134,7 @@ for (const mode of ['unknown-submit', 'malformed-submit'] as const) test(`${mode
     assert.equal(result.versions.length, 0)
     assert.throws(() => f.service.confirm(f.project.id, preview.id, 100, true))
     assert.equal(f.server.counts.submit, 1)
+    assert.equal(f.server.submitKeys.length, 1)
     assert.doesNotMatch(JSON.stringify(result), /SECRET|sk-ml-/)
   } finally { await f.close() }
 })
@@ -153,6 +160,7 @@ test('restart recovery queries persisted task ID and never submits again', async
     assert.equal(after.task.status, 'succeeded')
     assert.equal(after.record.id, before.record.id)
     assert.equal(f.server.counts.submit, 1)
+    assert.equal(f.server.submitKeys.length, 1)
     assert.equal(service.generation.list('generation_records', f.project.id).length, 1)
   } finally { reopened?.close(); await f.close() }
 })
@@ -215,17 +223,18 @@ for (const mode of ['ok', 'probe-empty', 'probe-over-reserved', 'probe-401', 'pr
 test('configuration persists only credential reference; restart stays non-executable and readiness stays honest', async () => {
   const f = await fixture()
   try {
-    const profileFile = join(f.directory, 'video-api-profiles.json'), keyFile = join(f.directory, 'secret.key')
+    const profileFile = join(f.directory, compshareProfileFileName), legacyFile = join(f.directory, legacyVideoProfileFileName), keyFile = join(f.directory, 'secret.key')
     await writeFile(keyFile, 'sk-ml-FIXTURE_ONLY')
     const secrets = new Map<string, string>()
     const credentials = { get: async (id: string) => secrets.get(id)!, set: async (id: string, secret: string) => { secrets.set(id, secret) }, has: async (id: string) => secrets.has(id) }
     const service = new VideoApiGenerationService(f.visual, [])
-    await importCompShareCredential(profileFile, keyFile, credentials, service)
+    await importCompShareCredential(profileFile, legacyFile, keyFile, credentials, service)
     const stored = await readFile(profileFile, 'utf8')
     assert.doesNotMatch(stored, /sk-ml-|endpoint|baseEndpoint|generationEnabled/)
     assert.equal(secrets.size, 1)
-    await assert.rejects(importCompShareCredential(profileFile, keyFile, credentials, service))
-    const adapters = videoAdapters(await loadVideoProfiles(profileFile), credentials)
+    await assert.rejects(importCompShareCredential(profileFile, legacyFile, keyFile, credentials, service))
+    const storedProfile = await loadCompShareProfile(profileFile, legacyFile)
+    const adapters = storedProfile ? [createCompShareAdapter(storedProfile, credentials)] : []
     const restored = new VideoApiGenerationService(f.visual, adapters)
     assert.deepEqual(restored.profiles(), [])
     assert.equal(restored.configuration()[0]!.generationEnabled, false)
@@ -235,32 +244,86 @@ test('configuration persists only credential reference; restart stays non-execut
     const row = (await toolReadiness([registry], async () => true)).find(r => r.toolId === profile.toolId)!
     assert.equal(row.validation, 'simulated-validated'); assert.equal(row.runtime, 'configured-unverified')
     assert.equal(f.server.counts.submit, 0)
-    await writeFile(profileFile, JSON.stringify([{ ...profile, baseEndpoint: f.server.origin }]))
-    assert.deepEqual(await loadVideoProfiles(profileFile), [])
-    await assert.rejects(readVideoProfiles(profileFile))
+    await writeFile(profileFile, JSON.stringify({ ...profile, baseEndpoint: f.server.origin }))
+    await assert.rejects(loadCompShareProfile(profileFile, legacyFile))
+    await assert.rejects(readCompShareProfile(profileFile))
   } finally { await f.close() }
 })
 
 test('concurrent import writes once and malformed existing configuration is preserved', async () => {
   const f = await fixture()
   try {
-    const path = join(f.directory, 'video-profiles.json'), key = join(f.directory, 'secret.key')
+    const path = join(f.directory, compshareProfileFileName), legacyPath = join(f.directory, legacyVideoProfileFileName), key = join(f.directory, 'secret.key')
     await writeFile(key, 'sk-ml-FIXTURE_ONLY')
     let writes = 0
     const credentials = { get: async () => 'sk-ml-FIXTURE_ONLY', set: async () => { writes++ }, has: async () => true }
     const service = new VideoApiGenerationService(f.visual, [])
-    const results = await Promise.allSettled([importCompShareCredential(path, key, credentials, service), importCompShareCredential(path, key, credentials, service)])
+    const results = await Promise.allSettled([importCompShareCredential(path, legacyPath, key, credentials, service), importCompShareCredential(path, legacyPath, key, credentials, service)])
     assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
     assert.equal(writes, 1)
     const malformed = join(f.directory, 'unsupported-profiles.json')
     await writeFile(malformed, '{user config invalid}')
-    await assert.rejects(importCompShareCredential(malformed, key, credentials, new VideoApiGenerationService(f.visual, [])))
+    await assert.rejects(importCompShareCredential(malformed, legacyPath, key, credentials, new VideoApiGenerationService(f.visual, [])))
     assert.equal(await readFile(malformed, 'utf8'), '{user config invalid}')
     assert.equal(writes, 1)
   } finally { await f.close() }
 })
 
+test('legacy profile migrates only the credential reference once and malformed profiles fail closed', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'h3-profile-migration-'))
+  try {
+    const current = join(directory, compshareProfileFileName)
+    const legacy = join(directory, legacyVideoProfileFileName)
+    const ref = randomUUID()
+    const old = JSON.stringify([{ ...profile, credentialRef: ref }])
+    await writeFile(legacy, old)
+    const first = await loadCompShareProfile(current, legacy)
+    const second = await loadCompShareProfile(current, legacy)
+    assert.deepEqual(first, second)
+    assert.equal(first?.credentialRef, ref)
+    assert.deepEqual(JSON.parse(await readFile(current, 'utf8')), first)
+    assert.equal(await readFile(legacy, 'utf8'), old)
+    assert.equal((await readFile(current, 'utf8')).includes('sk-ml-'), false)
+    await writeFile(current, '{malformed current}')
+    await assert.rejects(loadCompShareProfile(current, legacy))
+    await rm(current)
+    await writeFile(legacy, '{malformed legacy}')
+    await assert.rejects(loadCompShareProfile(current, legacy))
+    assert.equal(await readCompShareProfile(current), null)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('H3 Idempotency-Key follows task attempt, not request fingerprint, and transport rejects unsafe values', async () => {
+  const first = context()
+  const sameAttempt = { ...first }
+  const nextAttempt = { ...first, taskId: randomUUID() }
+  const key = compShareIdempotencyKey(first.taskId)
+  assert.equal(key, compShareIdempotencyKey(sameAttempt.taskId))
+  assert.notEqual(key, compShareIdempotencyKey(nextAttempt.taskId))
+  assert.equal(first.requestFingerprint, nextAttempt.requestFingerprint)
+  assert.ok(key.length > 0 && key.length <= 128 && /^[\x21-\x7e]+$/.test(key))
+  const server = await compshareServer()
+  try {
+    const transport = new ImageHttpTransport({ fixtureOrigin: server.origin })
+    for (const invalid of ['', '含中文', 'bad\r\nInjected: yes', 'x'.repeat(129)])
+      await assert.rejects(transport.bytes(`${server.origin}/minimax/v2/video_generation`, signal(), {
+        method: 'POST', key: 'sk-ml-FIXTURE_ONLY', idempotencyKey: invalid, body: '{}', limit: 1024,
+      }))
+    assert.equal(server.counts.submit, 0)
+    const adapter = new CompShareMiniMaxH3Adapter(profile, async () => 'sk-ml-FIXTURE_ONLY', transport)
+    for (const ctx of [first, nextAttempt]) {
+      adapter.authorizeInputs(ctx, { frames: [], ingest: async () => { throw new Error() }, billing: () => {}, diagnostic: () => {} })
+      assert.equal((await adapter.submit('video.textToVideo', input, ctx, signal())).state, 'accepted')
+    }
+    assert.deepEqual(server.submitKeys, [key, compShareIdempotencyKey(nextAttempt.taskId)])
+    assert.equal(server.counts.submit, 2)
+    assert.doesNotMatch(JSON.stringify(server.submitKeys), /sk-ml-|Authorization|FIXTURE_ONLY/)
+  } finally { await server.close() }
+})
+
 test('IPC and native profile schemas reject arbitrary paths, endpoints, secrets and paid toggles', () => {
   for (const value of [{ ...profile, baseEndpoint: 'https://attacker.test' }, { ...profile, apiKey: 'SECRET' }, { ...profile, generationEnabled: true }, { ...profile, modelId: 'MiniMax-H3-Max' }]) assert.equal(compshareProfileSchema.safeParse(value).success, false)
-  for (const value of [{ op: 'importCompShareCredential', path: 'C:/secret' }, { op: 'probe', toolId: profile.toolId, endpoint: 'https://attacker.test' }, { op: 'probe', toolId: 'reference.video' }]) assert.equal(videoApiCommandSchema.safeParse(value).success, false)
+  for (const value of [{ op: 'importCredential', path: 'C:/secret' }, { op: 'probe', headers: { Authorization: 'Bearer fake' } }, { op: 'probe', toolId: 'reference.video' }]) assert.equal(compshareCommandSchema.safeParse(value).success, false)
+  assert.equal(videoApiCommandSchema.safeParse({ op: 'importCredential' }).success, false)
+  assert.equal(requestSchema.safeParse({ action: 'compshareH3', command: { op: 'probe', idempotencyKey: 'inject' } }).success, false)
 })

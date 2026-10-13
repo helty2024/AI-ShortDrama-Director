@@ -1,19 +1,13 @@
 import { z } from 'zod'
 import { capabilityContracts, type CapabilityInput, type CapabilityOutput } from '../../../../src/shared/capabilities/index.js'
 import { toolHealthSchema, type ToolCallContext, type ToolExecutionContext, type ToolCancelResult, type ToolSubmitResult } from '../../../../src/shared/tools.js'
-import { videoApiProfileSchema, compshareProbeSchema } from '../../../../src/shared/video-api.js'
-import { VideoApiAdapter, type VideoCapability } from './video-api.js'
+import { compshareProfileSchema, compshareProbeSchema, type CompShareProfile } from '../../../../src/shared/compshare-minimax-h3.js'
+import { videoApiProfileSchema } from '../../../../src/shared/video-tool-profile.js'
+import { VideoLifecycleAdapter, type VideoCapability } from './video-lifecycle.js'
 import { ImageHttpTransport, transportFailure } from './image-http.js'
 import { normalizeToolError } from '../errors.js'
 import { immutable } from '../registry.js'
 
-export const compshareProfileSchema = z.strictObject({
-  adapter: z.literal('compshare-minimax-h3'),
-  toolId: z.literal('compshare.minimax-h3'),
-  modelId: z.literal('MiniMax-H3'),
-  credentialRef: z.uuid().nullable(),
-})
-export type CompShareProfile = z.infer<typeof compshareProfileSchema>
 const pointsSchema = z.object({ total_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), reserved_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), available_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })
   .refine(p => p.available_points === Math.max(0, p.total_points - p.reserved_points))
 const remoteId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
@@ -25,8 +19,12 @@ const taskSchema = z.object({ task: z.object({
 // Only the documented native 480P dimensions are mapped in this baseline.
 const dimensions = { '16:9': { width: 864, height: 480 }, '9:16': { width: 480, height: 864 }, '1:1': { width: 480, height: 480 }, '4:3': { width: 640, height: 480 }, '3:4': { width: 480, height: 640 } } as const
 
-/** Native CompShare protocol; shared lifecycle/ingestion stays in VideoApiAdapter. */
-export class CompShareMiniMaxH3Adapter extends VideoApiAdapter {
+export function compShareIdempotencyKey(taskId: string): string {
+  return `asd-h3-${z.uuid().parse(taskId)}`
+}
+
+/** Native CompShare protocol with shared authorization and output ingestion. */
+export class CompShareMiniMaxH3Adapter extends VideoLifecycleAdapter {
   readonly storedProfile: CompShareProfile
   readonly generationEnabled: boolean
   constructor(raw: CompShareProfile, credential: () => Promise<string>, transport = new ImageHttpTransport()) {
@@ -52,10 +50,9 @@ export class CompShareMiniMaxH3Adapter extends VideoApiAdapter {
     this.storedProfile = immutable(stored)
     this.generationEnabled = Boolean(fixture)
   }
-  override describe() {
-    const descriptor = super.describe()
-    return { ...descriptor, capabilities: descriptor.capabilities.map(c => ({ ...c, seed: 'unsupported' as const })) }
-  }
+  protected override seedCapability() { return 'unsupported' as const }
+  // One taskId identifies one generation attempt; a new user attempt gets a new taskId.
+  protected override submitIdempotencyKey(context: ToolExecutionContext) { return compShareIdempotencyKey(context.taskId) }
   override async health(signal: AbortSignal) {
     const health = await super.health(signal)
     return this.generationEnabled ? health : toolHealthSchema.parse({ ...health,
@@ -99,7 +96,7 @@ export class CompShareMiniMaxH3Adapter extends VideoApiAdapter {
     if (task.id !== id) throw new Error('Task identity mismatch')
     return task
   }
-  protected override parseStatus(raw: unknown, id: string): ReturnType<VideoApiAdapter['parseStatus']> {
+  protected override parseStatus(raw: unknown, id: string): ReturnType<VideoLifecycleAdapter['parseStatus']> {
     const task = this.task(raw, id)
     if (task.status === 'failed') return { state: 'failed', code: 'provider', message: 'Remote generation failed' }
     if (task.status === 'queued' || task.status === 'running') return { state: task.status, progress: null }

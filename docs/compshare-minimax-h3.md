@@ -19,7 +19,7 @@ package 保持 `0.8.0`、SQLite schema `10`、backup format `5`。不新增数�
 | cancel | `DELETE /minimax/v2/video_generation/{task_id}`；`task_id/action/status` |
 | 手动只读检测 | `GET /minimax/v2/query/point_usage_summary` |
 
-独立 `CompShareMiniMaxH3Adapter` 复用既有 Video Adapter 的授权归属、异步生命周期及受控输出下载；供应商路径、请求与响应映射留在子类。Reference 默认协议保持不变，同时加强工具/版本身份检查与不明响应冻结。
+独立 `CompShareMiniMaxH3Adapter` 与 Reference `VideoApiAdapter` 分别继承通用 `VideoLifecycleAdapter`。基类只处理授权归属、异步生命周期及受控输出下载；两种协议各自实现任务路径、请求体和响应映射，通用运行配置 schema 位于 `src/shared/video-tool-profile.ts`。CompShare Profile 与配置/探测命令分别位于 `src/shared/compshare-minimax-h3.ts` 和 `electron/main/generation/compshare-minimax-h3-profile.ts`，不再混入通用 Video API。Reference 协议的工具/版本身份检查与不明响应冻结保持不变。
 
 本地支持子集：`MiniMax-H3`；文生视频与项目内首帧/首尾帧；4–30 秒整数；一条 MP4 输出；原生 `480P`。公开契约支持的五种画幅只采用官方尺寸表：16:9 为 864×480、9:16 为 480×864、1:1 为 480×480、4:3 为 640×480、3:4 为 480×640。
 
@@ -32,6 +32,8 @@ package 保持 `0.8.0`、SQLite schema `10`、backup format `5`。不新增数�
 `profiles` 只投影可执行工具，Creator 仍显示“尚未配置可用的视频生成工具”；单独的 `configuration` 投影只用于设置页展示已注册但禁用的配置。不能用配置存在代替生成就绪。
 
 只有显式构造、精确 `http://127.0.0.1:<port>` 的 fixture transport 才能走本地协议测试。应用组合不会为 CompShare 注入该 transport。正式远端取消同样关闭；本地模拟取消响应为 running 时返回 unknown，保留任务与预算，不能把请求取消当成已取消。
+
+本地 fixture 的 H3 POST 使用 `Idempotency-Key: asd-h3-<taskId>`；taskId 是本次 generation attempt 的任务 UUID，同一 attempt 稳定，新任务不同。HTTP transport 只接受经校验的 ASCII、非空且不超过 128 字符的窄字段；renderer 不能提供 HTTP header。真实 submit 仍关闭。
 
 官方示例未提供可核实的生产输出 CDN，生产下载 host 白名单留空并拒绝远端下载。fixture 下载复用既有 HTTPS/DNS/SSRF/重定向/大小约束、MP4 magic、FFprobe 和 thumbnail 入库；下载不带 API Key。真实 CDN 验证留给后续步骤。
 
@@ -47,11 +49,11 @@ npm run validate:compshare -- --import-key-file "C:\path\minimax-h3-key.txt"
 
 命令只接受上述选项，不允许自定义端点、明文密钥参数或付费开关。隐藏的 Electron 检测进程使用现有 safeStorage，独立于项目 UI；不打开数据库、不启动生成服务、不建立任务。正常启动清除测试 userData / fixture 环境变量；只在显式隔离测试进程注入 loopback fixture。检测结果以脱敏 JSON 写入 userData 下 `diagnostics/compshare-connectivity.json`，不含密钥、认证头、原始响应或素材。
 
-2026-10-12 14:17（北京时间），用户授权从桌面密钥文件首次导入；真实 `GET /minimax/v2/query/point_usage_summary` 返回鉴权成功，总积分 / 预占 / 可用均为 0。这是鉴权与账户余额验证，不证明生成权限、视频质量或免费生成。原始密钥文件保留；没有改动用户项目数据库。
+2026-10-12 14:17（北京时间），用户授权首次导入密钥；真实 `GET /minimax/v2/query/point_usage_summary` 返回鉴权成功，总积分 / 预占 / 可用均为 0。这是鉴权与账户余额验证，不证明生成权限、视频质量或免费生成。真实鉴权完成后，临时明文 Key 文件已删除；凭据目前仅通过系统加密 CredentialStore 保存。没有改动用户项目数据库。
 
 打开项目 → 项目设置 → CompShare · MiniMax H3 → **导入 CompShare API Key（加密保存）**，通过系统文件选择器选择包含 `sk-ml-` 模型密钥的本地文本文件。文件不会复制进项目，密钥仅由主进程读取并交给既有 CredentialStore / Electron safeStorage；加密不可用时拒绝保存。请在导入后妥善处理原始密钥文件，不要提交到 Git。
 
-`%APPDATA%/ai-shortdrama-director/video-api-profiles.json` 只保存固定 adapter/tool/model 与 credential UUID。导入不会探测网络；启动不自动请求云端 API；恢复配置仍为不可执行。当前只支持首次配置，不提供密钥替换；重复和并发导入拒绝，已有配置文件保持原样。
+`userData/compshare-minimax-h3-profile.json` 只保存固定 adapter/tool/model 与 credential UUID。09-00A 测试期间产生的旧 `video-api-profiles.json` 会在首次加载时只复制有效的 Provider Profile 和原有 credentialRef；旧文件保留，不读取或解密密钥，迁移失败时拒绝继续。新旧文件不会注册两份 Provider。导入不会探测网络；启动不自动请求云端 API；恢复配置仍为不可执行。当前只支持首次配置，不提供密钥替换；重复和并发导入拒绝，已有配置文件保持原样。
 
 **检测鉴权与积分（不生成）** 是用户主动的 GET，返回脱敏积分汇总、检查时间和错误代码。不会创建 AITask、GenerationRecord、Approval 或 Reservation，也不上传项目素材。成功仅证明当次积分接口鉴权，不证明模型生成权限、质量、CDN 或付费 E2E；重启不保留这次探测结果。工具状态刷新只检查本地凭据，仍标记 configured-unverified。
 

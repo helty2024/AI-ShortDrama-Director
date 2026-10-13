@@ -79,6 +79,7 @@ export class ImageHttpTransport {
       body?: string | Buffer
       contentType?: string
       key?: string
+      idempotencyKey?: string
       limit: number
       redirects?: {
         max: number
@@ -87,6 +88,9 @@ export class ImageHttpTransport {
       }
     },
   ): Promise<{ bytes: Buffer; mime: string; diagnostics: ImageHttpDiagnostics }> {
+    if (options.idempotencyKey !== undefined &&
+      (options.method !== 'POST' || typeof options.idempotencyKey !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(options.idempotencyKey)))
+      throw transportFailure('validation', false)
     const caller = signal
     signal = AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)])
     let sent = false
@@ -194,6 +198,9 @@ export class ImageHttpTransport {
                 : {}),
               ...(options.key
                 ? { Authorization: `Bearer ${options.key}` }
+                : {}),
+              ...(options.idempotencyKey
+                ? { 'Idempotency-Key': options.idempotencyKey }
                 : {}),
             },
           },

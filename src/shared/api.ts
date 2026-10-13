@@ -2,6 +2,7 @@ import { workflowCommandSchema } from './workflow.js'
 import { compatibilityCommandSchema } from './compatibility.js'
 import { imageApiCommandSchema } from './image-api.js'
 import { videoApiCommandSchema } from './video-api.js'
+import { compshareCommandSchema } from './compshare-minimax-h3.js'
 import { operationsCommandSchema } from './operations.js'
 import { pilotCommandSchema } from './production.js'
 import type { PilotResult } from './production.js'
@@ -29,6 +30,7 @@ export const requestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('compatibility'), command: compatibilityCommandSchema }),
   z.strictObject({ action: z.literal('imageApi'), command: imageApiCommandSchema }),
   z.strictObject({ action: z.literal('videoApi'), command: videoApiCommandSchema }),
+  z.strictObject({ action: z.literal('compshareH3'), command: compshareCommandSchema }),
   z.strictObject({
     action: z.literal('operations'),
     command: operationsCommandSchema,

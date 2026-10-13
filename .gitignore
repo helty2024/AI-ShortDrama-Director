@@ -28,4 +28,5 @@ video-receipts/
 *.tmp
 /image-api-profiles.json
 /video-api-profiles.json
+/compshare-minimax-h3-profile.json
 /ai-shortdrama-director/

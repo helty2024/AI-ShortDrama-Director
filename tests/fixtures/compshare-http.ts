@@ -14,12 +14,13 @@ export async function compshareServer() {
   let origin = '', mode: CompShareMode = 'ok'
   let body: unknown = null
   const counts = { submit: 0, query: 0, download: 0, cancel: 0, probe: 0 }
-  const downloadAuth: (string | undefined)[] = []
+  const submitKeys: (string | null)[] = []
+  const downloadAuthorizationPresent: boolean[] = []
   const server = createServer(async (request, response) => {
     const url = new URL(request.url!, origin)
     const json = (data: unknown, status = 200) => { response.writeHead(status, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(data)) }
     if (url.pathname === '/output.mp4') {
-      counts.download++; downloadAuth.push(request.headers.authorization)
+      counts.download++; downloadAuthorizationPresent.push(request.headers.authorization !== undefined)
       response.writeHead(200, { 'Content-Type': mode === 'html' ? 'video/mp4' : 'application/octet-stream' })
       response.end(mode === 'html' ? Buffer.from('<html>SECRET</html>') : mode === 'truncated' ? video.subarray(0, 32) : video)
       return
@@ -35,6 +36,8 @@ export async function compshareServer() {
     }
     if (request.method === 'POST' && url.pathname === '/minimax/v2/video_generation') {
       counts.submit++
+      const idempotencyKey = request.headers['idempotency-key']
+      submitKeys.push(typeof idempotencyKey === 'string' ? idempotencyKey : null)
       const chunks: Buffer[] = []
       for await (const chunk of request) chunks.push(Buffer.from(chunk))
       body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
@@ -64,7 +67,7 @@ export async function compshareServer() {
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Fixture unavailable')
   origin = `http://127.0.0.1:${address.port}`
-  return { origin, counts, downloadAuth, body: () => body, setMode: (value: CompShareMode) => { mode = value },
+  return { origin, counts, submitKeys, downloadAuthorizationPresent, body: () => body, setMode: (value: CompShareMode) => { mode = value },
     close: async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, { recursive: true, force: true }) },
   }
 }

@@ -20,7 +20,6 @@ import type {
   VideoDiagnosticStage,
 } from '../tools/adapters/video-api.js'
 import { normalizeToolError } from '../tools/errors.js'
-import { CompShareMiniMaxH3Adapter } from '../tools/adapters/compshare-minimax-h3.js'
 import type {
   ToolExecutionContext,
   ToolTaskHandle,
@@ -145,12 +144,6 @@ export class VideoApiGenerationService {
       resolutions: this.tools.get(entry.descriptor.id)?.profile.supportedResolutions ?? [],
       aspectRatios: this.tools.get(entry.descriptor.id)?.profile.supportedAspectRatios ?? [],
     }))
-  }
-
-  async probe(toolId: string) {
-    const adapter = this.tools.get(toolId)
-    if (!(adapter instanceof CompShareMiniMaxH3Adapter)) throw new DomainError('NOT_FOUND', 'CompShare 尚未配置')
-    return adapter.probe(AbortSignal.timeout(10000))
   }
 
   configuration() {

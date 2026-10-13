@@ -12,7 +12,7 @@
 
 09-00 新增 [CompShare MiniMax H3 非付费接入基线](docs/compshare-minimax-h3.md)：独立原生 Video Adapter、首尾帧 Data URL、固定原生 480P 子集、本地异步协议与真实 FFprobe 测试。项目设置可加密导入 `sk-ml-` 凭据并手动 GET 检测鉴权/积分；真实 submit 在服务与 Adapter 双重关闭，配置不会进入 Creator 可执行工具列表。真实视频生成、CDN 与付费 E2E 均未验证，积分不折算货币费用。package/schema/backup 保持 0.8.0/10/5，没有真实付费提交。专用测试：`npx tsx --test tests/unit/compshare-minimax-h3.test.ts`；新配置目录与操作详见该文档。
 
-CompShare 独立检测入口：`npm run validate:compshare` 使用已加密保存的凭据，只 GET 查询积分余额；首次配置可运行 `npm run validate:compshare -- --configure`，直接打开系统密钥文件选择器，也支持 `--import-key-file <本机文件路径>`。无需打开项目或进入 Advanced Mode。密钥不会放进命令参数，只传文件路径；检测不打开项目数据库、不上传素材、不生成视频。2026-10-12 本机真实鉴权已成功，余额为 0 积分；成功仅覆盖该只读接口，真实视频生成与 CDN 仍未验证。安全报告保存在 userData 的 `diagnostics/compshare-connectivity.json`。
+CompShare 独立检测入口：`npm run validate:compshare` 使用已加密保存的凭据，只 GET 查询积分余额；首次配置可运行 `npm run validate:compshare -- --configure`，直接打开系统密钥文件选择器，也支持 `--import-key-file <本机文件路径>`。无需打开项目或进入 Advanced Mode。密钥不会放进命令参数，只传文件路径；检测不打开项目数据库、不上传素材、不生成视频。Provider 配置保存在 userData 的 `compshare-minimax-h3-profile.json`；既有 `video-api-profiles.json` 中的 CompShare 配置会安全迁移，仅复制加密凭据引用。2026-10-12 本机真实鉴权已成功，余额为 0 积分；成功仅覆盖该只读接口，真实视频生成与 CDN 仍未验证。安全报告保存在 userData 的 `diagnostics/compshare-connectivity.json`。
 
 0.8 Creator 主流程为**故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**；技术面板仍通过兼容入口可达。详见 [08-03](docs/story-script-creator-0.8.md)、[08-04](docs/assets-creator-0.8.md)、[08-05](docs/storyboard-generate-creator-0.8.md)、[08-06](docs/shot-videos-creator-0.8.md) 与 [Closeout](docs/creator-ui-closeout-0.8.md)。全新项目可直接在 Creator 界面创建首个镜头。打包桌面端尚无正式 Video Tool：新视频生成不可用，历史已确认视频仍可审看。正式版 package 为 `0.8.0`，SQLite schema `10`，backup format `5`。
 

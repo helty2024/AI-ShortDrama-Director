@@ -6,7 +6,7 @@ import { validateLocalComfyUrl } from './tools/adapters/comfyui-runtime.js'
 import { builtinComfyProfile } from './tools/adapters/comfyui-template.js'
 import { VideoApiGenerationService } from './generation/video-api-service.js'
 import { VideoApiAdapter } from './tools/adapters/video-api.js'
-import { loadVideoProfiles, videoAdapters, importCompShareCredential } from './generation/video-profiles.js'
+import { compshareProfileFileName, legacyVideoProfileFileName, loadCompShareProfile, createCompShareAdapter, importCompShareCredential } from './generation/compshare-minimax-h3-profile.js'
 import { loadImageProfiles, imageAdapters, importImageProfile } from './generation/image-profiles.js'
 import { MediaBroker } from './media-broker.js'
 import { protocol } from 'electron'
@@ -29,7 +29,7 @@ import { IntelligenceService } from './intelligence/service.js'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdirSync } from 'node:fs'
-import { ProjectDatabase } from './database.js'
+import { DomainError, ProjectDatabase } from './database.js'
 import { registerWorkspaceIPC } from './ipc.js'
 import { isolatedUserData } from './release-validation.js'
 
@@ -199,8 +199,10 @@ app
       ...imageAdapters(await loadImageProfiles(imageProfilePath),credentials),
       comfyAdapter,
     ])
-    const videoProfilePath = join(app.getPath('userData'), 'video-api-profiles.json')
-    const videoApi = new VideoApiGenerationService(visual, videoAdapters(await loadVideoProfiles(videoProfilePath), credentials))
+    const compshareProfilePath = join(app.getPath('userData'), compshareProfileFileName)
+    const legacyVideoProfilePath = join(app.getPath('userData'), legacyVideoProfileFileName)
+    const compshareProfile = await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)
+    const videoApi = new VideoApiGenerationService(visual, compshareProfile ? [createCompShareAdapter(compshareProfile, credentials)] : [])
     // Explicit test composition only. Packaged desktop never enables fixture generation.
     if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_VIDEO_ORIGIN) {
       const origin = new URL(process.env.DIRECTOR_TEST_VIDEO_ORIGIN)
@@ -258,13 +260,23 @@ app
         return importImageProfile(imageProfilePath,profile.filePaths[0],key.filePaths[0],credentials,imageApi)
       },
       async (toolId) => {
-        const profile = [...await loadImageProfiles(imageProfilePath), ...await loadVideoProfiles(videoProfilePath)].find(p => p.toolId === toolId)
+        const storedCompShare = await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)
+        const profile = (await loadImageProfiles(imageProfilePath)).find(p => p.toolId === toolId) ??
+          (storedCompShare?.toolId === toolId ? storedCompShare : null)
         return Boolean(profile?.credentialRef && safeStorage.isEncryptionAvailable() && await credentials.has(profile.credentialRef))
       },
-      async () => {
-        const result = await dialog.showOpenDialog({ title: '导入 CompShare H3 API Key（主进程加密保存，不生成视频）', properties: ['openFile'], filters: [{ name: 'Key 文本', extensions: ['txt', 'key'] }] })
-        if (result.canceled || !result.filePaths[0]) return null
-        return importCompShareCredential(videoProfilePath, result.filePaths[0], credentials, videoApi)
+      {
+        configuration: async () => ({ configured: Boolean(await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)), generationEnabled: false as const }),
+        importCredential: async () => {
+          const result = await dialog.showOpenDialog({ title: '导入 CompShare H3 API Key（主进程加密保存，不生成视频）', properties: ['openFile'], filters: [{ name: 'Key 文本', extensions: ['txt', 'key'] }] })
+          if (result.canceled || !result.filePaths[0]) return null
+          return importCompShareCredential(compshareProfilePath, legacyVideoProfilePath, result.filePaths[0], credentials, videoApi)
+        },
+        probe: async () => {
+          const profile = await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)
+          if (!profile) throw new DomainError('NOT_FOUND', 'CompShare 尚未配置')
+          return createCompShareAdapter(profile, credentials).probe(AbortSignal.timeout(10000))
+        },
       },
     )
     session.defaultSession.setPermissionRequestHandler(

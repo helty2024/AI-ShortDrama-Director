@@ -43,7 +43,11 @@ export function registerWorkspaceIPC(
   videoApi?: VideoApiGenerationService,
   importImage?: () => Promise<null>,
   hasToolCredential: (toolId: string) => Promise<boolean> = async () => false,
-  importVideoCredential?: () => Promise<null>,
+  compshareH3?: {
+    configuration: () => Promise<unknown>
+    importCredential: () => Promise<null>
+    probe: () => Promise<unknown>
+  },
 ) {
   const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
   workflows?.runner.recoverUnfinished()
@@ -145,13 +149,6 @@ export function registerWorkspaceIPC(
               case 'configuration':
                 data = videoApi.configuration()
                 break
-              case 'importCompShareCredential':
-                if (!importVideoCredential) throw new DomainError('CONFLICT', '视频凭据导入未配置')
-                data = await importVideoCredential()
-                break
-              case 'probe':
-                data = await videoApi.probe(c.toolId)
-                break
               case 'profiles':
                 data = videoApi.profiles()
                 break
@@ -182,6 +179,14 @@ export function registerWorkspaceIPC(
                 )
                 break
             }
+            return { ok: true, data: z.json().parse(data ?? null) }
+          }
+          case 'compshareH3': {
+            if (!compshareH3) throw new DomainError('CONFLICT', 'CompShare 未配置')
+            const c = request.command
+            const data = c.op === 'configuration' ? await compshareH3.configuration()
+              : c.op === 'importCredential' ? await compshareH3.importCredential()
+                : await compshareH3.probe()
             return { ok: true, data: z.json().parse(data ?? null) }
           }
           case 'visual':
