@@ -160,7 +160,7 @@ export class VideoApiGenerationService {
     if (!adapter || !entry)
       throw new DomainError('NOT_FOUND', 'Video API 未配置')
     if (adapter.generationEnabled === false)
-      throw new DomainError('FORBIDDEN', '09-00 非付费基线：真实视频生成尚未开放')
+      throw new DomainError('FORBIDDEN', '当前视频工具尚未开放真实生成')
     const capability: VideoCapability =
       input.mode === 'image-to-video'
         ? 'video.imageToVideo'
