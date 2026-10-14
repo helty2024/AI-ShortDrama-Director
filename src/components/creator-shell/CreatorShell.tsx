@@ -13,9 +13,9 @@ import './creator-shell.css'
 function ShellLayout({ children, simple, onModeToggle }: { children: ReactNode; simple: boolean; onModeToggle: () => void }) {
   const { state, reload } = useWorkspace()
   const { currentModule } = useCreator()
-  return <div className="creator-shell">
+  return <div className={'creator-shell' + (simple ? ' is-simple' : '')}>
     <TopBar simple={simple} onModeToggle={onModeToggle} />
-    <ProjectNav />
+    <ProjectNav simple={simple} />
     <MainWorkspace resetKey={`${state.workspace?.project.id}:${currentModule}:${state.editorEpoch}`} busy={state.loading || state.saving}>
       {state.error && !state.modal && <div className="error" role="alert">{state.error}<button onClick={() => void reload()}>重新加载</button></div>}
       {children}

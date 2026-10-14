@@ -15,10 +15,11 @@ import { AssetImage } from '../visual/AssetImage'
 import { shotVideoThumbnail, shotVideoView } from './shot-video-model'
 import { ShotVideoPlayer } from './ShotVideoPlayer'
 import './shot-videos-creator.css'
+import { isAlphaTestTool } from '../../shared/alpha'
 
 function shotLabel(shot: Shot, index: number) { return `Shot ${String(shot.plan?.shotNumber ?? index + 1).padStart(2, '0')}` }
 function versionState(version: AssetVersion, confirmedId: string | null) {
-  return version.id === confirmedId ? '已确认' : version.status === 'approved' ? '准备就绪' : '待审核'
+  return version.id === confirmedId ? '已确认' : version.status === 'approved' ? '可以生成' : '等待选择'
 }
 
 export function ShotVideosCreatorPage() {
@@ -53,7 +54,7 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
   const status = (item: Shot) => {
     const itemView = shotVideoView(item, entities, versions, ai.snapshot.tasks)
     const current = shotStatus(item, 'video', entities, versions, ai.snapshot.tasks, workflows.runs)
-    return itemView.confirmed ? '已确认' : itemView.bindingBroken ? '不可用' : current === '准备就绪' ? '待生成' : current
+    return itemView.confirmed ? '已确认' : itemView.bindingBroken ? '服务不可用' : current === '可以生成' ? '草稿' : current
   }
   const chooseShot = (item: Shot) => {
     visibleShotId.current = item.id
@@ -82,6 +83,7 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
         <aside className="shot-videos-list" aria-label="镜头视频列表"><div className="shot-videos-list-head"><h2>镜头序列</h2><small>{shots.length} SHOTS</small></div>{shots.map((item, index) => <button key={item.id} className="shot-videos-list-item" aria-pressed={shot.id === item.id} onClick={() => chooseShot(item)}><span className="shot-videos-number">{shotLabel(item, index)}</span><strong>{item.description || item.plan?.action || item.name}</strong><small>{item.durationSeconds}s <span className="creator-status" data-status={status(item)}>{status(item)}</span></small></button>)}</aside>
         <div className="shot-videos-main"><div className="shot-videos-main-head"><div><small>当前镜头 / {shotLabel(shot, shots.indexOf(shot))}</small><h2>{shot.description || shot.plan?.action || shot.name}</h2></div><div className="actions"><button onClick={toStoryboard}>查看分镜</button><button onClick={toGenerate}>去生成</button></div></div>
           <section className="shot-videos-screen" aria-label="镜头视频播放器"><div className="shot-videos-screen-top"><span>{preview ? '候选预览 · 尚未采用' : view?.confirmed ? '当前确认视频' : '当前镜头视频'}</span><span>{playerVersion ? `${playerVersion.width} × ${playerVersion.height}` : state.workspace?.project.aspectRatio}</span></div>
+            {playerVersion && isAlphaTestTool(playerVersion.provider ?? '') && <p className="alpha-test-notice">测试视频 / 模拟生成 · 仅用于 Alpha 流程验证</p>}
             {playerVersion ? <ShotVideoPlayer key={`${shot.id}:${playerVersion.id}`} version={playerVersion} label={preview ? '候选视频' : '当前确认视频'} onSource={() => setShowSource(true)} /> : <div className="shot-videos-screen-empty"><span>▶</span><strong>{view?.bindingBroken ? '当前确认视频不可用' : '尚未确认当前镜头视频'}</strong><p>{view?.bindingBroken ? '原绑定的版本无法解析；不会自动使用候选替代。' : '当前还没有确认的视频。生成并批准候选后，可将其设为当前镜头视频。'}</p><button onClick={toGenerate}>前往生成</button></div>}
             {view?.confirmed && preview && <button className="shot-videos-return" onClick={() => setPreviewId('')}>返回当前确认视频</button>}
           </section>

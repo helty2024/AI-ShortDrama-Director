@@ -7,7 +7,7 @@ import type { CreatorSelection } from './creator-context'
 export function CreatorContextProvider({ children }: { children: ReactNode }) {
   const { state, navigate } = useWorkspace()
   const [selection, setSelection] = useState<CreatorSelection>({})
-  const [inspectorOpen, setInspectorOpen] = useState(() => window.matchMedia('(min-width: 2200px)').matches)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   const [taskDrawerOpen, setTaskDrawerOpen] = useState(false)
   const [contextNotice, setContextNotice] = useState<string | null>(null)
   const closeInspector = useCallback(() => setInspectorOpen(false), [])

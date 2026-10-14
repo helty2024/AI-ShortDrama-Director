@@ -10,7 +10,7 @@ export function TopBar({ simple, onModeToggle }: { simple: boolean; onModeToggle
     ? { dirty: '尚未保存', saving: '自动保存中…', error: '保存失败，修改已保留' }[state.editorStatus]
     : state.saving ? '保存中…' : state.loading ? '加载中…' : state.error ? '操作失败' : '已保存到本地'
   return <header className="topbar creator-topbar">
-    <div className="creator-topbar-location"><strong>{state.workspace?.project.name}</strong><span aria-hidden="true">/</span><span>{creatorLabels[currentModule]}</span></div>
+    <div className="creator-topbar-location"><span className="director-brand" aria-hidden="true">✦</span><strong>{state.workspace?.project.name}</strong><span className="stage-caption">当前：{creatorLabels[currentModule]}</span></div>
     <div className="creator-topbar-actions">
       <span role="status" className="save-state">{save}</span>
       <select aria-label="切换项目" value={state.workspace?.project.id ?? ''} disabled={state.loading || state.saving} onChange={(event) => { if (event.target.value) void open(event.target.value) }}>

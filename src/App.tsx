@@ -22,6 +22,8 @@ import { WorkspaceDialog } from './features/workspace/dialogs'
 import './features/visual/visual.css'
 import './features/script/script.css'
 import './App.css'
+import './alpha.css'
+import { alphaVersion } from './shared/alpha'
 
 function LegacyLinks() {
   const { state, navigate } = useWorkspace()
@@ -79,17 +81,18 @@ function WorkspaceRoot() {
       ) : (
         <div className="project-list-shell">
           <header className="topbar">
-            <strong>{state.workspace?.project.name ?? '尚未打开项目'}</strong>
+            <strong>✦ AI ShortDrama Director <small>{alphaVersion}</small></strong>
             <div className="actions">
               <button onClick={() => navigate('projects')}>项目</button>
               <button onClick={() => navigate('settings')}>项目设置</button>
-              <button onClick={() => navigate('operations')}>验收与维护</button>
+              {!simple && <button onClick={() => navigate('operations')}>验收与维护</button>}
               <button onClick={toggleMode}>{simple ? '高级模式' : '简洁模式'}</button>
             </div>
           </header>
           <main>
             <MediaEnvironmentNotice />
-            <SetupWizard />
+            {!simple && <SetupWizard />}
+            {state.module === 'projects' && <p className="alpha-test-notice">公司内部 Alpha · 从一个故事开始，走完一次短剧制作。测试视频 / 模拟生成，不消费供应商积分。</p>}
             {state.module === 'operations'
               ? <OperationsPage />
               : state.module === 'settings'

@@ -24,9 +24,8 @@ export function MediaEnvironmentNotice() {
   }, [])
   return missing.length ? (
     <p role="alert" className="error">
-      未检测到 {missing.join('、')}
-      。项目和文本／图片功能可以继续使用；视频生成前请安装 FFmpeg（含
-      FFprobe）并加入系统 PATH，然后重新启动应用。
+      服务不可用：视频处理组件未就绪。请重新安装 Alpha 测试版或在设置中检查视频环境；故事和已确认素材仍可编辑。
+      <details><summary>高级诊断</summary>未检测到 {missing.join('、')}。请检查 FFmpeg / FFprobe。</details>
     </p>
   ) : null
 }

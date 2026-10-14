@@ -24,8 +24,8 @@ test('currency input converts precisely to safe integer micro units', () => {
 test('no video profile is unavailable and cannot pass the create guard', () => {
   assert.equal(videoToolReady([], ''), false)
   assert.equal(videoToolReady([], 'reference-video'), false)
-  assert.equal(videoStatusWithReadiness('待生成', false), '不可用')
-  assert.equal(videoStatusWithReadiness('准备就绪', false), '不可用')
+  assert.equal(videoStatusWithReadiness('草稿', false), '服务不可用')
+  assert.equal(videoStatusWithReadiness('可以生成', false), '服务不可用')
   assert.equal(videoStatusWithReadiness('已确认', false), '已确认')
   assert.equal(videoToolReady([{ toolId: 'reference-video' }], 'reference-video'), true)
 })
@@ -118,7 +118,7 @@ test('Shot official binding uses the pinned version, never a newer candidate', (
     const draft = version('draft')
     assert.equal(officialVersion(shot, 'keyframe', entities, [draft]), undefined)
     assert.equal(shotCandidates(shot, 'keyframe', [draft], [])[0]?.id, draft.id)
-    assert.equal(shotStatus(shot, 'keyframe', entities, [draft], [], []), '待审核')
+    assert.equal(shotStatus(shot, 'keyframe', entities, [draft], [], []), '等待选择')
     const pinned = version('archived')
     const bound = { ...shot, approvedKeyframeAssetId: asset.id, approvedKeyframeVersionId: pinned.id }
     assert.equal(officialVersion(bound, 'keyframe', entities, [draft, pinned])?.id, pinned.id)

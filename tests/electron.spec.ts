@@ -114,6 +114,7 @@ test('Creator closeout fresh project completes Story to Shot Video journey witho
     await page.getByLabel('名称', { exact: true }).fill('全链路新项目')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(page.getByRole('region', { name: '故事编辑器' })).toBeVisible()
+    await page.getByText('补充故事方向（可选）', { exact: true }).click()
     await page.getByRole('textbox', { name: '一句话概念' }).fill('一场误会改变三个人的命运')
     await page.getByRole('textbox', { name: '故事梗概' }).fill('雨夜车站的一封信引发重逢。')
     await page.getByRole('textbox', { name: '风格' }).fill('悬疑写实')
@@ -177,7 +178,7 @@ test('Creator closeout fresh project completes Story to Shot Video journey witho
     await inspector.getByRole('button', { name: '去生成' }).click()
     await expect(page.getByRole('heading', { name: '生成依据' })).toBeVisible()
     await capture('Generate-Keyframe-2560')
-    await page.getByRole('button', { name: '预览生成关键帧' }).click()
+    await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const confirm = page.getByRole('dialog', { name: '确认生成' })
     await expect(confirm).toBeVisible()
     await confirm.getByText('高级生成 · 实际编译 Prompt').click()
@@ -201,12 +202,13 @@ test('Creator closeout fresh project completes Story to Shot Video journey witho
     await expect(page.getByText('尚未配置可用的视频生成工具')).toBeVisible()
     await capture('Generate-Video-Unavailable-2560')
     await nav.getByRole('button', { name: '分镜', exact: true }).click()
+    await page.locator('.storyboard-shot-card').first().click()
     await expect(inspector.getByText('已确认', { exact: true })).toBeVisible()
     await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
     await expect(page.getByText('尚未确认当前镜头视频')).toBeVisible()
     await capture('ShotVideos-2560')
     await page.setViewportSize({ width: 1920, height: 1080 })
-    await expect(page.locator('.creator-nav')).toHaveClass(/is-collapsed/)
+    await expect(page.locator('.creator-nav')).toHaveClass(/horizontal-nav/)
     await page.getByRole('button', { name: '关闭检查器' }).click()
     const mainWidth = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
     for (const [stage, name] of [
@@ -447,7 +449,7 @@ test('Storyboard and Generate Creator keep Shot context and block unconfigured V
     await page.getByRole('tab', { name: '镜头视频' }).click()
     await expect(page.getByText('尚未配置可用的视频生成工具')).toBeVisible()
     await expect(page.getByText('VIDEO_PROMPT_SOURCE')).toBeVisible()
-    await expect(page.getByRole('button', { name: '预览生成镜头视频' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '开始生成 1 个镜头' })).toHaveCount(0)
     await page.screenshot({ path: 'test-results/Generate-Video-2560.png' })
     const runs = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workflow', command: { op: 'listWorkflowRuns', projectId: id } }), project.id)
     expect(runs).toMatchObject({ ok: true, data: [] })
@@ -490,9 +492,10 @@ test('test-only Reference Video Tool drives Creator preview, approval and explic
     await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
     await page.getByRole('tab', { name: '镜头视频' }).click()
     await page.getByRole('radio', { name: '文生视频' }).check()
-    await page.getByRole('button', { name: '预览生成镜头视频' }).click()
+    await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const dialog = page.getByRole('dialog', { name: '确认生成' })
     await expect(dialog).toBeVisible()
+    await dialog.getByText('高级生成 · 实际编译 Prompt').click()
     await expect(dialog.getByText('Local Reference Video Fixture (test only)')).toBeVisible()
     await dialog.getByRole('button', { name: '取消' }).click()
     expect(server.counts.submit).toBe(0)
@@ -556,7 +559,7 @@ test('Creator unknown video submission offers query-only recovery and never resu
     await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
     await page.getByRole('tab', { name: '镜头视频' }).click()
     await page.getByRole('radio', { name: '文生视频' }).check()
-    await page.getByRole('button', { name: '预览生成镜头视频' }).click()
+    await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const dialog = page.getByRole('dialog', { name: '确认生成' })
     await expect(dialog).toBeVisible()
     await dialog.getByRole('textbox', { name: '单次费用上限' }).fill('0.01')
@@ -589,7 +592,7 @@ test('Creator Keyframe preview shows compiled prompt and keeps candidate separat
     await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
     await expect(page.getByRole('heading', { name: '生成依据' })).toBeVisible()
     await expect(page.getByText('LEGACY_ONLY')).toHaveCount(0)
-    await page.getByRole('button', { name: '预览生成关键帧' }).click()
+    await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const dialog = page.getByRole('dialog', { name: '确认生成' })
     await expect(dialog).toBeVisible()
     await dialog.getByText('高级生成 · 实际编译 Prompt').click()
@@ -709,8 +712,10 @@ test('Story and Script creator pages keep scene context and render both target w
     await page.setViewportSize({ width: 2560, height: 1440 })
     await page.getByRole('button', { name: '载入开发示例' }).click()
     await expect(page.getByRole('region', { name: '故事编辑器' })).toBeVisible()
+    await page.getByRole('button', { name: '切换检查器' }).click()
     await expect(page.getByRole('complementary', { name: '上下文检查器' }).getByText('故事属性')).toBeVisible()
     await page.screenshot({ path: 'test-results/Story-2560.png' })
+    await page.getByText('补充故事方向（可选）', { exact: true }).click()
     await page.getByRole('textbox', { name: '一句话概念' }).fill('一封信改变三个人的命运')
     await page.getByRole('textbox', { name: '故事梗概' }).fill('雨夜车站的重逢。')
     await page.getByRole('textbox', { name: '风格' }).fill('悬疑写实')
@@ -730,6 +735,7 @@ test('Story and Script creator pages keep scene context and render both target w
     await expect(page.getByRole('complementary', { name: '上下文检查器' }).getByText('场次编号')).toBeVisible()
     await page.screenshot({ path: 'test-results/Script-2560.png' })
     await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '故事', exact: true }).click()
+    await page.getByText('补充故事方向（可选）', { exact: true }).click()
     await expect(page.getByRole('textbox', { name: '一句话概念' })).toHaveValue('一封信改变三个人的命运')
     await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '剧本', exact: true }).click()
     await expect(page.locator('.scene-tree-list > li > button').nth(1)).toHaveAttribute('aria-current', 'true')
@@ -762,7 +768,7 @@ test('creator shell starts in compact 1920 layout', async () => {
     const page = await application.firstWindow()
     await page.setViewportSize({ width: 1920, height: 1080 })
     await page.getByRole('button', { name: '载入开发示例' }).click()
-    await expect(page.locator('.creator-nav')).toHaveClass(/is-collapsed/)
+    await expect(page.locator('.creator-nav')).toHaveClass(/horizontal-nav/)
     await expect(page.getByRole('dialog', { name: '上下文检查器' })).toHaveCount(0)
     const mainBefore = await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().width)
     await page.getByRole('button', { name: '切换检查器' }).click()
@@ -785,6 +791,8 @@ test('creator shell navigation, context, overlays and project round trip', async
     const primary = page.getByRole('navigation', { name: '创作阶段' }).getByRole('button')
     await expect(primary).toHaveCount(6)
     for (const [index, name] of ['故事', '剧本', '资产', '分镜', '生成', '分镜视频'].entries()) await expect(primary.nth(index)).toHaveAccessibleName(name)
+    await page.getByRole('button', { name: '高级模式', exact: true }).click()
+    await page.getByRole('button', { name: '关闭提示' }).click()
     for (const [index, name] of ['项目设置', '验收与维护'].entries()) await expect(page.getByRole('navigation', { name: '次级导航' }).getByRole('button').nth(index)).toHaveAccessibleName(name)
     for (const name of ['故事', '剧本', '资产', '分镜', '生成', '分镜视频']) {
       await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true }).click()
@@ -820,6 +828,8 @@ test('creator shell navigation, context, overlays and project round trip', async
     await page.getByRole('button', { name: '制作任务', exact: true }).first().click()
     await expect(page.getByRole('button', { name: /制作任务.*个任务进行中/ })).toHaveAttribute('aria-expanded', 'true')
     expect(await page.locator('.creator-main').evaluate((element) => element.getBoundingClientRect().height)).toBe(mainHeight)
+    await page.getByRole('button', { name: '简洁模式', exact: true }).click()
+    await page.getByRole('button', { name: '关闭提示' }).click()
     await page.getByRole('button', { name: '高级模式', exact: true }).click()
     await expect(page.getByRole('status').filter({ hasText: '已切换到高级模式' })).toBeVisible()
     await page.getByRole('button', { name: '关闭提示' }).click()
@@ -844,7 +854,7 @@ test('creator shell navigation, context, overlays and project round trip', async
   }
 })
 
-async function launch(directory: string, imageFixtureOrigin?: string, videoFixtureOrigin?: string) {
+async function launch(directory: string, imageFixtureOrigin?: string, videoFixtureOrigin?: string, alpha = false) {
   const environment: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env))
     if (value !== undefined) environment[key] = value
@@ -856,6 +866,7 @@ async function launch(directory: string, imageFixtureOrigin?: string, videoFixtu
   if(videoFixtureOrigin)environment.DIRECTOR_TEST_VIDEO_ORIGIN=videoFixtureOrigin
   environment.DIRECTOR_TEST_USER_DATA = directory
   environment.DIRECTOR_TEXT_PROVIDER = 'mock'
+  environment.DIRECTOR_DISABLE_ALPHA_FIXTURE = alpha ? '0' : '1'
   return electron.launch({ args: ['.'], env: environment })
 }
 
@@ -900,7 +911,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
         command: { operation: 'about' },
       }),
     )
-    expect(about).toMatchObject({ ok: true, data: { version: '0.8.0', schema: 10 } })
+    expect(about).toMatchObject({ ok: true, data: { version: '0.9.0-alpha.1', schema: 10 } })
     const isolation = await page.evaluate(() => ({
       bridge: Boolean(window.desktop?.workspace),
       require: typeof Reflect.get(window, 'require'),
@@ -934,7 +945,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     await page.getByRole('button', { name: '删除', exact: true }).click()
     await page.getByLabel('确认项目名').fill('重命名短剧')
     await page.getByRole('button', { name: '确认删除' }).click()
-    await expect(page.locator('.topbar strong')).toHaveText('尚未打开项目')
+    await expect(page.locator('.topbar strong')).toContainText('0.9.0-alpha.1')
     await page.getByRole('button', { name: '载入开发示例' }).click()
     await expect(page.locator('.topbar strong')).toHaveText(
       '雨夜来信 · 示例短剧',
@@ -962,7 +973,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
       else if (name === '素材库') await openLegacy(page, '素材库')
       else await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true }).click()
       await expect(
-        page.getByRole('heading', { name, exact: true }),
+        page.getByRole('heading', { name: name === '生成' ? '让故事，变成画面' : name, exact: true }),
       ).toBeVisible()
     }
     const seedId = await page
@@ -1611,12 +1622,16 @@ test('simple production validation, task center, backup restore and diagnostics 
   const application = await launch(directory)
   try {
     const page = await application.firstWindow()
+    await page.getByRole('button', { name: '高级模式', exact: true }).click()
     await expect(page.getByRole('region', { name: '首次设置' })).toBeVisible()
     await page
       .getByRole('button', { name: '5. 进入工作台 / 暂时跳过设置' })
       .click()
+    if (await page.getByRole('button', { name: '验收与维护', exact: true }).count() === 0) await page.getByRole('button', { name: '高级模式', exact: true }).click()
     await page.getByRole('button', { name: '验收与维护', exact: true }).click()
     await page.getByRole('button', { name: '创建 3 Shot 验收项目' }).click()
+    await page.getByRole('button', { name: '简洁模式', exact: true }).click()
+    await page.getByRole('button', { name: '关闭提示' }).click()
     await openLegacy(page, '生产看板')
     await expect(
       page.getByRole('button', { name: '高级模式', exact: true }),
@@ -1657,6 +1672,7 @@ test('simple production validation, task center, backup restore and diagnostics 
       page.getByRole('heading', { name: '任务中心', exact: true }),
     ).toBeVisible()
     await expect(page.getByText(/mock-video · succeeded/)).toBeVisible()
+    if (await page.getByRole('button', { name: '验收与维护', exact: true }).count() === 0) await page.getByRole('button', { name: '高级模式', exact: true }).click()
     await page.getByRole('button', { name: '验收与维护', exact: true }).click()
     await application.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({
@@ -1686,6 +1702,7 @@ test('simple production validation, task center, backup restore and diagnostics 
       .getByRole('button', { name: 'Restore Project', exact: true })
       .click()
     await expect(page.locator('.topbar strong')).toContainText('恢复')
+    if (await page.getByRole('button', { name: '验收与维护', exact: true }).count() === 0) await page.getByRole('button', { name: '高级模式', exact: true }).click()
     await page.getByRole('button', { name: '验收与维护', exact: true }).click()
     await application.evaluate(
       ({ dialog }, path) => {
@@ -1929,7 +1946,7 @@ test('pre-v7 project opens legacy Bible, storyboard, generation, tasks and missi
       if (name === '角色' || name === '场景' || name === '道具') await openAssetTab(page, name)
       else if (name === '素材库') await openLegacy(page, name)
       else await page.getByRole('button', { name, exact: true }).click()
-      await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: name === '生成' ? '让故事，变成画面' : name, exact: true })).toBeVisible()
     }
     await page.locator('.asset-tile').first().click()
     const summary = page.getByText('来源 / 费用 / 工作流', { exact: true }).first()

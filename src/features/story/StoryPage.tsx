@@ -26,6 +26,7 @@ function StoryEditor({ project }: { project: Project }) {
   const [value, setValue] = useState<StoryValues>(() => values(project))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [organizing, setOrganizing] = useState(false)
   const current = useRef(value)
   const saved = useRef(fingerprint(value))
   const revision = useRef(project.revision)
@@ -99,17 +100,33 @@ function StoryEditor({ project }: { project: Project }) {
       setEditorStatus('saved')
     } catch (cause) { setError(cause instanceof Error ? cause.message : '重新载入失败') }
   }
+  const organize = async () => {
+    setOrganizing(true)
+    try {
+      await persist()
+      if (busy.current || failed.current || saved.current !== fingerprint(current.current)) throw new Error('请等待故事保存完成后再整理。')
+      const rawText = [current.current.logline, current.current.description].filter(Boolean).join('\n\n')
+      const result = await window.desktop!.workspace.request({ action: 'intelligence', command: { operation: 'task.start', projectId: project.id, input: { type: 'parse', name: current.current.name, rawText } } })
+      if (!result.ok) throw new Error('整理暂时不可用。故事已保存，请稍后重试。')
+      navigateCreator('scripts')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '整理失败，请稍后重试。') }
+    finally { setOrganizing(false) }
+  }
   return <section className="story-page" aria-label="故事编辑器">
-    <div className="page-heading"><div><h1>故事</h1><p>从一句话概念开始，搭建短剧的世界与方向。</p></div><button onClick={() => navigateCreator('scripts')}>进入剧本 →</button></div>
+    <div className="page-heading"><div><small>从一个想法，开始一部短剧</small><h1>今天，想讲一个什么故事？</h1><p>写下人物、冲突和你想看到的画面。不用一次想清楚，随时可以回来修改。</p></div></div>
     {error && <div className="error" role="alert">{error}<button disabled={saving} onClick={() => void reload()}>重新载入</button></div>}
     <div className="story-paper">
-      <label>故事名称<input value={value.name} maxLength={120} onChange={(event) => change('name', event.target.value)} /></label>
-      <label>一句话概念<textarea className="story-logline" value={value.logline} maxLength={1000} placeholder="先写一句话概念，建立这个短剧的创作方向。" onChange={(event) => change('logline', event.target.value)} /></label>
-      <label>故事梗概<textarea className="story-synopsis" value={value.description} maxLength={4000} placeholder="故事从哪里开始？人物会面临什么选择？" onChange={(event) => change('description', event.target.value)} /></label>
+      <label>故事名称<input className="story-title-input" value={value.name} maxLength={120} onChange={(event) => change('name', event.target.value)} /></label>
+      <label>故事梗概<textarea className="story-synopsis" value={value.description} maxLength={4000} placeholder="例如：雨夜，阿青在车站拾起一封旧信。信里写着一个只有她知道的秘密……已有剧本？也可以直接粘贴场景和对白。" onChange={(event) => change('description', event.target.value)} /></label>
+      <div className="story-footer"><small>下一步：整理为剧本预览，由你确认后再开始制作。<br />Alpha 使用本地规则模拟整理，保留完整原文。</small><button className="primary" disabled={organizing || saving || !value.name.trim() || !(value.description.trim() || value.logline.trim())} onClick={() => void organize()}>{organizing ? '准备中…' : 'AI 整理'}</button></div>
+      <details className="story-options"><summary>补充故事方向（可选）</summary><div>
+      <label>一句话概念<textarea className="story-logline" value={value.logline} maxLength={1000} placeholder="这个故事最打动你的是什么？" onChange={(event) => change('logline', event.target.value)} /></label>
       <div className="story-pair"><label>类型<input value={value.genre} maxLength={80} onChange={(event) => change('genre', event.target.value)} /></label><label>风格<textarea value={value.style} maxLength={2000} onChange={(event) => change('style', event.target.value)} /></label></div>
       <label>世界观<textarea className="story-long" value={value.worldview} maxLength={10000} onChange={(event) => change('worldview', event.target.value)} /></label>
       <label>创作要求<textarea className="story-long" value={value.creativeRequirements} maxLength={10000} onChange={(event) => change('creativeRequirements', event.target.value)} /></label>
       <div className="story-pair story-secondary"><label>画幅<select value={value.aspectRatio} onChange={(event) => change('aspectRatio', event.target.value as StoryValues['aspectRatio'])}>{['9:16', '16:9', '1:1', '4:3'].map((ratio) => <option key={ratio}>{ratio}</option>)}</select></label><label>语言<input value={value.language} maxLength={40} onChange={(event) => change('language', event.target.value)} /></label></div>
+      </div></details>
     </div>
+    <button className="story-continue" onClick={() => navigateCreator('scripts')}>进入剧本 →</button>
   </section>
 }

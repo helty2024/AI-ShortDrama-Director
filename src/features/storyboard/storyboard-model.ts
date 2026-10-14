@@ -51,18 +51,18 @@ export function shotStatus(shot: Shot, kind: 'keyframe' | 'video', entities: Ent
     (kind === 'keyframe' ? task.input.type === 'image-api' || task.input.type === 'shot-keyframe' : task.input.type === 'video-api'))
   const currentRun = relatedRuns[0]
   const candidates = shotCandidates(shot, kind, versions, relatedTasks)
-  if (currentRun?.status === 'failed' || relatedTasks[0]?.status === 'failed') return '失败'
+  if (currentRun?.status === 'failed' || relatedTasks[0]?.status === 'failed') return '生成失败'
   if (currentRun?.status === 'running' || currentRun?.status === 'pending' || relatedTasks.some((t) => t.status === 'running' || t.status === 'queued')) return '生成中'
-  if (currentRun?.status === 'waiting-user') return '等待用户'
-  if (candidates.some((v) => v.status === 'draft' || v.status === 'approved') && !officialVersion(shot, kind, entities, versions)) return '待审核'
+  if (currentRun?.status === 'waiting-user') return '等待选择'
+  if (candidates.some((v) => v.status === 'draft' || v.status === 'approved') && !officialVersion(shot, kind, entities, versions)) return '等待选择'
   if (officialVersion(shot, kind, entities, versions)) return '已确认'
-  if ((kind === 'keyframe' && shot.approvedKeyframeVersionId) || (kind === 'video' && shot.confirmedVideoAssetVersionId)) return '不可用'
-  if (kind === 'video' && officialVersion(shot, 'keyframe', entities, versions)) return '准备就绪'
-  return '待生成'
+  if ((kind === 'keyframe' && shot.approvedKeyframeVersionId) || (kind === 'video' && shot.confirmedVideoAssetVersionId)) return '服务不可用'
+  if (kind === 'video' && officialVersion(shot, 'keyframe', entities, versions)) return '可以生成'
+  return '草稿'
 }
 
 export function videoStatusWithReadiness(status: CreatorStatus, ready: boolean): CreatorStatus {
-  return ready || status === '已确认' || status === '待审核' || status === '生成中' || status === '等待用户' ? status : '不可用'
+  return ready || status === '已确认' || status === '等待选择' || status === '生成中' ? status : '服务不可用'
 }
 
 export function approvedShotReferences(shot: Shot, entities: Entity[], versions: AssetVersion[], previous?: Shot) {

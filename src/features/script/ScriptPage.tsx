@@ -3,7 +3,7 @@ import { useWorkspace } from '../workspace/state'
 import { useCreator } from '../../components/creator-shell/creator-context'
 import { SceneEditor } from './SceneEditor'
 import { useIntelligence } from './use-intelligence'
-import { ImportPanel } from './ImportPanel'
+import { ImportPanel, ScriptImportPreview } from './ImportPanel'
 import { DraftCard } from './DraftCard'
 import { categoryLabels } from './labels'
 import { TaskList } from './TaskList'
@@ -89,6 +89,7 @@ function ScriptWorkspace({
     (d) => d.sceneId === scene?.id && (showReviewed || d.status === 'pending'),
   )
   const clean = state.editorStatus === 'saved' && !ai.busy
+  const storyPreview = ai.snapshot.imports.filter(item => !item.confirmedScriptId).at(-1)
   return (
     <>
       <div className="page-heading">
@@ -109,6 +110,8 @@ function ScriptWorkspace({
           {error || ai.error}
         </p>
       )}
+      {tab === 'analysis' && storyPreview && <section className="story-script-preview empty" aria-label="故事整理预览"><h2>故事已整理，确认后开始写剧本</h2><p>这是预览，还没有写入正式剧本。确认场次内容后，再建立角色、场景和道具。</p><ScriptImportPreview key={storyPreview.id + ':' + storyPreview.revision} preview={storyPreview} execute={ai.execute} refreshWorkspace={reload} /></section>}
+      {!scripts.length && !storyPreview && <div className="next-step"><p>{ai.snapshot.tasks.some(task => task.input.type === 'parse' && ['running', 'queued'].includes(task.status)) ? '准备中：正在整理故事，请稍候。' : '第一次创作？先写下故事，再整理成可编辑的剧本。'}</p><button onClick={() => navigateCreator('story')}>回到故事</button></div>}
       <div className="script-layout">
         <section className="script-tree" aria-label="分集场次树">
           <label>
@@ -436,7 +439,7 @@ function ScriptWorkspace({
           )}
           <TaskList tasks={ai.snapshot.tasks} execute={ai.execute} />
         </details>
-        <div className="script-next-actions"><button onClick={() => navigateCreator('assetsHub')}>查看角色与场景资产 →</button></div>
+        <div className="script-next-actions next-step"><p>下一步：建立故事里的角色、场景和道具，作为分镜制作的依据。</p><button onClick={() => navigateCreator('assetsHub')}>查看角色与场景资产 →</button></div>
         </div>
       </div>
     </>

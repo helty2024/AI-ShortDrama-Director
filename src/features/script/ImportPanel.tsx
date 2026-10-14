@@ -107,7 +107,7 @@ export function ImportPanel({
         </label>
       )}
       {preview && (
-        <Preview
+        <ScriptImportPreview
           key={preview.id + ':' + preview.revision}
           preview={preview}
           execute={execute}
@@ -117,7 +117,7 @@ export function ImportPanel({
     </section>
   )
 }
-function Preview({
+export function ScriptImportPreview({
   preview,
   execute,
   refreshWorkspace,

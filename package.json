@@ -1,7 +1,7 @@
 {
   "name": "ai-shortdrama-director",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0-alpha.1",
   "type": "module",
   "scripts": {
     "dev": "node scripts/electron.mjs dev",
@@ -15,7 +15,8 @@
     "test:unit": "tsx --test --test-concurrency=1 tests/unit/*.test.ts",
     "validate:packy-paid": "node scripts/packy-paid-validation.mjs",
     "validate:compshare": "node scripts/compshare-connectivity.mjs",
-    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist:alpha": "node scripts/prepare-alpha-runtime.mjs && npm run build && electron-builder --config electron-builder.alpha.yml --win nsis --x64 --publish never"
   },
   "dependencies": {
     "react": "^19.2.8",

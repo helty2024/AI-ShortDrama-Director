@@ -1,0 +1,11 @@
+extends: electron-builder.yml
+appId: com.aishortdrama.director.alpha
+productName: AI ShortDrama Director Alpha
+nsis:
+  shortcutName: AI ShortDrama Director Alpha
+  uninstallDisplayName: AI ShortDrama Director Alpha
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+  - from: build/alpha-runtime
+    to: alpha-runtime

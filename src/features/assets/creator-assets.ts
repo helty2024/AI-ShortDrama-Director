@@ -46,7 +46,7 @@ export function resolveCreatorAsset(target: CreatorAsset, entities: Entity[], ve
   const candidates = related.filter((v) => !primaryAssets.has(v.assetId) && (v.status === 'draft' || v.status === 'approved'))
   const history = related.filter((v) => primaryAssets.has(v.assetId) || v.status === 'rejected' || v.status === 'archived')
   const ready = candidates.some((v) => v.status === 'approved' && assets.get(v.assetId)?.approvedVersionId === v.id)
-  const status: CreatorStatus = brokenPrimary ? '不可用' : primaryVersion ? '已确认' : ready ? '准备就绪' : candidates.some((v) => v.status === 'draft') ? '待审核' : '待生成'
+  const status: CreatorStatus = brokenPrimary ? '服务不可用' : primaryVersion ? '已确认' : ready ? '可以生成' : candidates.some((v) => v.status === 'draft') ? '等待选择' : '草稿'
   return { primaryReference, primaryVersion, brokenPrimary, candidates, history, preview: primaryVersion ?? candidates[0], status }
 }
 

@@ -24,6 +24,7 @@ function AssetsWorkspace({ projectId, selectedKind, selectedId, selectAsset, cre
   create: ReturnType<typeof useWorkspace>['modal']
 }) {
   const { state } = useWorkspace()
+  const { navigateCreator } = useCreator()
   const visual = useVisual(projectId)
   const intelligence = useIntelligence(projectId)
   const [tab, setTab] = useState<CreatorAssetKind>(selectedKind ?? 'character')
@@ -47,7 +48,7 @@ function AssetsWorkspace({ projectId, selectedKind, selectedId, selectAsset, cre
     <div className="assets-creator-toolbar">
       <div role="tablist" aria-label="资产类型" className="assets-creator-tabs">{assetKinds.map((kind) => <button key={kind} role="tab" aria-selected={tab === kind} onClick={() => switchTab(kind)}>{assetLabels[kind]} <span>{entities.filter((e) => e.kind === kind).length}</span></button>)}</div>
       <label className="assets-creator-search">搜索<input aria-label="搜索创作资产" value={query} placeholder="名称或简介" onChange={(event) => setQuery(event.target.value)} /></label>
-      <label className="assets-creator-filter">状态<select aria-label="筛选资产状态" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">全部</option>{['已确认', '准备就绪', '待审核', '待生成', '不可用'].map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label className="assets-creator-filter">状态<select aria-label="筛选资产状态" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">全部</option>{['已确认', '可以生成', '等待选择', '草稿', '服务不可用'].map((value) => <option key={value}>{value}</option>)}</select></label>
     </div>
     {(visual.error || intelligence.error) && <p role="alert" className="error">{visual.error || intelligence.error}</p>}
     {!rows.length ? <div className="assets-creator-empty"><h2>还没有{assetLabels[tab]}资产</h2><p>先建立第一个{assetLabels[tab]}，再逐步补充设定和参考图。</p><button className="primary" onClick={() => create({ type: 'entity', kind: tab })}>创建第一个{assetLabels[tab]}</button></div> : !visible.length ? <p className="empty">没有匹配的{assetLabels[tab]}，试试其他关键词或状态。</p> : <div className="assets-creator-grid" aria-label={`${assetLabels[tab]}资产网格`}>{visible.map((entity) => {
@@ -58,5 +59,6 @@ function AssetsWorkspace({ projectId, selectedKind, selectedId, selectAsset, cre
         <p>{view.brokenPrimary ? '主参考暂不可用' : view.primaryVersion ? '已设置主参考' : '未设置主参考'}</p>
       </button>
     })}</div>}
+    <div className="next-step"><p>角色、场景和道具已准备好？下一步把故事变成镜头。</p><button onClick={() => navigateCreator('storyboard')}>前往分镜 →</button></div>
   </section>
 }

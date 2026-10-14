@@ -39,12 +39,12 @@ test('Creator Asset primary resolution and statuses never promote unrelated or l
     assert.deepEqual(new Set(view.history.map((v) => v.id)), new Set([a1.id, a2.id]))
     assert.equal(view.candidates.some((v) => v.id === video.id), false)
     const noPrimary = { ...target, visualReferences: [] }
-    assert.equal(resolveCreatorAsset(noPrimary, entities, [b1]).status, '待审核')
+    assert.equal(resolveCreatorAsset(noPrimary, entities, [b1]).status, '等待选择')
     const approvedB = version(b.id, 'approved', 1)
     const readyEntities = entities.map((entity) => entity.id === b.id ? { ...b, approvedVersionId: approvedB.id } : entity)
-    assert.equal(resolveCreatorAsset(noPrimary, readyEntities, [approvedB]).status, '准备就绪')
-    assert.equal(resolveCreatorAsset({ ...target, visualReferences: [{ assetId: randomUUID(), role: 'faceReference', primary: true }] }, entities, [a1]).status, '不可用')
-    assert.equal(resolveCreatorAsset({ ...noPrimary, assetIds: [] }, entities, []).status, '待生成')
+    assert.equal(resolveCreatorAsset(noPrimary, readyEntities, [approvedB]).status, '可以生成')
+    assert.equal(resolveCreatorAsset({ ...target, visualReferences: [{ assetId: randomUUID(), role: 'faceReference', primary: true }] }, entities, [a1]).status, '服务不可用')
+    assert.equal(resolveCreatorAsset({ ...noPrimary, assetIds: [] }, entities, []).status, '草稿')
     const output = { ...b1, metadata: {} }
     const task = aiTaskSchema.parse({ ...metadata(), projectId: project.id, input: { type: 'image-api', targetId: character.id }, status: 'succeeded', attempt: 1, error: null, resultIds: [output.id], sourceRevisions: {} })
     const provenanceView = resolveCreatorAsset({ ...noPrimary, assetIds: [] }, entities, [output], [task])

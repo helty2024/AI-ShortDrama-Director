@@ -32,6 +32,8 @@ import { mkdirSync } from 'node:fs'
 import { DomainError, ProjectDatabase } from './database.js'
 import { registerWorkspaceIPC } from './ipc.js'
 import { isolatedUserData } from './release-validation.js'
+import { alphaVersion } from '../../src/shared/alpha.js'
+import { startAlphaReferenceRuntime } from './alpha/reference-runtime.js'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -48,12 +50,14 @@ const directory = dirname(fileURLToPath(import.meta.url))
 const windows = new Set<number>()
 let database: ProjectDatabase | undefined
 let queue: AITaskQueue | undefined
+let alphaRuntime: Awaited<ReturnType<typeof startAlphaReferenceRuntime>> | undefined
+const alphaTesting = app.getVersion() === alphaVersion && (app.isPackaged || process.env.DIRECTOR_DISABLE_ALPHA_FIXTURE !== '1')
 const rendererUrl =
   !app.isPackaged && process.env.ELECTRON_RENDERER_URL
     ? new URL(process.env.ELECTRON_RENDERER_URL).href
     : pathToFileURL(join(directory, '../renderer/index.html')).href
 // Stable across development, installation and future product-name changes.
-app.setPath('userData', join(app.getPath('appData'), 'ai-shortdrama-director'))
+app.setPath('userData', join(app.getPath('appData'), alphaTesting ? 'ai-shortdrama-director-alpha' : 'ai-shortdrama-director'))
 app.setAppUserModelId('com.aishortdrama.director')
 // Release validation is opt-in and confined to the OS temp test root. The renderer
 // never chooses this path; normal packaged launches always use the stable userData.
@@ -70,7 +74,7 @@ async function createWindow() {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    backgroundColor: '#11141b',
+    backgroundColor: '#f7f6f3',
     title: 'AI ShortDrama Director',
     webPreferences: {
       preload: join(directory, '../preload/index.cjs'),
@@ -103,6 +107,10 @@ async function createWindow() {
 app
   .whenReady()
   .then(async () => {
+    if (app.isPackaged && alphaTesting) {
+      process.env.DIRECTOR_FFMPEG = join(process.resourcesPath, 'alpha-runtime', 'ffmpeg.exe')
+      process.env.DIRECTOR_FFPROBE = join(process.resourcesPath, 'alpha-runtime', 'ffprobe.exe')
+    }
     mkdirSync(app.getPath('userData'), { recursive: true })
     app.setAppLogsPath(join(app.getPath('userData'), 'logs'))
     database = new ProjectDatabase(
@@ -110,7 +118,7 @@ app
     )
     const repo = new IntelligenceRepository(database)
     const provider =
-      process.env.DIRECTOR_TEXT_PROVIDER === 'compatible'
+      !alphaTesting && process.env.DIRECTOR_TEXT_PROVIDER === 'compatible'
         ? new CompatibleTextProvider({
             baseUrl:
               process.env.DIRECTOR_TEXT_BASE_URL ?? 'https://api.openai.com/v1',
@@ -203,6 +211,13 @@ app
     const legacyVideoProfilePath = join(app.getPath('userData'), legacyVideoProfileFileName)
     const compshareProfile = await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)
     const videoApi = new VideoApiGenerationService(visual, compshareProfile ? [createCompShareAdapter(compshareProfile, credentials)] : [])
+    if (alphaTesting) {
+      try {
+        alphaRuntime = await startAlphaReferenceRuntime(join(app.getPath('userData'), 'alpha-reference'))
+        imageApi.register(alphaRuntime.imageAdapter)
+        videoApi.register(alphaRuntime.videoAdapter)
+      } catch { console.error('Alpha test media unavailable; generation stays unavailable') }
+    }
     // Explicit test composition only. Packaged desktop never enables fixture generation.
     if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_VIDEO_ORIGIN) {
       const origin = new URL(process.env.DIRECTOR_TEST_VIDEO_ORIGIN)
@@ -298,6 +313,7 @@ app
     app.exit(1)
   })
 app.on('will-quit', () => {
+  void alphaRuntime?.close()
   queue?.close()
   database?.close()
 })

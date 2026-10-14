@@ -2,6 +2,12 @@
 
 面向 AI 短剧创作的本地桌面工作台，基于 React + TypeScript + Electron。
 
+## 09-01 公司内部 Alpha
+
+当前测试版本 `0.9.0-alpha.1`，沿 **故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频** 验证完整制作流程。Story 的“AI 整理”提供本地规则预览；Alpha 默认图片/视频为明确标注的本地模拟生成。批准候选与采用仍为两个独立操作，CompShare 真实付费视频生成继续关闭。
+
+Windows 安装包：`npm run dist:alpha`，包含 FFmpeg / FFprobe，使用独立 Alpha 安装标识和数据目录。构建工具只写入被忽略的 `build/alpha-runtime/`；模拟回执与媒体保存在本机用户数据中，不进入 Git。详见 [09-01 范围、安装说明与测试门禁](docs/test-ready-alpha-09-01.md)。安装版验收脚本为 `scripts/verify-alpha.ts`；UI 草案 stash 保持原样。
+
 ## 产品方向与目标架构
 
 产品主线为 **故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**，通过简单 UI 面向普通创作者。生成描述放在折叠区，PromptPackage 保留在内部。后台通过统一 Tool Protocol、validate / estimate、RoutingPolicy 和 GenerationRecord，按第三方 Image API → Video API → ComfyUI → Blender 顺序验证可替换工具；无限画布作为 Creator UI 的 ViewExtension。
