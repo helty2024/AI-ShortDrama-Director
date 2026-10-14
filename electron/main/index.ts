@@ -1,6 +1,11 @@
 import { loadComfySettings, saveComfySettings, validateComfySettings } from './generation/comfy-settings.js'
 import { WorkflowRepository, terminalWorkflow } from './workflow/repository.js'
 import { builtinTemplates } from './visual/workflows.js'
+import { AIServiceManager } from './generation/ai-services.js'
+import { PackyImage25Adapter } from './tools/adapters/packy-image-25.js'
+import { ProductionPackyAdapter } from './generation/production-packy.js'
+import { NativeProductionGate } from './generation/native-production.js'
+import { CompShareMiniMaxH3Adapter } from './tools/adapters/compshare-minimax-h3.js'
 import { ImageApiAdapter } from './tools/adapters/image-api.js'
 import { ImageHttpTransport } from './tools/adapters/image-http.js'
 import { ImageGenerationService } from './generation/image-service.js'
@@ -27,7 +32,7 @@ import { app, BrowserWindow, session, dialog } from 'electron'
 import { IntelligenceRepository } from './intelligence/repository.js'
 import { AITaskQueue } from './intelligence/queue.js'
 import { MockTextProvider } from './intelligence/mock-provider.js'
-import { CompatibleTextProvider } from './intelligence/provider.js'
+import { aiTaskSchema } from '../../src/shared/intelligence.js'
 import { IntelligenceService } from './intelligence/service.js'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -120,15 +125,6 @@ app
       join(app.getPath('userData'), 'workspace.sqlite'),
     )
     const repo = new IntelligenceRepository(database)
-    const provider =
-      !alphaTesting && process.env.DIRECTOR_TEXT_PROVIDER === 'compatible'
-        ? new CompatibleTextProvider({
-            baseUrl:
-              process.env.DIRECTOR_TEXT_BASE_URL ?? 'https://api.openai.com/v1',
-            model: process.env.DIRECTOR_TEXT_MODEL ?? '',
-            apiKey: process.env.DIRECTOR_TEXT_API_KEY,
-          })
-        : new MockTextProvider()
     const visual = new VisualRepository(
       repo,
       new MediaStorage(join(app.getPath('userData'), 'media')),
@@ -155,6 +151,65 @@ app
             profile.capabilities,
           )
         : new SeedanceVideoProvider(profile, credentials)
+    let nativeGate: NativeProductionGate
+    let runtimeIdentity = ''
+    const services = new AIServiceManager(join(app.getPath('userData'), 'ai-services.json'), credentials, {
+      assertIdle: () => {
+        if (database!.list().some(p => repo.list(p.id, 'ai_tasks', aiTaskSchema).some(t => ['queued', 'running'].includes(t.status)) ||
+          imageApi.hasPending(p.id) || videoApi.hasPending(p.id) || new WorkflowRepository(database!).list(p.id).some(r => !terminalWorkflow(r.status))) ||
+          imageApi.hasAnyUnconfirmedPreview() || videoApi.hasAnyUnconfirmedPreview())
+          throw new DomainError('CONFLICT', '请等待正在执行的任务结束，并取消待确认预览后修改服务；历史任务与凭据保留')
+      },
+      apply: async (catalog) => {
+        const identity=JSON.stringify([catalog.mode,catalog.localEnabled,catalog.localArchived,catalog.services.filter(s=>s.kind!=='text').map(s=>[s.id,s.revision,s.connection,s.enabled,s.deleted])])
+        if(identity===runtimeIdentity)return
+        runtimeIdentity=identity
+        for (const registry of [imageApi.registry, videoApi.registry]) {
+          for (const entry of registry.list().filter(e => e.descriptor.id.startsWith('alpha.reference.') || ['comfyui.local','packy.image-25','compshare.minimax-h3'].includes(e.descriptor.id))) registry.unregister(entry.descriptor.id, entry.descriptor.version)
+        }
+        if(catalog.localEnabled && !catalog.localArchived) {
+          const settings=await loadComfySettings(comfySettingsPath,globalComfySettings)
+          imageApi.register(new ComfyUIToolAdapter(builtinComfyProfile({...settings,checkpoint:settings.checkpoint || 'unconfigured-checkpoint',templateId:settings.templateId.startsWith('custom-')?'shot-keyframe':settings.templateId})))
+        }
+        if (alphaTesting && catalog.mode === 'test') {
+          alphaRuntime ??= await startAlphaReferenceRuntime(join(app.getPath('userData'), 'alpha-reference'))
+          imageApi.register(alphaRuntime.imageAdapter); videoApi.register(alphaRuntime.videoAdapter)
+        }
+        for(const s of catalog.services.filter(s=>s.kind!=='text' && s.enabled && !s.deleted)) {
+          if(s.kind==='packy-image')imageApi.register(new ProductionPackyAdapter(s,credentials,nativeGate))
+          else {
+            const hosts=await nativeGate.hosts(s)
+            videoApi.register(new CompShareMiniMaxH3Adapter({adapter:'compshare-minimax-h3',toolId:'compshare.minimax-h3',modelId:'MiniMax-H3',credentialRef:s.credentialRef},async()=>credentials.get(s.credentialRef!),new ImageHttpTransport(),await nativeGate.available(s) || await nativeGate.pending(s)?{
+              allowedDownloadHosts:hosts,canExecute:cap=>nativeGate.available(s,cap),consume:(cap,input,context)=>nativeGate.consume(s,cap,context,input.durationSeconds),
+              downloadHostsForTask:(taskId,url,context)=>nativeGate.taskDownloadHosts(s,taskId,url,context),outputVerified:(url,context,bytes,duration)=>nativeGate.noteVerifiedOutput(s,url,context,bytes,duration),
+            }:null))
+          }
+        }
+      },
+      native: async (s,command) => {
+        if(command.op==='ai.verifyVideoDownload') { const message=await nativeGate.verifyVideoDownload(s,command.taskId);runtimeIdentity='';return message }
+        if(command.op!=='ai.authorizeTrial')throw new DomainError('INVALID_INPUT','测试授权命令无效')
+        await nativeGate.authorize(s,command.capability,command.maxPoints);runtimeIdentity=''
+        return '已开放一次小规模真实测试预览，有效期 15 分钟。请前往生成页固定选择此服务，再确认费用和上传授权；不会自动提交。测试成功前禁止批量生产。'
+      },
+      generationStatus: s=>nativeGate.status(s),
+      importKey: async () => {
+        const result = await dialog.showOpenDialog({ title: '导入或更换 AI 服务密钥（加密保存）', properties: ['openFile'], filters: [{ name: '密钥文本', extensions: ['txt', 'key'] }] })
+        return result.canceled ? null : result.filePaths[0] ?? null
+      },
+      probe: async (service) => {
+        if (service.kind === 'compshare-video') {
+          const adapter = createCompShareAdapter({ adapter: 'compshare-minimax-h3', toolId: 'compshare.minimax-h3', modelId: 'MiniMax-H3', credentialRef: service.credentialRef }, credentials)
+          const report = await adapter.probe(AbortSignal.timeout(15000))
+          return { accepted: report.authenticated, reason: report.authenticated ? (report.points!.available > 0 ? '连接检测通过。积分可用；模型权限、真实生成和安全下载尚需验证。' : '连接检测通过，但账户额度不足，请充值后继续。真实生成未开放。') : '密钥无效或服务不可达，请重新设置并检测；未提交视频任务。' }
+        }
+        const adapter = new PackyImage25Adapter({ adapter: 'packy-image-25', toolId: 'packy.image-25', displayName: 'PackyAPI · GPT Image 2.5 Sunburst', modelId: 'gpt-image-2.5-sunburst', tokenGroup: 'image', credentialRef: service.credentialRef, currency: 'USD' }, async () => credentials.get(service.credentialRef!))
+        const report = await adapter.probeConnectivity(AbortSignal.timeout(15000))
+        return { accepted: report.authentication === 'accepted' && report.modelVisible === true, reason: report.authentication === 'accepted' && report.modelVisible ? '连接检测通过。目标模型可见；真实生成响应仍需单独验证。' : '密钥无效或模型不可见，请重新设置并检查模型权限。' }
+      },
+    }, !app.isPackaged && Boolean(process.env.DIRECTOR_TEST_USER_DATA) && process.env.DIRECTOR_TEXT_PROVIDER === 'mock')
+    await services.load()
+    const provider = services.textProvider(new MockTextProvider())
     queue = new AITaskQueue(
       repo,
       provider,
@@ -215,14 +270,19 @@ app
     const compshareProfilePath = join(app.getPath('userData'), compshareProfileFileName)
     const legacyVideoProfilePath = join(app.getPath('userData'), legacyVideoProfileFileName)
     const compshareProfile = await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)
+    if (compshareProfile) await services.retainExisting({ kind: 'compshare-video', name: 'CompShare · MiniMax H3', model: 'MiniMax-H3', baseUrl: 'https://cp.compshare.cn' }, compshareProfile.credentialRef)
+    const existingPacky = (await loadImageProfiles(imageProfilePath)).find(p => 'adapter' in p)
+    if (existingPacky) await services.retainExisting({ kind: 'packy-image', name: 'Packy Image', model: existingPacky.modelId, baseUrl: 'https://cf.api.fan/v1' }, existingPacky.credentialRef)
     const videoApi = new VideoApiGenerationService(visual, compshareProfile ? [createCompShareAdapter(compshareProfile, credentials)] : [])
-    if (alphaTesting) {
-      try {
-        alphaRuntime = await startAlphaReferenceRuntime(join(app.getPath('userData'), 'alpha-reference'))
-        imageApi.register(alphaRuntime.imageAdapter)
-        videoApi.register(alphaRuntime.videoAdapter)
-      } catch { console.error('Alpha test media unavailable; generation stays unavailable') }
+    nativeGate=new NativeProductionGate(join(app.getPath('userData'),'production-validation'),credentials,imageApi.generation,visual)
+    imageApi.preferredTool=()=>services.defaultImageTool
+    imageApi.broker.autoEligible=async(toolId,cap)=>{
+      if(toolId.startsWith('alpha.reference.'))return services.mode==='test'
+      if(toolId!=='packy.image-25')return true
+      const s=services.defaultService('packy-image')
+      return Boolean(s && (cap==='image.generate' || cap==='image.referenceGenerate') && await nativeGate.validated(s,cap))
     }
+    await services.applyCurrent()
     // Explicit test composition only. Packaged desktop never enables fixture generation.
     if (!app.isPackaged && process.env.DIRECTOR_TEST_USER_DATA && process.env.DIRECTOR_TEST_VIDEO_ORIGIN) {
       const origin = new URL(process.env.DIRECTOR_TEST_VIDEO_ORIGIN)
@@ -302,7 +362,9 @@ app
         },
       },
       async (command) => {
+        if (command.op.startsWith('ai.')) return services.execute(command)
         if (command.op === 'comfy.configuration') return { settings: await loadComfySettings(comfySettingsPath, globalComfySettings), templates: builtinTemplates }
+        if (command.op !== 'comfy.save') throw new DomainError('INVALID_INPUT', '服务命令无效')
         if (imageApi.hasUnconfirmedPreview('comfyui.local') || database!.list().some(project => imageApi.hasPending(project.id) ||
           new WorkflowRepository(database!).list(project.id).some(run => run.inputSnapshot.generation.toolId === 'comfyui.local' && !terminalWorkflow(run.status)) || imageApi.generation.list('generation_records', project.id).some(record =>
           record.toolId === 'comfyui.local' && (['unknown', 'unknown-submission'].includes(record.outcome) ||
@@ -313,7 +375,7 @@ app
         await saveComfySettings(comfySettingsPath, settings)
         const current = imageApi.registry.list().find(entry => entry.descriptor.id === 'comfyui.local')
         if (current) imageApi.registry.unregister(current.descriptor.id, current.descriptor.version)
-        imageApi.register(adapter)
+        if(services.localEnabled)imageApi.register(adapter)
         return { settings, templates: builtinTemplates }
       },
     )

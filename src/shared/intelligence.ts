@@ -302,11 +302,13 @@ export const intelligenceCommandSchema = z.discriminatedUnion('operation', [
   z.strictObject({
     ...scoped,
     operation: z.literal('task.start'),
+    realRequestConfirmed: z.boolean().optional(),
     input: taskInputSchema,
   }),
   z.strictObject({
     ...scoped,
     operation: z.enum(['task.cancel', 'task.retry']),
+    realRequestConfirmed: z.boolean().optional(),
     id,
   }),
   z.strictObject({

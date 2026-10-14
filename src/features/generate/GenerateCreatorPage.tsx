@@ -35,7 +35,7 @@ export function GenerateCreatorPage() {
 
 function GenerateWorkspace({ projectId }: { projectId: string }) {
   const { state, reload } = useWorkspace()
-  const { shotId, targetId, targetKind, generationMode, select, navigateCreator, closeInspector } = useCreator()
+  const { shotId, targetId, targetKind, generationMode, requestedToolId, requestedVideoMode, requestedCapability, select, navigateCreator, closeInspector } = useCreator()
   const toast = useToast()
   const visual = useVisual(projectId), ai = useIntelligence(projectId), allRuns = useWorkflowRuns(projectId)
   const entities = state.workspace?.entities ?? []
@@ -47,12 +47,12 @@ function GenerateWorkspace({ projectId }: { projectId: string }) {
   const [modeChoice, setModeChoice] = useState<{ shotId: string; mode: Mode } | null>(null)
   const [imageProfiles, setImageProfiles] = useState<z.infer<typeof imageProfilesSchema>>([])
   const [videoProfiles, setVideoProfiles] = useState<z.infer<typeof videoProfilesSchema>>([])
-  const [toolChoice, setToolChoice] = useState('')
-  const [routingMode, setRoutingMode] = useState<'AUTO' | 'fixed'>('AUTO')
+  const [toolChoice, setToolChoice] = useState(requestedToolId ?? '')
+  const [routingMode, setRoutingMode] = useState<'AUTO' | 'fixed'>(requestedToolId ? 'fixed' : 'AUTO')
   const [resolutionChoice, setResolutionChoice] = useState<{ width: number; height: number } | null>(null)
   const [durationChoice, setDurationChoice] = useState<number | null>(null)
   const [fps, setFps] = useState(24)
-  const [videoType, setVideoType] = useState<'image-to-video' | 'text-to-video'>('image-to-video')
+  const [videoType, setVideoType] = useState<'image-to-video' | 'text-to-video'>(requestedVideoMode ?? 'image-to-video')
   const [allowUpload, setAllowUpload] = useState(true)
   const [localOnly, setLocalOnly] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -135,14 +135,15 @@ function GenerateWorkspace({ projectId }: { projectId: string }) {
       for (const item of queueTargets) {
         if (allRuns.runs.some(existing => existing.targetObjectId === item.id && existing.workflowType === (mode === 'keyframe' ? 'shot-keyframe' : 'shot-video') && ['running', 'pending', 'waiting-user'].includes(existing.status))) throw new Error('该镜头已有制作进行中，请先完成选择或刷新状态。')
         const firstFrame = officialVersion(item, 'keyframe', entities, versions)
-        const refs = approvedShotReferences(item, entities, versions)
+        const refs = requestedCapability==='image.generate'?[]:approvedShotReferences(item, entities, versions)
         if (mode === 'keyframe') await workflow.create({ workflowType: 'shot-keyframe', generation: { projectId, targetId: item.id, toolId, routingMode: testGeneration ? 'fixed' : routingMode, resolution, aspectRatio: resolution.width === resolution.height ? '1:1' : resolution.width > resolution.height ? '16:9' : '9:16', count: 1, references: refs.map((v) => ({ assetVersionId: v.id, role: 'identity', weight: 1 })), allowAssetUpload: allowUpload, localOnly } })
         else await workflow.create({ workflowType: 'shot-video', generation: { projectId, targetId: item.id, toolId, mode: videoType, prompt: null, durationSeconds: duration, fps, resolution, aspectRatio: resolution.width === resolution.height ? '1:1' : resolution.width > resolution.height ? '16:9' : '9:16', seed: null, firstFrameAssetVersionId: videoType === 'image-to-video' ? firstFrame?.id ?? null : null, lastFrameAssetVersionId: null, allowAssetUpload: allowUpload, localOnly: false } })
       }
       select({ shotId: queueTargets[0]!.id, sceneId: queueTargets[0]!.sceneId })
       closeInspector()
     } else {
-      setPreview(imagePreviewSchema.parse(await imageCommand({ op: 'preview', input: { projectId, targetId: target.id, toolId, routingMode: testGeneration ? 'fixed' : routingMode, resolution, aspectRatio: resolution.width === resolution.height ? '1:1' : resolution.width > resolution.height ? '16:9' : '9:16', count: 1, references: [], allowAssetUpload: false, localOnly } })))
+      if(requestedCapability==='image.referenceGenerate' && !currentOfficial)throw new Error('请先确认一张资产主参考图，再测试参考图生成')
+      setPreview(imagePreviewSchema.parse(await imageCommand({ op: 'preview', input: { projectId, targetId: target.id, toolId, routingMode: testGeneration ? 'fixed' : routingMode, resolution, aspectRatio: resolution.width === resolution.height ? '1:1' : resolution.width > resolution.height ? '16:9' : '9:16', count: 1, references: requestedCapability==='image.referenceGenerate' && currentOfficial?[{assetVersionId:currentOfficial.id,role:'identity',weight:1}]:[], allowAssetUpload: allowUpload, localOnly } })))
     }
   })
   const confirm = async (micro: number, unknown: boolean) => act(async () => {

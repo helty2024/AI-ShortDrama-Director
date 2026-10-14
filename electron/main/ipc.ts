@@ -117,6 +117,7 @@ export function registerWorkspaceIPC(
               data: z.json().parse(await operations.execute(request.command)),
             }
           case 'pilot': {
+            if (configuringComfy && request.command.operation !== 'snapshot') throw new DomainError('CONFLICT','正在保存 AI 服务配置，请稍候再开始制作')
             const data = await pilot.execute(request.command)
             if (request.command.operation === 'manifest.export' && data)
               operations.record({
@@ -192,7 +193,7 @@ export function registerWorkspaceIPC(
           }
           case 'serviceSettings': {
             if (!serviceSettings) throw new DomainError('CONFLICT', '服务设置暂不可用')
-            if (request.command.op === 'comfy.configuration') return { ok:true, data:z.json().parse(await serviceSettings(request.command)) }
+            if (['comfy.configuration', 'ai.list', 'ai.probe', 'ai.verifyVideoDownload'].includes(request.command.op)) return { ok:true, data:z.json().parse(await serviceSettings(request.command)) }
             if (configuringComfy || activeImageCommands) throw new DomainError('CONFLICT', '图像操作正在处理中，请稍候保存连接')
             configuringComfy = true
             try { return { ok:true, data:z.json().parse(await serviceSettings(request.command)) } }
@@ -209,6 +210,7 @@ export function registerWorkspaceIPC(
           case 'visual':
             return { ok: true, data: await visual.execute(request.command) }
           case 'intelligence':
+            if (configuringComfy && ['task.start','task.retry'].includes(request.command.operation)) throw new DomainError('CONFLICT','正在保存 AI 服务配置，请稍候再开始文本任务')
             return { ok: true, data: intelligence.execute(request.command) }
           case 'projects.list':
             return { ok: true, data: database.list() }

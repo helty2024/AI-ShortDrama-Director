@@ -40,7 +40,7 @@ export async function toolReadiness(registries: ToolRegistry[], hasCredential: (
     } else if (adapter instanceof CompShareMiniMaxH3Adapter) {
       row.validation = 'simulated-validated'
       row.runtime = await hasCredential(descriptor.id).catch(() => false) ? 'configured-unverified' : 'configuration-required'
-      row.detail = '09-00：原生协议与本地 fixture 已验证；真实鉴权以独立只读检测报告为准，真实生成未验证。真实提交关闭，积分不折算为货币费用。'
+      row.detail = adapter.generationEnabled ? '原生协议已实现；真实提交仍受已验证的精确 CDN、按能力的单次测试或结果入库证据、审批与预算约束。完整公司真实 E2E 需另行验收，积分不折算货币。' : '09-00：原生协议与本地 fixture 已验证；真实鉴权以独立只读检测报告为准，真实生成未验证。真实提交关闭，积分不折算为货币费用。'
     } else if (adapter instanceof ImageApiAdapter || adapter instanceof VideoApiAdapter) {
       row.validation = 'simulated-validated'; row.runtime = 'development-test-only'
       row.detail = 'Development / Reference：仅协议 fixture 验证，不代表真实供应商。'

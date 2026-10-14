@@ -19,7 +19,10 @@ export function creatorTaskStatus(status: string): CreatorStatus {
 }
 
 export function creatorErrorMessage(message: string): string {
-  if (/unknown-submission|pending-unknown|重复扣费/.test(message)) return '需要处理：暂时无法确认生成结果，请刷新状态。不要重复生成；原任务和结果仍保留。'
-  if (/预检|配置|unavailable|routing failed|路由|ComfyUI|连接|工具|服务/.test(message)) return '服务不可用：请检查设置中的生成服务，或使用 Alpha 测试生成。故事和已确认素材仍可继续编辑。'
+  if (/unknown-submission|pending-unknown|重复扣费/.test(message)) return '需要处理：任务状态待核实，请查询原任务状态，不要重复付费提交。原任务和结果仍保留。'
+  if (/authentication|AUTH|密钥|认证/.test(message)) return '密钥无效，请在 AI 服务中重新设置并检测连接。'
+  if (/余额|额度|积分不足/.test(message)) return '账户额度不足，请充值后继续。'
+  if (/capability|不支持|模型不可见/.test(message)) return '该模型不支持当前任务，请检查模型和生成要求。'
+  if (/预检|配置|unavailable|routing failed|路由|ComfyUI|连接|工具|服务/.test(message)) return '服务不可用：请先在设置中连接 AI 服务，检查连接和生成能力。故事和已确认素材仍可继续编辑。'
   return '生成失败：请检查内容后重试，或在设置中查看高级诊断。已确认版本不会被替换。'
 }

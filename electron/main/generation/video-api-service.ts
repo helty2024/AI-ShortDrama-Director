@@ -149,6 +149,9 @@ export class VideoApiGenerationService {
   configuration() {
     return this.registry.list().map(entry => ({ toolId: entry.descriptor.id, displayName: entry.descriptor.name, generationEnabled: this.tools.get(entry.descriptor.id)?.generationEnabled !== false }))
   }
+  hasAnyUnconfirmedPreview() {
+    return [...this.previews.values()].some(preview => Date.parse(preview.public.expiresAt) > Date.now())
+  }
 
   async preview(raw: unknown): Promise<VideoApiPreview> {
     const input = videoApiPreviewInputSchema.parse(raw)

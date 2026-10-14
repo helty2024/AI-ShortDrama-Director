@@ -15,8 +15,9 @@ export function ContextInspector({ title, objectType, content, footer }: {
   const closeButton = useRef<HTMLButtonElement>(null)
   const trigger = useRef<HTMLElement | null>(null)
   const overlay = window.matchMedia('(max-width: 2199px)').matches
+  const visible = inspectorOpen && currentModule !== 'settings'
   useEffect(() => {
-    if (!inspectorOpen) return
+    if (!visible) return
     if (overlay) {
       trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
       closeButton.current?.focus()
@@ -33,8 +34,8 @@ export function ContextInspector({ title, objectType, content, footer }: {
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey); if (overlay) trigger.current?.focus() }
-  }, [inspectorOpen, overlay, closeInspector])
-  if (!inspectorOpen) return null
+  }, [visible, overlay, closeInspector])
+  if (!visible) return null
   const entities = state.workspace?.entities ?? []
   const selected = entities.find((entity) => entity.id === (assetId ?? shotId ?? sceneId))
   const scene = entities.find((entity) => entity.id === sceneId && entity.kind === 'scene')

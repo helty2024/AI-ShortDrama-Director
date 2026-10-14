@@ -4,6 +4,7 @@ import { useVisual } from './use-visual'
 import { ToolReadinessPanel } from '../operations/ProvenancePanel'
 import { ProductionSettings } from '../video/ProductionSettings'
 import { AIServiceCards } from './ServiceCards'
+import { TestModeControl } from './ProductionServices'
 import { OperationsPage } from '../operations/OperationsPage'
 import type { ProviderSettings, VisualSnapshot, VisualCommand } from '../../shared/visual'
 
@@ -20,6 +21,7 @@ export function ProviderSettingsPage() {
       {tab === 'AI 服务' && <AIServiceCards />}
       {tab === '基本设置' && <section className="settings-panel"><h2>当前项目的创作偏好</h2><p>这些设置只影响当前项目，不会改变其他项目或服务连接。</p>{projectId ? <ProjectPreferences projectId={projectId} /> : <p className="settings-note">请先返回项目列表，选择或创建项目，再调整创作偏好。AI 服务连接可以直接在这里配置。</p>}</section>}
       {tab === '高级与诊断' && <>
+        {advanced === '测试工具' && <TestModeControl />}
         <p>按需要打开专业配置或维护工具。测试工具只用于模拟流程测试。</p>
         <div className="settings-advanced-nav">{['连接诊断', '测试工具', '项目专业配置', '维护与数据', '旧版兼容入口'].map(name => <button key={name} aria-pressed={advanced === name} onClick={() => setAdvanced(advanced === name ? '' : name)}>{name}</button>)}</div>
         {advanced === '连接诊断' && <div className="settings-panel diagnostic-scroll"><ToolReadinessPanel /></div>}

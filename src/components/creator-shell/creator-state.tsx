@@ -27,6 +27,9 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
       targetKind: targetId ? next.targetKind : undefined,
       targetId,
       generationMode: next.generationMode,
+      requestedToolId: next.requestedToolId,
+      requestedVideoMode: next.requestedVideoMode,
+      requestedCapability: next.requestedCapability,
     }
   }
   const visibleSelection = normalize(selection)
@@ -56,6 +59,7 @@ export function CreatorContextProvider({ children }: { children: ReactNode }) {
       if (id) setInspectorOpen(true)
     },
     navigateCreator: (module, next) => {
+      if (module !== 'generation') setSelection(old => ({ ...old, requestedToolId: undefined, requestedVideoMode: undefined, requestedCapability: undefined }))
       if (navigate(module) && next) {
         setContextNotice(next.shotId && !valid(next.shotId, 'shot') ? '所选镜头已不存在，请重新选择。' : null)
         setSelection((old) => normalize({ ...old, ...next }))

@@ -315,6 +315,11 @@ export abstract class VideoLifecycleAdapter implements VideoApiTool {
 
   protected abstract seedCapability(): 'supported' | 'unsupported'
   protected submitIdempotencyKey(_context: ToolExecutionContext): string | undefined { return undefined }
+  protected downloadOutput(url: string, _handle: ToolTaskHandle, _context: ToolExecutionContext, signal: AbortSignal) {
+    return this.transport.bytes(url, signal, { method: 'GET', limit: this.profile.maxDownloadBytes,
+      redirects: { max: 3, allowedHosts: this.profile.allowedDownloadHosts, allowedHostSuffixes: this.profile.allowedDownloadHostSuffixes } })
+  }
+  protected async outputVerified(_url: string, _context: ToolExecutionContext, _bytes: Buffer, _output: CapabilityOutput<'video.textToVideo'>['videos'][number]) {}
   protected abstract submitPath(): string
   protected abstract taskPath(id: string): string
   protected abstract resultPath(id: string): string
@@ -457,15 +462,7 @@ export abstract class VideoLifecycleAdapter implements VideoApiTool {
       const videos: CapabilityOutput<'video.textToVideo'>['videos'] = []
       for (const item of payload.videos) {
         grant.access.diagnostic('output-download')
-        const file = await this.transport.bytes(item.url, signal, {
-          method: 'GET',
-          limit: this.profile.maxDownloadBytes,
-          redirects: {
-            max: 3,
-            allowedHosts: this.profile.allowedDownloadHosts,
-            allowedHostSuffixes: this.profile.allowedDownloadHostSuffixes,
-          },
-        })
+        const file = await this.downloadOutput(item.url, handle, grant.context, signal)
         grant.access.diagnostic('redirect-validation', {
           host: file.diagnostics.host,
           redirectCount: file.diagnostics.redirectCount,
@@ -483,7 +480,9 @@ export abstract class VideoLifecycleAdapter implements VideoApiTool {
           file.bytes.subarray(4, 8).toString('ascii') !== 'ftyp'
         )
           throw new Error('invalid MP4 signature')
-        videos.push(await grant.access.ingest(file.bytes, 'video/mp4'))
+        const video = await grant.access.ingest(file.bytes, 'video/mp4')
+        await this.outputVerified(item.url, grant.context, file.bytes, video)
+        videos.push(video)
       }
       return { state: 'completed', output: { videos } as CapabilityOutput<C> }
     } catch (raw) {

@@ -8,6 +8,9 @@ export interface CreatorSelection {
   targetKind?: 'character' | 'location' | 'prop'
   targetId?: string
   generationMode?: 'keyframe' | 'video' | 'asset'
+  requestedToolId?: string
+  requestedVideoMode?: 'image-to-video' | 'text-to-video'
+  requestedCapability?: 'image.generate' | 'image.referenceGenerate'
 }
 export interface CreatorState extends CreatorSelection {
   currentModule: CreatorModule

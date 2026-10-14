@@ -154,5 +154,13 @@ button[aria-current="page"] .stage-number { color: white; background: #8a70b4; }
 .settings-page .provider-settings, .settings-page .production-settings form { max-width: 800px; }
 .settings-page .creator-compat-links { flex-wrap: wrap; }
 .settings-page .production-settings > p { line-height: 1.8; }
+.production-services { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; }
+.production-services > .settings-scope, .production-services > [role="alert"] { grid-column: 1 / -1; }
+.production-service-group { min-width: 0; }
+.production-service-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.production-service-group .service-grid { grid-template-columns: minmax(0,1fr); }
+.production-service-group h2 { font-size: 22px; }
+.production-service-group .service-card > button { margin-top: 12px; }
+@media(max-width: 1100px) { .production-services { grid-template-columns: minmax(0,1fr); } }
 @media(max-width: 1300px) { .settings-services { grid-template-columns: minmax(0,1fr); } }
 @media(max-width: 900px) { .service-grid { grid-template-columns: minmax(0,1fr); }.service-card { padding: 24px; }.settings-heading { align-items: start; }.settings-tabs { width: 100%; box-sizing: border-box; }.settings-tabs button { min-width: 0; flex: 1; }.project-list-shell main { padding: 24px; } }

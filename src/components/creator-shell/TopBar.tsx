@@ -17,7 +17,7 @@ export function TopBar({ simple, onModeToggle }: { simple: boolean; onModeToggle
         {state.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select>
       <button aria-label="制作任务" aria-expanded={taskDrawerOpen} onClick={() => setTaskDrawerOpen(!taskDrawerOpen)}>制作任务</button>
-      <button aria-label="切换检查器" aria-expanded={inspectorOpen} onClick={toggleInspector}>详情</button>
+      {currentModule !== 'settings' && <button aria-label="切换检查器" aria-expanded={inspectorOpen} onClick={toggleInspector}>详情</button>}
       <button aria-pressed={!simple} onClick={() => { onModeToggle(); toast('info', simple ? '已切换到高级模式' : '已切换到简洁模式') }}>{simple ? '高级模式' : '简洁模式'}</button>
     </div>
   </header>

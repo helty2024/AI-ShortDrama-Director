@@ -43,6 +43,8 @@ type OutputMetadata = z.infer<typeof outputMetadataSchema>
 const requestKey = (project: string, request: string) => `${project}/${request}`
 
 export class ToolBroker {
+  /** Main-process routing policy; never supplied by renderer configuration. */
+  autoEligible: ((toolId: string, capability: Capability) => Promise<boolean>) | undefined
   private readonly registry: ToolRegistry
   private readonly timeoutMs: number
   private readonly now: () => Date
@@ -107,6 +109,7 @@ export class ToolBroker {
     const candidates: ToolCandidate[] = [], issues: ToolError[] = []
     const fixed = request.policy.selection
     for (const entry of this.registry.list()) {
+      if (fixed.mode === 'AUTO' && this.autoEligible && !await this.autoEligible(entry.descriptor.id, request.snapshot.capability)) continue
       if (fixed.mode === 'fixed' && (entry.descriptor.id !== fixed.toolId || (fixed.toolVersion !== undefined && entry.descriptor.version !== fixed.toolVersion))) continue
       const models = entry.descriptor.capabilities.find(
         (candidate) => candidate.capability === request.snapshot.capability,

@@ -35,6 +35,7 @@ export interface StructuredRequest<T> {
 }
 export interface TextGenerationProvider {
   readonly name: string
+  readonly model?: string
   generateStructured<T>(request: StructuredRequest<T>): Promise<T>
 }
 export interface ProviderOptions {
@@ -107,10 +108,10 @@ export abstract class ValidatedTextProvider implements TextGenerationProvider {
 }
 export class CompatibleTextProvider extends ValidatedTextProvider {
   readonly name = 'compatible-text'
-  private readonly config: { baseUrl: string; model: string; apiKey?: string }
+  private readonly config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number }
   private readonly fetcher: typeof fetch
   constructor(
-    config: { baseUrl: string; model: string; apiKey?: string },
+    config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number },
     options?: ProviderOptions,
     fetcher: typeof fetch = fetch,
   ) {
@@ -154,6 +155,7 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
           },
           body: JSON.stringify({
             model: this.config.model,
+            ...(this.config.maxTokens ? { max_completion_tokens: this.config.maxTokens } : {}),
             messages: [
               { role: 'system', content: request.system },
               { role: 'user', content: JSON.stringify(request.input) },
@@ -169,11 +171,12 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
           }),
         },
       )
-    } catch {
+    } catch (error) {
+      if (error instanceof AIError) throw error
       throw new AIError('NETWORK', '无法连接文本服务')
     }
     if (response.status === 401 || response.status === 403)
-      throw new AIError('AUTH', '文本服务认证失败，请在主进程环境配置密钥')
+      throw new AIError('AUTH', '密钥无效，请在 AI 服务中重新设置')
     if (response.status === 429) throw new AIError('RATE_LIMIT', '文本服务限流')
     if (!response.ok)
       throw new AIError(

@@ -35,3 +35,5 @@ video-receipts/
 /build/alpha-runtime/
 
 /comfyui-service-settings.json
+/ai-services.json
+/production-validation/

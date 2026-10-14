@@ -62,6 +62,28 @@ test('production H3 has hard non-paid gate even with approval, credential and au
   assert.ok(adapter.describe().capabilities.every(c => c.seed === 'unsupported'))
   assert.throws(() => new CompShareMiniMaxH3Adapter(profile, async () => '', new ImageHttpTransport({ fixtureOrigin: 'https://cp.compshare.cn' })))
 })
+test('trusted production composition consumes one gate and keeps native POST attempt idempotency without fixture switches',async()=>{
+  let grant=true,posts=0,points=20
+  class NativeProtocolTransport extends ImageHttpTransport {
+    override async bytes(url:string,signal:AbortSignal,options:Parameters<ImageHttpTransport['bytes']>[2]) {
+      signal.throwIfAborted();assert.ok(url.startsWith('https://cp.compshare.cn/minimax/v2/'))
+      let body:unknown
+      if(url.endsWith('/point_usage_summary'))body={total_points:points,reserved_points:0,available_points:points}
+      else {assert.equal(options.method,'POST');assert.equal(options.idempotencyKey,compShareIdempotencyKey(ctx.taskId));posts++;body={task_id:'native-production-protocol-fixture'}}
+      return {bytes:Buffer.from(JSON.stringify(body)),mime:'application/json',diagnostics:{status:200,contentType:'application/json',contentLength:null,requestId:null,host:'cp.compshare.cn',redirectCount:0,redirectHosts:[]}}
+    }
+  }
+  const ctx=context(),adapter=new CompShareMiniMaxH3Adapter(profile,async()=> 'sk-ml-FIXTURE_ONLY',new NativeProtocolTransport(),{
+    allowedDownloadHosts:['media.example.com'],canExecute:async()=>grant,consume:async(_cap,_input,actual)=>{assert.equal(actual.taskId,ctx.taskId);assert.equal(grant,true);grant=false},
+  })
+  adapter.authorizeInputs(ctx,{frames:[],ingest:async()=>{throw new Error('not used')},billing:()=>{},diagnostic:()=>{}})
+  assert.equal((await adapter.health(signal())).availability,'available')
+  assert.doesNotMatch(adapter.describe().name,/非付费/)
+  const result=await adapter.submit('video.textToVideo',input,ctx,signal());assert.equal(result.state,'accepted');assert.equal(posts,1)
+  await assert.rejects(adapter.submit('video.textToVideo',input,ctx,signal()));assert.equal(posts,1)
+  grant=true;points=0;assert.equal((await adapter.health(signal())).availability,'unavailable')
+  await assert.rejects(adapter.submit('video.textToVideo',input,context(),signal()));assert.equal(posts,1)
+})
 
 test('native preview/estimate are side-effect free; disallowed parameters cannot be silently omitted', async () => {
   const f = await fixture()

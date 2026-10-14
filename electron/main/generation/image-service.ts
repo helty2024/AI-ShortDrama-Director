@@ -46,6 +46,7 @@ const trustedPromptOverrideSchema = z.strictObject({
   compilerVersion: z.string().min(1).max(100),
 })
 export class ImageGenerationService {
+  preferredTool: (() => string | null) | undefined
   readonly registry = new ToolRegistry()
   readonly broker = new ToolBroker(this.registry)
   readonly visual: VisualRepository
@@ -128,6 +129,10 @@ export class ImageGenerationService {
     const input = imagePreviewInputSchema.parse(raw),
       p = input.projectId,
       target = this.generation.entity(p, input.targetId)
+    const preferred=this.preferredTool?.()
+    if(input.routingMode==='AUTO' && preferred && (!this.broker.autoEligible || await this.broker.autoEligible(preferred,input.references.length?'image.referenceGenerate':'image.generate'))) {
+      input.toolId=preferred;input.routingMode='fixed'
+    }
     if (!['character', 'location', 'prop', 'shot'].includes(target.kind))
       throw new DomainError('INVALID_INPUT', '只支持 Bible / Shot')
     const fixedEntry = this.registry
@@ -467,6 +472,9 @@ export class ImageGenerationService {
   hasUnconfirmedPreview(toolId: string) {
     return [...this.previews.values()].some(preview =>
       preview.record.toolId === toolId && Date.parse(preview.public.expiresAt) > Date.now())
+  }
+  hasAnyUnconfirmedPreview() {
+    return [...this.previews.values()].some(preview => Date.parse(preview.public.expiresAt) > Date.now())
   }
   async wait(taskId: string) {
     await this.pending.get(taskId)

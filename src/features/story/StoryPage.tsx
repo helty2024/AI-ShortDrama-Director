@@ -5,6 +5,8 @@ import { workspaceService } from '../../services/workspace'
 import { useCreator } from '../../components/creator-shell/creator-context'
 import { useWorkspace } from '../workspace/state'
 import './story.css'
+import { intelligenceService } from '../../services/intelligence'
+import { aiServicesSnapshotSchema } from '../../shared/ai-services'
 
 type StoryValues = Pick<Project, 'name' | 'description' | 'logline' | 'genre' | 'style' | 'worldview' | 'creativeRequirements' | 'aspectRatio' | 'language'>
 const fields = ['name', 'description', 'logline', 'genre', 'style', 'worldview', 'creativeRequirements', 'aspectRatio', 'language'] as const
@@ -27,6 +29,8 @@ function StoryEditor({ project }: { project: Project }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [organizing, setOrganizing] = useState(false)
+  const [testMode, setTestMode] = useState(false)
+  useEffect(() => { void window.desktop!.workspace.request({ action: 'serviceSettings', command: { op: 'ai.list' } }).then(result => { if (result.ok) setTestMode(aiServicesSnapshotSchema.parse(result.data).mode === 'test') }) }, [])
   const current = useRef(value)
   const saved = useRef(fingerprint(value))
   const revision = useRef(project.revision)
@@ -106,8 +110,7 @@ function StoryEditor({ project }: { project: Project }) {
       await persist()
       if (busy.current || failed.current || saved.current !== fingerprint(current.current)) throw new Error('请等待故事保存完成后再整理。')
       const rawText = [current.current.logline, current.current.description].filter(Boolean).join('\n\n')
-      const result = await window.desktop!.workspace.request({ action: 'intelligence', command: { operation: 'task.start', projectId: project.id, input: { type: 'parse', name: current.current.name, rawText } } })
-      if (!result.ok) throw new Error('整理暂时不可用。故事已保存，请稍后重试。')
+      await intelligenceService.command({ operation: 'task.start', projectId: project.id, input: { type: 'parse', name: current.current.name, rawText } })
       navigateCreator('scripts')
     } catch (cause) { setError(cause instanceof Error ? cause.message : '整理失败，请稍后重试。') }
     finally { setOrganizing(false) }
@@ -118,7 +121,7 @@ function StoryEditor({ project }: { project: Project }) {
     <div className="story-paper">
       <label>故事名称<input className="story-title-input" value={value.name} maxLength={120} onChange={(event) => change('name', event.target.value)} /></label>
       <label>故事梗概<textarea className="story-synopsis" value={value.description} maxLength={4000} placeholder="例如：雨夜，阿青在车站拾起一封旧信。信里写着一个只有她知道的秘密……已有剧本？也可以直接粘贴场景和对白。" onChange={(event) => change('description', event.target.value)} /></label>
-      <div className="story-footer"><small>下一步：整理为剧本预览，由你确认后再开始制作。<br />Alpha 使用本地规则模拟整理，保留完整原文。</small><button className="primary" disabled={organizing || saving || !value.name.trim() || !(value.description.trim() || value.logline.trim())} onClick={() => void organize()}>{organizing ? '准备中…' : 'AI 整理'}</button></div>
+      <div className="story-footer"><small>下一步：整理为剧本预览，由你确认后再开始制作。<br />{testMode ? '当前为模拟测试模式，使用本地规则演示。' : '使用默认文本 AI 整理。请先在设置中连接并验证服务；真实请求可能收费。'}</small><button className="primary" disabled={organizing || saving || !value.name.trim() || !(value.description.trim() || value.logline.trim())} onClick={() => void organize()}>{organizing ? '准备中…' : 'AI 整理'}</button></div>
       <details className="story-options"><summary>补充故事方向（可选）</summary><div>
       <label>一句话概念<textarea className="story-logline" value={value.logline} maxLength={1000} placeholder="这个故事最打动你的是什么？" onChange={(event) => change('logline', event.target.value)} /></label>
       <div className="story-pair"><label>类型<input value={value.genre} maxLength={80} onChange={(event) => change('genre', event.target.value)} /></label><label>风格<textarea value={value.style} maxLength={2000} onChange={(event) => change('style', event.target.value)} /></label></div>

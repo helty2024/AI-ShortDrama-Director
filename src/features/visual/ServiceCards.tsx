@@ -6,6 +6,9 @@ import { imageConnectivitySchema } from '../../shared/image-api'
 import type { ProviderSettings } from '../../shared/visual'
 import { imageCommand } from '../generate/generation-api'
 import { comfyStatus, h3Status } from './service-status'
+import { ProductionServices } from './ProductionServices'
+import { aiServiceCommand } from './service-command'
+import { aiServicesSnapshotSchema } from '../../shared/ai-services'
 
 async function service(command: ServiceSettingsCommand) {
   const result = await window.desktop!.workspace.request({action:'serviceSettings',command})
@@ -18,6 +21,28 @@ async function h3(command: CompShareCommand) {
   return result.data
 }
 export function AIServiceCards() {
+  const [mode, setMode] = useState<'production' | 'test' | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => { void window.desktop!.workspace.request({ action: 'serviceSettings', command: { op: 'ai.list' } }).then(result => {
+    if (!result.ok) throw new Error(result.message)
+    setMode(aiServicesSnapshotSchema.parse(result.data).mode)
+  }).catch(() => setError('无法读取服务配置。请重新打开设置；不会回退到模拟服务。')) }, [])
+  return mode === 'production' ? <ProductionServices localService={<LocalServiceCard />} /> : mode === 'test' ? <LegacyServiceCards /> : <p role="status">{error || '正在读取 AI 服务…'}</p>
+}
+function LocalServiceCard() {
+  const [open, setOpen] = useState(false), [label, setLabel] = useState('检测中…')
+  const [local,setLocal] = useState({enabled:true,archived:false,model:'尚未配置',isDefault:false}), [message,setMessage] = useState('')
+  const refresh = async () => {
+    const [snapshot,configuration]=await Promise.all([aiServiceCommand({op:'ai.list'}),service({op:'comfy.configuration'})])
+    setLocal({enabled:snapshot.localEnabled,archived:snapshot.localArchived,model:configuration.settings.checkpoint || '尚未配置',isDefault:snapshot.defaultImageTool==='comfyui.local'})
+    const result = await window.desktop!.workspace.request({ action: 'compatibility', command: { op: 'readiness' } })
+    setLabel(!snapshot.localEnabled?'已停用':result.ok ? comfyStatus(readinessSchema.parse(result.data).find(r => r.toolId === 'comfyui.local')?.runtime).label : '未连接本地服务')
+  }
+  const act=async(command:ServiceSettingsCommand)=>{try{await aiServiceCommand(command);await refresh();setMessage('配置已更新；本机服务不会自动启动或停止。')}catch{setMessage('操作未完成，请等待任务结束并关闭待确认预览后重试。')}}
+  useEffect(() => { const timer = setTimeout(() => void refresh().catch(()=>setMessage('读取配置失败，请重新打开设置')), 0); return () => clearTimeout(timer) }, [])
+  return <section className="service-card"><div className="service-card-top"><span className="service-state">{local.archived?'配置已归档':label}</span>{local.isDefault && <span>默认图像服务</span>}</div><h3>ComfyUI</h3><p>在本机生成图像；需要自行启动本地服务。</p><p>模型：{local.model}</p><p>{label==='可用'?'模型、模板与本地服务已就绪。':'启动服务，检查地址与已安装模型，再检测连接。停用或归档不会删除本地模型、历史任务或素材。'}</p><div className="service-actions"><button onClick={() => setOpen(!open)}>配置 ComfyUI</button><button disabled={!local.enabled} onClick={() => void refresh()}>检测本地连接</button><button disabled={!local.enabled || local.isDefault} onClick={() => void act({op:'ai.defaultLocal'})}>设为默认图像服务</button></div><details><summary>配置管理</summary><button onClick={() => void act({op:'ai.localEnable',enabled:!local.enabled})}>{local.archived?'恢复服务配置':local.enabled?'停用本地配置':'启用本地配置'}</button><button disabled={local.archived} onClick={() => {if(window.confirm('归档本地服务配置？地址和模型设置、历史任务及素材会保留，不删除任何本机数据。'))void act({op:'ai.localDelete',confirmed:true})}}>删除本地配置</button></details>{message && <p role="status">{message}</p>}{open && <ComfyConfiguration onSaved={refresh} />}</section>
+}
+function LegacyServiceCards() {
   const [rows,setRows] = useState<Readiness>([]), [busy,setBusy] = useState(false), [error,setError] = useState('')
   const [open,setOpen] = useState(false)
   const refresh = async () => {

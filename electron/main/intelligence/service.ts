@@ -61,16 +61,21 @@ export class IntelligenceService {
           command.bible,
         )
       case 'task.start':
+        if (this.queue.provider.name === 'text-unconfigured') throw new DomainError('CONFLICT', '请先连接 AI 服务，并设为默认文本模型')
+        if (this.queue.provider.name.startsWith('text:') && command.realRequestConfirmed !== true)
+          throw new DomainError('FORBIDDEN', '真实文本请求可能收费，请先明确确认本次请求')
         if ('request' in command.input)
           throw new DomainError(
             'FORBIDDEN',
             '图像任务必须经 Prompt Compiler 和受控配置创建',
           )
-        return this.queue.start(p, command.input)
+        return this.queue.start(p, command.input, command.realRequestConfirmed)
       case 'task.cancel':
         return this.queue.cancel(p, command.id)
       case 'task.retry':
-        return this.queue.retry(p, command.id)
+        if (this.queue.provider.name.startsWith('text:') && command.realRequestConfirmed !== true && !('request' in this.repo.task(p,command.id).input))
+          throw new DomainError('FORBIDDEN','重新请求真实文本 AI 可能收费，请先确认本次请求')
+        return this.queue.retry(p, command.id, command.realRequestConfirmed)
       case 'import.confirm':
         return this.repo.confirmImport(
           p,
