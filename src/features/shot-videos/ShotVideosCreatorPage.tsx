@@ -17,7 +17,7 @@ import { ShotVideoPlayer } from './ShotVideoPlayer'
 import './shot-videos-creator.css'
 import { isAlphaTestTool } from '../../shared/alpha'
 
-function shotLabel(shot: Shot, index: number) { return `Shot ${String(shot.plan?.shotNumber ?? index + 1).padStart(2, '0')}` }
+function shotLabel(shot: Shot, index: number) { return `镜头 ${String(shot.plan?.shotNumber ?? index + 1).padStart(2, '0')}` }
 function versionState(version: AssetVersion, confirmedId: string | null) {
   return version.id === confirmedId ? '已确认' : version.status === 'approved' ? '可以生成' : '等待选择'
 }
@@ -76,11 +76,11 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
     finally { setBusyId('') }
   }
   return <section className="shot-videos-creator" aria-label="分镜视频工作区">
-    <header className="page-heading shot-videos-heading"><div><small>CREATOR / SHOT VIDEOS</small><h1>分镜视频</h1><p>沿着故事顺序审看镜头，批准候选后再明确采用。</p></div><span className="creator-status">{shots.filter((item) => shotVideoView(item, entities, versions, ai.snapshot.tasks).confirmed).length} / {shots.length} 已确认</span></header>
+    <header className="page-heading shot-videos-heading"><div><small>审看与确认</small><h1>分镜视频</h1><p>沿着故事顺序审看镜头，批准候选后再明确采用。</p></div><span className="creator-status">{shots.filter((item) => shotVideoView(item, entities, versions, ai.snapshot.tasks).confirmed).length} / {shots.length} 已确认</span></header>
     {(visual.error || ai.error || workflows.error || error) && <p role="alert" className="error">{error || visual.error || ai.error || workflows.error}</p>}
     {!shot ? <div className="shot-videos-empty"><h2>还没有分镜视频</h2><p>先在“分镜”中创建镜头。</p><button className="primary" onClick={() => creator.navigateCreator('storyboard')}>前往分镜</button></div> : <>
       <div className="shot-videos-layout">
-        <aside className="shot-videos-list" aria-label="镜头视频列表"><div className="shot-videos-list-head"><h2>镜头序列</h2><small>{shots.length} SHOTS</small></div>{shots.map((item, index) => <button key={item.id} className="shot-videos-list-item" aria-pressed={shot.id === item.id} onClick={() => chooseShot(item)}><span className="shot-videos-number">{shotLabel(item, index)}</span><strong>{item.description || item.plan?.action || item.name}</strong><small>{item.durationSeconds}s <span className="creator-status" data-status={status(item)}>{status(item)}</span></small></button>)}</aside>
+        <aside className="shot-videos-list" aria-label="镜头视频列表"><div className="shot-videos-list-head"><h2>镜头序列</h2><small>{shots.length} 个镜头</small></div>{shots.map((item, index) => <button key={item.id} className="shot-videos-list-item" aria-pressed={shot.id === item.id} onClick={() => chooseShot(item)}><span className="shot-videos-number">{shotLabel(item, index)}</span><strong>{item.description || item.plan?.action || item.name}</strong><small>{item.durationSeconds}s <span className="creator-status" data-status={status(item)}>{status(item)}</span></small></button>)}</aside>
         <div className="shot-videos-main"><div className="shot-videos-main-head"><div><small>当前镜头 / {shotLabel(shot, shots.indexOf(shot))}</small><h2>{shot.description || shot.plan?.action || shot.name}</h2></div><div className="actions"><button onClick={toStoryboard}>查看分镜</button><button onClick={toGenerate}>去生成</button></div></div>
           <section className="shot-videos-screen" aria-label="镜头视频播放器"><div className="shot-videos-screen-top"><span>{preview ? '候选预览 · 尚未采用' : view?.confirmed ? '当前确认视频' : '当前镜头视频'}</span><span>{playerVersion ? `${playerVersion.width} × ${playerVersion.height}` : state.workspace?.project.aspectRatio}</span></div>
             {playerVersion && isAlphaTestTool(playerVersion.provider ?? '') && <p className="alpha-test-notice">测试视频 / 模拟生成 · 仅用于 Alpha 流程验证</p>}

@@ -4,7 +4,7 @@ import { creatorLabels } from './modules'
 import { useToast } from './toast-context'
 export function TopBar({ simple, onModeToggle }: { simple: boolean; onModeToggle: () => void }) {
   const { state, open } = useWorkspace()
-  const { currentModule, taskDrawerOpen, setTaskDrawerOpen, navigateCreator, inspectorOpen, toggleInspector } = useCreator()
+  const { currentModule, taskDrawerOpen, setTaskDrawerOpen, inspectorOpen, toggleInspector } = useCreator()
   const toast = useToast()
   const save = state.editorStatus !== 'saved'
     ? { dirty: '尚未保存', saving: '自动保存中…', error: '保存失败，修改已保留' }[state.editorStatus]
@@ -18,7 +18,6 @@ export function TopBar({ simple, onModeToggle }: { simple: boolean; onModeToggle
       </select>
       <button aria-label="制作任务" aria-expanded={taskDrawerOpen} onClick={() => setTaskDrawerOpen(!taskDrawerOpen)}>制作任务</button>
       <button aria-label="切换检查器" aria-expanded={inspectorOpen} onClick={toggleInspector}>详情</button>
-      <button onClick={() => navigateCreator('settings')}>设置</button>
       <button aria-pressed={!simple} onClick={() => { onModeToggle(); toast('info', simple ? '已切换到高级模式' : '已切换到简洁模式') }}>{simple ? '高级模式' : '简洁模式'}</button>
     </div>
   </header>

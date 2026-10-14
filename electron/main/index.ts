@@ -1,3 +1,6 @@
+import { loadComfySettings, saveComfySettings, validateComfySettings } from './generation/comfy-settings.js'
+import { WorkflowRepository, terminalWorkflow } from './workflow/repository.js'
+import { builtinTemplates } from './visual/workflows.js'
 import { ImageApiAdapter } from './tools/adapters/image-api.js'
 import { ImageHttpTransport } from './tools/adapters/image-http.js'
 import { ImageGenerationService } from './generation/image-service.js'
@@ -194,14 +197,16 @@ app
         return undefined
       }
     })()
+    const comfySettingsPath = join(app.getPath('userData'), 'comfyui-service-settings.json')
+    const globalComfySettings = await loadComfySettings(comfySettingsPath, comfySettings)
     const comfyAdapter = new ComfyUIToolAdapter(builtinComfyProfile({
-      checkpoint: comfySettings?.checkpoint || 'unconfigured-checkpoint',
-      baseUrl: comfySettings?.baseUrl,
-      templateId: comfySettings?.templateId?.startsWith('custom-')
+      checkpoint: globalComfySettings.checkpoint || 'unconfigured-checkpoint',
+      baseUrl: globalComfySettings.baseUrl,
+      templateId: globalComfySettings.templateId.startsWith('custom-')
         ? 'shot-keyframe'
-        : comfySettings?.templateId,
-      steps: comfySettings?.steps,
-      cfg: comfySettings?.cfg,
+        : globalComfySettings.templateId,
+      steps: globalComfySettings.steps,
+      cfg: globalComfySettings.cfg,
     }))
     const imageApi=new ImageGenerationService(visual,[
       ...imageAdapters(await loadImageProfiles(imageProfilePath),credentials),
@@ -268,7 +273,7 @@ app
       imageApi,
       videoApi,
       async () => {
-        const profile=await dialog.showOpenDialog({title:'导入 Packy Image Profile',properties:['openFile'],filters:[{name:'Profile JSON',extensions:['json']}]})
+        const profile=await dialog.showOpenDialog({title:'导入 Packy 图像服务配置',properties:['openFile'],filters:[{name:'Profile JSON',extensions:['json']}]})
         if(profile.canceled||!profile.filePaths[0])return null
         const key=await dialog.showOpenDialog({title:'导入 API Key（主进程加密保存）',properties:['openFile'],filters:[{name:'Key 文本',extensions:['txt','key']}]})
         if(key.canceled||!key.filePaths[0])return null
@@ -281,7 +286,10 @@ app
         return Boolean(profile?.credentialRef && safeStorage.isEncryptionAvailable() && await credentials.has(profile.credentialRef))
       },
       {
-        configuration: async () => ({ configured: Boolean(await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)), generationEnabled: false as const }),
+        configuration: async () => {
+          const profile = await loadCompShareProfile(compshareProfilePath, legacyVideoProfilePath)
+          return { configured: Boolean(profile?.credentialRef && safeStorage.isEncryptionAvailable() && await credentials.has(profile.credentialRef)), importAllowed: !profile, generationEnabled: false as const }
+        },
         importCredential: async () => {
           const result = await dialog.showOpenDialog({ title: '导入 CompShare H3 API Key（主进程加密保存，不生成视频）', properties: ['openFile'], filters: [{ name: 'Key 文本', extensions: ['txt', 'key'] }] })
           if (result.canceled || !result.filePaths[0]) return null
@@ -292,6 +300,21 @@ app
           if (!profile) throw new DomainError('NOT_FOUND', 'CompShare 尚未配置')
           return createCompShareAdapter(profile, credentials).probe(AbortSignal.timeout(10000))
         },
+      },
+      async (command) => {
+        if (command.op === 'comfy.configuration') return { settings: await loadComfySettings(comfySettingsPath, globalComfySettings), templates: builtinTemplates }
+        if (imageApi.hasUnconfirmedPreview('comfyui.local') || database!.list().some(project => imageApi.hasPending(project.id) ||
+          new WorkflowRepository(database!).list(project.id).some(run => run.inputSnapshot.generation.toolId === 'comfyui.local' && !terminalWorkflow(run.status)) || imageApi.generation.list('generation_records', project.id).some(record =>
+          record.toolId === 'comfyui.local' && (['unknown', 'unknown-submission'].includes(record.outcome) ||
+            (record.outcome === 'pending' && (record.approvalId !== null || Date.parse(imageApi.generation.get('generation_estimates', project.id, record.estimateId).validUntil) > Date.now()))))))
+          throw new DomainError('CONFLICT', '请等待图像任务结束或生成预览过期后修改服务连接')
+        const settings = validateComfySettings(command.settings)
+        const adapter = new ComfyUIToolAdapter(builtinComfyProfile({ ...settings, checkpoint: settings.checkpoint || 'unconfigured-checkpoint' }))
+        await saveComfySettings(comfySettingsPath, settings)
+        const current = imageApi.registry.list().find(entry => entry.descriptor.id === 'comfyui.local')
+        if (current) imageApi.registry.unregister(current.descriptor.id, current.descriptor.version)
+        imageApi.register(adapter)
+        return { settings, templates: builtinTemplates }
       },
     )
     session.defaultSession.setPermissionRequestHandler(

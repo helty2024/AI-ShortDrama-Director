@@ -73,7 +73,7 @@ test('09-00 CompShare configuration stays non-executable across desktop restart 
       await expect(current.locator('#root')).not.toBeEmpty()
       await expect.poll(() => current.evaluate(() => Boolean(window.desktop))).toBe(true)
       const configuration = await current.evaluate(() => window.desktop!.workspace.request({ action: 'compshareH3', command: { op: 'configuration' } }))
-      expect(configuration).toEqual({ ok: true, data: { configured: true, generationEnabled: false } })
+      expect(configuration).toEqual({ ok: true, data: { configured: false, importAllowed: false, generationEnabled: false } })
       const profiles = await current.evaluate(() => window.desktop!.workspace.request({ action: 'videoApi', command: { op: 'profiles' } }))
       expect(profiles).toEqual({ ok: true, data: [] })
       const injected = await current.evaluate(() => window.desktop!.workspace.request({ action: 'compshareH3', command: { op: 'importCredential', path: 'C:/secret' } } as unknown as Request))
@@ -87,12 +87,13 @@ test('09-00 CompShare configuration stays non-executable across desktop restart 
     await page.getByRole('button', { name: '新建项目', exact: true }).click()
     await page.getByLabel('名称', { exact: true }).fill('H3 非付费基线')
     await page.getByRole('button', { name: '保存', exact: true }).click()
-    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '设置' }).click()
     const panel = page.getByRole('region', { name: 'CompShare H3 非付费接入' })
-    await expect(panel.getByText('已保存配置 · 真实生成关闭')).toBeVisible()
+    await expect(panel.getByText('密钥不可用')).toBeVisible()
+    await panel.getByRole('button', { name: '配置视频连接' }).click()
     await expect(panel.getByRole('button', { name: '导入 CompShare API Key（加密保存）' })).toBeDisabled()
-    await panel.getByRole('button', { name: '检测鉴权与积分（不生成）' }).click()
-    await expect(panel.getByRole('status')).toContainText('检测失败：authentication')
+    await expect(panel.getByRole('button', { name: '检测视频连接（只读）' })).toBeDisabled()
+    await expect(panel.getByText(/暂不可用于真实生成/)).toBeVisible()
     await page.screenshot({ path: 'test-results/compshare-non-paid-settings.png' })
     await application.close()
     application = await launch(directory)
@@ -454,7 +455,7 @@ test('Storyboard and Generate Creator keep Shot context and block unconfigured V
     const runs = await page.evaluate((id) => window.desktop!.workspace.request({ action: 'workflow', command: { op: 'listWorkflowRuns', projectId: id } }), project.id)
     expect(runs).toMatchObject({ ok: true, data: [] })
     await page.getByRole('button', { name: '前往项目设置' }).click()
-    await expect(page.getByRole('heading', { name: 'Provider 设置' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '设置' })).toBeVisible()
     await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
     await page.getByRole('combobox', { name: '筛选场次' }).selectOption('')
     await page.setViewportSize({ width: 1920, height: 1080 })
@@ -793,13 +794,13 @@ test('creator shell navigation, context, overlays and project round trip', async
     for (const [index, name] of ['故事', '剧本', '资产', '分镜', '生成', '分镜视频'].entries()) await expect(primary.nth(index)).toHaveAccessibleName(name)
     await page.getByRole('button', { name: '高级模式', exact: true }).click()
     await page.getByRole('button', { name: '关闭提示' }).click()
-    for (const [index, name] of ['项目设置', '验收与维护'].entries()) await expect(page.getByRole('navigation', { name: '次级导航' }).getByRole('button').nth(index)).toHaveAccessibleName(name)
+    for (const [index, name] of ['设置', '验收与维护'].entries()) await expect(page.getByRole('navigation', { name: '次级导航' }).getByRole('button').nth(index)).toHaveAccessibleName(name)
     for (const name of ['故事', '剧本', '资产', '分镜', '生成', '分镜视频']) {
       await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true }).click()
       await expect(page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page')
     }
-    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
-    await expect(page.getByRole('heading', { name: 'Provider 设置' })).toBeVisible()
+    await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '设置' }).click()
+    await expect(page.getByRole('heading', { name: '设置' })).toBeVisible()
     await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '验收与维护' }).click()
     await expect(page.getByRole('heading', { name: '生产验收与维护' })).toBeVisible()
     await page.getByRole('navigation', { name: '创作阶段' }).getByRole('button', { name: '分镜', exact: true }).click()
@@ -878,15 +879,21 @@ async function closeCreatorInspectorOverlay(page: Page) {
 }
 
 async function openAssetTab(page: Page, name: '角色' | '场景' | '道具') {
-  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '设置' }).click()
+  await page.getByRole('tab', { name: '高级与诊断' }).click()
+  await page.getByRole('button', { name: '旧版兼容入口', exact: true }).click()
   await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name, exact: true }).click()
 }
 async function openLegacy(page: Page, name: '生产看板' | '素材库') {
-  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '设置' }).click()
+  await page.getByRole('tab', { name: '高级与诊断' }).click()
+  await page.getByRole('button', { name: '旧版兼容入口', exact: true }).click()
   await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name, exact: true }).click()
 }
 async function openLegacyGeneration(page: Page) {
-  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '项目设置' }).click()
+  await page.getByRole('navigation', { name: '次级导航' }).getByRole('button', { name: '设置' }).click()
+  await page.getByRole('tab', { name: '高级与诊断' }).click()
+  await page.getByRole('button', { name: '旧版兼容入口', exact: true }).click()
   await page.getByRole('region', { name: '旧版兼容入口' }).getByRole('button', { name: '旧版生成' }).click()
 }
 async function openLegacyStoryboard(page: Page) {
@@ -911,7 +918,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
         command: { operation: 'about' },
       }),
     )
-    expect(about).toMatchObject({ ok: true, data: { version: '0.9.0-alpha.1', schema: 10 } })
+    expect(about).toMatchObject({ ok: true, data: { version: '0.9.0-alpha.2', schema: 10 } })
     const isolation = await page.evaluate(() => ({
       bridge: Boolean(window.desktop?.workspace),
       require: typeof Reflect.get(window, 'require'),
@@ -945,7 +952,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
     await page.getByRole('button', { name: '删除', exact: true }).click()
     await page.getByLabel('确认项目名').fill('重命名短剧')
     await page.getByRole('button', { name: '确认删除' }).click()
-    await expect(page.locator('.topbar strong')).toContainText('0.9.0-alpha.1')
+    await expect(page.locator('.topbar strong')).toContainText('0.9.0-alpha.2')
     await page.getByRole('button', { name: '载入开发示例' }).click()
     await expect(page.locator('.topbar strong')).toHaveText(
       '雨夜来信 · 示例短剧',
@@ -1332,6 +1339,9 @@ test('visual production imports, generates, reviews versions and pins Shot keyfr
       page.getByRole('article', { name: '版本 1', exact: true }),
     ).toBeVisible()
     await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('tab', { name: '高级与诊断' }).click()
+    await page.getByRole('button', { name: '测试工具', exact: true }).click()
+    await page.getByText('旧版模拟与项目图像参数', { exact: true }).click()
     await page.getByRole('button', { name: '保存并测试连接' }).click()
     await expect(page.getByText('Mock 图像服务可用，无网络调用')).toBeVisible()
     await application.close()
@@ -1369,12 +1379,15 @@ test('batch keyframes and playable video versions require explicit Shot confirma
       return workspaceSchema.parse(response.data)
     }
     await page.getByRole('button', { name: '设置', exact: true }).click()
-    await page.getByRole('button', { name: '运行 ComfyUI Diagnostics' }).click()
+    await page.getByRole('tab', { name: '高级与诊断' }).click()
+    await page.getByRole('button', { name: '测试工具', exact: true }).click()
+    await page.getByText('旧版模拟与项目图像参数', { exact: true }).click()
+    await page.getByRole('button', { name: '检查项目图像配置' }).click()
     await expect(
-      page.getByText('Provider Ready', { exact: true }),
+      page.getByText('项目配置已就绪', { exact: true }),
     ).toBeVisible()
     await page
-      .getByRole('button', { name: '测试视频 Provider', exact: true })
+      .getByRole('button', { name: '检测视频连接', exact: true })
       .click()
     await expect(
       page.getByText('Mock Video Ready：FFmpeg / FFprobe 可用', {
@@ -1956,11 +1969,16 @@ test('pre-v7 project opens legacy Bible, storyboard, generation, tasks and missi
     if (!result.ok) throw new Error(result.message)
     expect(lineageSchema.parse(result.data).links.recordId).toBeNull()
     await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('tab', { name: '高级与诊断' }).click()
+    await page.getByRole('button', { name: '连接诊断', exact: true }).click()
     const readiness = page.getByRole('region', { name: 'Tool readiness' })
     await expect(readiness.getByText('real-local-validated', { exact: true })).toBeVisible()
     await expect(readiness.getByText('real-generation-partially-validated', { exact: true })).toBeVisible()
     await expect(readiness.getByText('not-validated', { exact: true })).toBeVisible()
-    await expect(readiness.getByText('development-test-only', { exact: true }).first()).toBeVisible()
+    await expect(readiness.getByText('development-test-only', { exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name:'测试工具', exact:true }).click()
+    await page.getByText('模拟工具原始状态', { exact:true }).click()
+    await expect(page.getByRole('region', { name:'测试工具' }).getByText('development-test-only', { exact:true }).first()).toBeVisible()
     await openLegacyGeneration(page)
     await expect(page.getByText(/Legacy Task ·/)).toBeVisible()
     expect(errors).toEqual([])

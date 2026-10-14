@@ -464,6 +464,10 @@ export class ImageGenerationService {
       (id) => this.generation.findByTask(p, id) !== null,
     )
   }
+  hasUnconfirmedPreview(toolId: string) {
+    return [...this.previews.values()].some(preview =>
+      preview.record.toolId === toolId && Date.parse(preview.public.expiresAt) > Date.now())
+  }
   async wait(taskId: string) {
     await this.pending.get(taskId)
   }

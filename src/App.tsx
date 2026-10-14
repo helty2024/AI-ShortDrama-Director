@@ -27,7 +27,7 @@ import { alphaVersion } from './shared/alpha'
 
 function LegacyLinks() {
   const { state, navigate } = useWorkspace()
-  if (state.module !== 'settings' && state.module !== 'operations') return null
+  if (state.module !== 'operations') return null
   const labels = { characters: '角色', locations: '场景', props: '道具', assets: '素材库', production: '生产看板', legacyGeneration: '旧版生成' }
   return (
     <section className="creator-compat-links" aria-label="旧版兼容入口">
@@ -84,7 +84,7 @@ function WorkspaceRoot() {
             <strong>✦ AI ShortDrama Director <small>{alphaVersion}</small></strong>
             <div className="actions">
               <button onClick={() => navigate('projects')}>项目</button>
-              <button onClick={() => navigate('settings')}>项目设置</button>
+              <button onClick={() => navigate('settings')}>设置</button>
               {!simple && <button onClick={() => navigate('operations')}>验收与维护</button>}
               <button onClick={toggleMode}>{simple ? '高级模式' : '简洁模式'}</button>
             </div>

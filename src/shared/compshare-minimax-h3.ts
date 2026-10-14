@@ -24,6 +24,7 @@ export const compshareProbeSchema = z.strictObject({
 
 export const compshareConfigurationSchema = z.strictObject({
   configured: z.boolean(),
+  importAllowed: z.boolean().optional(),
   generationEnabled: z.literal(false),
 })
 

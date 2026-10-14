@@ -45,15 +45,26 @@ export async function confirmAlpha(page: Page) {
 }
 
 export async function runAlphaJourney(application: ElectronApplication, data: string, captures: string) {
+  let previousReceipts = 0
+  try { previousReceipts = (JSON.parse(await readFile(join(data, 'alpha-reference/reference-tasks.json'), 'utf8')) as unknown[]).length } catch { /* Fresh install has no receipts. */ }
   const page = await application.firstWindow()
-  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.setViewportSize({ width: 1920, height: 1080 })
   await mkdir(captures, { recursive: true })
+  const capture = async (name: string) => {
+    for (const size of [{width:1920,height:1080},{width:2560,height:1440}]) {
+      await page.setViewportSize(size)
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await expect.poll(() => page.locator('.creator-main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await page.screenshot({path:join(captures,size.width===1920 ? name : name.replace('.png','-2560.png'))})
+    }
+    await page.setViewportSize({width:1920,height:1080})
+  }
   await createAlphaStory(page, '公司 Alpha 全新项目')
   const nav = page.getByRole('navigation', { name: '创作阶段' })
   await nav.getByRole('button', { name: '故事', exact: true }).click()
-  await page.screenshot({ path: join(captures, '01-story.png') })
+  await capture('01-story.png')
   await nav.getByRole('button', { name: '剧本', exact: true }).click()
-  await page.screenshot({ path: join(captures, '02-script.png') })
+  await capture('02-script.png')
   await page.getByRole('button', { name: '查看角色与场景资产' }).click()
   for (const [tab, name] of [['角色', '阿青'], ['场景', '车站'], ['道具', '旧信']] as const) {
     await page.getByRole('tab', { name: new RegExp(tab) }).click()
@@ -63,14 +74,14 @@ export async function runAlphaJourney(application: ElectronApplication, data: st
     await dialog.getByRole('button', { name: '保存', exact: true }).click()
     await expect(dialog).toHaveCount(0)
   }
-  await page.screenshot({ path: join(captures, '03-assets.png') })
+  await capture('03-assets.png')
   await page.getByRole('button', { name: '前往分镜' }).click()
   await createAlphaShot(page, '拾起旧信')
-  await page.screenshot({ path: join(captures, '04-storyboard.png') })
+  await capture('04-storyboard.png')
   await page.getByRole('button', { name: '前往生成' }).click()
   await closeDetails(page)
   await expect(page.getByText('自动推荐 · 模拟生成')).toBeVisible()
-  await page.screenshot({ path: join(captures, '05-generate.png') })
+  await capture('05-generate.png')
   await page.getByRole('button', { name: '开始生成 1 个镜头', exact: true }).click()
   await closeDetails(page)
   await confirmAlpha(page)
@@ -100,11 +111,12 @@ export async function runAlphaJourney(application: ElectronApplication, data: st
   await closeDetails(page)
   await expect(page.getByRole('region', { name: '镜头视频播放器' })).toContainText('当前确认视频')
   await expect.poll(() => page.locator('.shot-videos-screen video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThanOrEqual(2)
-  await page.screenshot({ path: join(captures, '06-confirmed-video.png') })
+  await expect(page.locator('.creator-task-toggle')).toContainText(/0\s*个任务进行中\s*·\s*0\s*个等待确认/,{timeout:10000})
+  await capture('06-confirmed-video.png')
   const result = await page.evaluate(id => window.desktop!.workspace.request({ action: 'visual', command: { operation: 'snapshot', projectId: id } }), projectId)
   if (!result.ok) throw new Error(result.message)
   const receipt = JSON.parse(await readFile(join(data, 'alpha-reference/reference-tasks.json'), 'utf8')) as unknown[]
-  expect(receipt).toHaveLength(1)
+  expect(receipt).toHaveLength(previousReceipts + 1)
   const saved = await workspace()
   const shot = saved.entities.find(item => item.kind === 'shot')!
   const provenance = await page.evaluate(({ id, versionId }) => window.desktop!.workspace.request({ action: 'compatibility', command: { op: 'lineage', projectId: id, versionId } }), { id: projectId, versionId: shot.confirmedVideoAssetVersionId! })

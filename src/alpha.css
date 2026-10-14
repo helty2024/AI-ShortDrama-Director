@@ -110,3 +110,49 @@ button[aria-current="page"] .stage-number { color: white; background: #8a70b4; }
   .creator-inspector { position: static; grid-column: 2; grid-row: 3; width: 390px; margin: 16px 0; max-width: none; }
 }
 @media(max-width: 1250px) { .creator-topbar, .creator-nav.horizontal-nav { padding-left: 20px; padding-right: 20px; gap: 12px; } .stage-caption { display: none; } .creator-nav.horizontal-nav button { padding: 8px 10px; font-size: 12px; } .creator-topbar-actions { gap: 5px; } .creator-topbar select { width: 110px; } .generate-layout { grid-template-columns: 205px minmax(0, 1fr); } }
+
+.settings-page { max-width: 1320px !important; margin: 0 auto; padding-bottom: 32px; min-width: 0; }
+.settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.settings-heading h1 { margin: 4px 0 12px; font-size: 38px; }
+.settings-eyebrow { color: #8a70b4; font-size: 12px; letter-spacing: 2px; }
+.settings-tabs { display: flex; gap: 8px; padding: 6px; background: #eeebf2; border-radius: 16px; width: fit-content; margin-bottom: 28px; }
+.settings-tabs button { border: 0; background: transparent; min-width: 130px; }
+.settings-tabs button[aria-selected="true"] { background: white; color: #73549d; box-shadow: 0 3px 12px #3d2b5410; }
+.settings-services h2 { margin: 22px 0 16px; }
+.settings-services { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 22px; align-items: start; }
+.settings-services > .settings-scope, .settings-services > [role="alert"] { grid-column: 1 / -1; }
+.settings-services h2 { margin-top: 0; }
+.service-group { min-width: 0; }
+.settings-scope { margin: 0 0 18px; }
+.service-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px; align-items: start; }
+.service-card { background: white; padding: 26px 30px; border-radius: 24px; min-width: 0; }
+.service-card h3 { font-size: 23px; margin: 14px 0 8px; }
+.service-card p { line-height: 1.7; overflow-wrap: anywhere; }
+.service-purpose { color: #6c607d; margin: 4px 0 12px; }
+.service-card-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.service-symbol { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; font-size: 24px; }
+.mint { background: #e4f1e9; color: #4b826b; }.peach { background: #f9e9de; color: #b77c58; }.violet { background: #eee6f8; color: #8965b5; }
+.service-state { background: #f3eff8; color: #796391; padding: 6px 12px; border-radius: 30px; font-size: 12px; }
+.service-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.service-actions button:first-child { color: #73549d; background: #f3edf9; border: 0; }
+.service-card > details { margin-top: 16px; }
+.service-config { margin-top: 22px; padding-top: 20px; border-top: 1px solid #eee9f3; }
+.settings-form { display: grid; gap: 16px; max-width: 760px; }
+.settings-form label { display: grid; gap: 8px; }
+.settings-form button.primary { justify-self: start; }
+.settings-form p { margin: 0; }
+.settings-form input, .settings-form select { width: 100%; min-width: 0; box-sizing: border-box; }
+.settings-field-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.settings-form details > div { margin-top: 16px; }
+.settings-panel { background: white; border-radius: 24px; padding: 30px; margin-top: 22px; min-width: 0; }
+.settings-panel h2 { margin-top: 0; }
+.settings-note { padding: 22px; background: #f2ecf9; border-radius: 16px; line-height: 1.8; }
+.settings-advanced-nav { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.settings-advanced-nav button[aria-pressed="true"] { color: #73549d; background: #ece3f7; }
+.settings-page pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; }
+.diagnostic-scroll { overflow-x: auto; }
+.settings-page .provider-settings, .settings-page .production-settings form { max-width: 800px; }
+.settings-page .creator-compat-links { flex-wrap: wrap; }
+.settings-page .production-settings > p { line-height: 1.8; }
+@media(max-width: 1300px) { .settings-services { grid-template-columns: minmax(0,1fr); } }
+@media(max-width: 900px) { .service-grid { grid-template-columns: minmax(0,1fr); }.service-card { padding: 24px; }.settings-heading { align-items: start; }.settings-tabs { width: 100%; box-sizing: border-box; }.settings-tabs button { min-width: 0; flex: 1; }.project-list-shell main { padding: 24px; } }

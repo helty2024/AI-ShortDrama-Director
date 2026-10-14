@@ -19,7 +19,7 @@ test('Alpha package metadata stays aligned while database schema remains 10', as
   const database = new ProjectDatabase(':memory:')
 
   try {
-    assert.equal(manifest.version, '0.9.0-alpha.1')
+    assert.equal(manifest.version, '0.9.0-alpha.2')
     assert.equal(lock.version, manifest.version)
     assert.equal(lock.packages['']?.version, manifest.version)
     assert.match(builder, /^productName: AI ShortDrama Director$/m)

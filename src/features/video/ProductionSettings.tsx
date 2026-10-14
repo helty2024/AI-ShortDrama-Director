@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useWorkspace } from '../workspace/state'
 import { useProduction } from './use-production'
-import { conservativeCapabilities, diagnosticSchema } from '../../shared/video'
+import { conservativeCapabilities, defaultVideoProfile, diagnosticSchema } from '../../shared/video'
 import type {
   VideoProfile,
   ProviderDiagnostics,
   ProductionCommand,
 } from '../../shared/video'
-export function ProductionSettings({ projectId }: { projectId: string }) {
+export function ProductionSettings({ projectId, testTools = false }: { projectId: string; testTools?: boolean }) {
   const { state } = useWorkspace(),
     production = useProduction(projectId)
   const [selected, setSelected] = useState(''),
@@ -15,13 +15,14 @@ export function ProductionSettings({ projectId }: { projectId: string }) {
     [diagnostic, setDiagnostic] = useState<ProviderDiagnostics | null>(null),
     [shotId, setShotId] = useState(''),
     [message, setMessage] = useState('')
-  const profiles = production.snapshot?.profiles ?? [],
+  const profiles = (production.snapshot?.profiles ?? []).filter(p => testTools || p.provider !== 'mock-video'),
     profile = draft ?? profiles.find((p) => p.id === selected) ?? profiles[0]
   const run = async (c: ProductionCommand) => {
     setMessage('')
     try {
       const r = await production.execute(c)
       if (typeof r === 'string') setMessage(r)
+      else if (c.operation === 'profile.save') setMessage('视频配置已保存，连接与生成能力需分别核验。')
       return r
     } catch {
       return undefined
@@ -29,7 +30,7 @@ export function ProductionSettings({ projectId }: { projectId: string }) {
   }
   return (
     <section className="production-settings">
-      <h2>生产诊断</h2>
+      <h2>项目生产诊断</h2>
       <button
         disabled={production.busy}
         onClick={() =>
@@ -39,12 +40,12 @@ export function ProductionSettings({ projectId }: { projectId: string }) {
           })
         }
       >
-        运行 ComfyUI Diagnostics
+        检查项目图像配置
       </button>
       {diagnostic && (
         <article>
           <strong>
-            {diagnostic.ready ? 'Provider Ready' : 'Provider Not Ready'}
+            {diagnostic.ready ? '项目配置已就绪' : '项目配置需要处理'}
           </strong>
           <p>可达：{diagnostic.reachable ? '是' : '否'}</p>
           <p>Checkpoint：{diagnostic.checkpoints.join('、') || '无'}</p>
@@ -60,7 +61,7 @@ export function ProductionSettings({ projectId }: { projectId: string }) {
         </article>
       )}
       <label>
-        Test Generation 镜头
+        测试关键帧镜头
         <select
           aria-label="Test Generation 镜头"
           value={shotId}
@@ -89,11 +90,11 @@ export function ProductionSettings({ projectId }: { projectId: string }) {
           )
         }
       >
-        一键 Test Generation
+        提交项目关键帧测试
       </button>
-      <h2>视频 Provider Profiles</h2>
+      <h2>旧版视频连接</h2>
       <label>
-        选择 Profile
+        选择视频配置
         <select
           value={profile?.id ?? ''}
           onChange={(e) => {
@@ -127,12 +128,13 @@ export function ProductionSettings({ projectId }: { projectId: string }) {
           })
         }
       >
-        新增 Seedance / Compatible Profile
+        新增兼容视频配置
       </button>
       {profile && (
         <ProfileForm
           key={profile.id}
           profile={profile}
+          testTools={testTools}
           configured={production.snapshot?.credentials[profile.id] ?? false}
           busy={production.busy}
           save={async (value) => {
@@ -182,8 +184,10 @@ function ProfileForm({
   save,
   health,
   credential,
+  testTools,
 }: {
   profile: VideoProfile
+  testTools: boolean
   configured: boolean
   busy: boolean
   save: (p: VideoProfile) => Promise<void>
@@ -199,7 +203,7 @@ function ProfileForm({
       }}
     >
       <label>
-        Profile 名称
+        配置名称
         <input
           required
           value={value.name}
@@ -214,17 +218,19 @@ function ProfileForm({
             setValue({
               ...value,
               provider: e.target.value as VideoProfile['provider'],
+              model: e.target.value === 'mock-video' ? defaultVideoProfile.model
+                : value.provider === 'mock-video' ? '' : value.model,
             })
           }
         >
-          <option value="mock-video">Mock Video</option>
+          {testTools && <option value="mock-video">Mock Video（用于模拟流程测试）</option>}
           <option value="seedance">Seedance / Ark-compatible</option>
         </select>
       </label>
       {value.provider === 'seedance' && (
         <>
           <label>
-            视频 Base URL
+            视频服务地址
             <input
               required
               value={value.baseUrl}
@@ -232,7 +238,7 @@ function ProfileForm({
             />
           </label>
           <label>
-            任务 endpoint 路径
+            任务接口路径
             <input
               required
               value={value.taskPath}
@@ -240,7 +246,7 @@ function ProfileForm({
             />
           </label>
           <label>
-            Model
+            模型名称
             <input
               required
               value={value.model}
@@ -345,9 +351,9 @@ function ProfileForm({
         </p>
       </details>
       <div className="actions">
-        <button disabled={busy}>保存视频 Profile</button>
+        <button disabled={busy}>保存视频配置</button>
         <button type="button" disabled={busy} onClick={health}>
-          测试视频 Provider
+          检测视频连接
         </button>
       </div>
     </form>

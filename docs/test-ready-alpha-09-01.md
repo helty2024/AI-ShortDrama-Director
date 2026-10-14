@@ -1,10 +1,10 @@
 # 09-01 Test Ready Alpha
 
-内部测试版本 `0.9.0-alpha.1`。保留 SQLite schema 10、backup format 5；不创建正式版本 tag，不改动 v0.8.0 tag / Release。
+内部测试版本 `0.9.0-alpha.2`。保留 SQLite schema 10、backup format 5；不创建正式版本 tag，不改动 v0.8.0 tag / Release。
 
 ## 测试同事如何开始
 
-安装 `AI-ShortDrama-Director-Setup-0.9.0-alpha.1-x64.exe`，打开 **AI ShortDrama Director Alpha**。点击“新建项目”，输入故事，点击“AI 整理”。确认剧本预览后，沿顶部“故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频”继续。
+安装 `AI-ShortDrama-Director-Setup-0.9.0-alpha.2-x64.exe`，打开 **AI ShortDrama Director Alpha**。点击“新建项目”，输入故事，点击“AI 整理”。确认剧本预览后，沿顶部“故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频”继续。
 
 Alpha 的整理使用本地规则，保留原文，不代表真实大模型能力。角色、场景、道具可在资产页手动建立；已有剧本也可粘贴导入。每页提供下一步入口。
 
@@ -54,7 +54,7 @@ Alpha 的整理使用本地规则，保留原文，不代表真实大模型能�
 
 UI 草案 stash 不恢复，本轮只推进可安装、可走通的内部测试版本。
 
-## 2026-10-14 验收记录
+## 2026-10-14 Alpha.1 历史验收记录
 
 - Unit：429/429 PASS；Desktop/Smoke：29/29 PASS；lint/build PASS。
 - NSIS x64 安装成功；从安装后的应用完成新项目主路径、候选批准与采用、测试视频播放、lineage 查询和重启恢复。
@@ -62,3 +62,15 @@ UI 草案 stash 不恢复，本轮只推进可安装、可走通的内部测试�
 - 安装包：`AI-ShortDrama-Director-Setup-0.9.0-alpha.1-x64.exe`。
 - SHA256：`c92bae7ed243db1ebd21db1faef216fbca790ab18a235b38b0950acd43b9c487`。
 - 截图、验收 JSON、安装目录、固定测试媒体及视频工具均留在被忽略的构建输出或隔离验收目录中，不提交用户数据。
+
+## Alpha.2 设置整改
+
+默认“AI 服务”，按图像/视频展示 ComfyUI、Packy Image、CompShare H3。保存凭据、连接检测通过与真实生成能力分别说明；Packy 和 H3 没有普通真实生成按钮。ComfyUI 仅在真实只读运行/模型/模板校验通过时显示可用。
+
+“基本设置”只保存当前项目风格和图像尺寸；未打开项目时说明先选择项目。“高级与诊断”分别提供连接诊断、测试工具、项目专业配置、维护和旧版兼容入口。Mock / Reference 只在测试工具区出现；配置文件、密钥、媒体、截图均不进入 Git。
+
+新增主进程服务设置 IPC 只接受严格的配置/保存命令，复用既有发送方验证；地址限本机回环，模板限可信内置模板。ComfyUI 连接存放在 userData 的 `comfyui-service-settings.json`，不会改动原有项目配置或数据库结构。待确认预览及未完成/未知提交期间拒绝替换连接。
+
+桌面操作测试覆盖无项目设置、三入口、技术信息隔离、1920/2560 布局、ComfyUI 在线/离线/模型缺失、保存重载、密钥加密与只读失败、Packy 导入取消/错误、项目偏好保存及高级功能访问。安装版验收脚本同时检查设置、全新六步流程、视频播放、重启和已有项目内容保留。
+
+Alpha.2 最终安装与测试结果见 [最终验收记录](alpha2-acceptance.md)。

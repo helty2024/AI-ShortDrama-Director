@@ -20,7 +20,7 @@ export function ProvenancePanel({ projectId, versionId, recordId, revision }: { 
       <dl>{value.fields.map(f => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl></>}
   </details>
 }
-export function ToolReadinessPanel() {
+export function ToolReadinessPanel({ testTools = false }: { testTools?: boolean }) {
   const [rows, setRows] = useState<Readiness>([]), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const refresh = async () => {
     setBusy(true); setError('')
@@ -31,11 +31,11 @@ export function ToolReadinessPanel() {
     } catch { setError('无法读取工具状态') } finally { setBusy(false) }
   }
   useEffect(() => { const timer = setTimeout(() => void refresh(), 0); return () => clearTimeout(timer) }, [])
-  return <section aria-label="Tool readiness"><h2>Tool 验证与当前运行状态</h2>
+  return <section aria-label="Tool readiness"><h2>专业连接诊断</h2>
     <p>历史验证不代表当前在线。仅检查本机 ComfyUI 与本地凭据状态，不请求云端 API。</p>
     <button disabled={busy} onClick={() => void refresh()}>刷新工具状态（只读）</button>
     {error && <p role="alert">{error}</p>}
     <table><thead><tr><th>Tool</th><th>Validation Status</th><th>Runtime Status</th><th>Capabilities / 范围</th></tr></thead>
-      <tbody>{rows.map(r => <tr key={r.toolId}><td>{r.name}<br />{r.toolId}</td><td>{r.validation}</td><td>{r.runtime}</td><td>{r.capabilities.join(', ')}<p>{r.detail}</p><small>{r.checkedAt}</small></td></tr>)}</tbody>
+      <tbody>{rows.filter(r => (r.runtime === 'development-test-only' || /^(mock|reference|alpha\.reference)/.test(r.toolId)) === testTools).map(r => <tr key={r.toolId}><td>{r.name}<br />{r.toolId}</td><td>{r.validation}</td><td>{r.runtime}</td><td>{r.capabilities.join(', ')}<p>{r.detail}</p><small>{r.checkedAt}</small></td></tr>)}</tbody>
     </table></section>
 }

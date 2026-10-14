@@ -1,98 +1,49 @@
-import { ToolReadinessPanel } from '../operations/ProvenancePanel'
-import { ProductionSettings } from '../video/ProductionSettings'
-import { useEffect, useState } from 'react'
-import { videoCommand, videoProfilesSchema } from '../generate/generation-api'
-import { compshareCommandSchema, compshareConfigurationSchema, compshareProbeSchema, type CompShareCommand } from '../../shared/compshare-minimax-h3'
+import { useState } from 'react'
 import { useWorkspace } from '../workspace/state'
 import { useVisual } from './use-visual'
-import type {
-  ProviderSettings,
-  VisualSnapshot,
-  VisualCommand,
-} from '../../shared/visual'
+import { ToolReadinessPanel } from '../operations/ProvenancePanel'
+import { ProductionSettings } from '../video/ProductionSettings'
+import { AIServiceCards } from './ServiceCards'
+import { OperationsPage } from '../operations/OperationsPage'
+import type { ProviderSettings, VisualSnapshot, VisualCommand } from '../../shared/visual'
 
-async function compshareCommand(command: CompShareCommand): Promise<unknown> {
-  const result = await window.desktop!.workspace.request({ action: 'compshareH3', command: compshareCommandSchema.parse(command) })
-  if (!result.ok) throw new Error(result.message)
-  return result.data
-}
+const tabs = ['基本设置', 'AI 服务', '高级与诊断'] as const
 export function ProviderSettingsPage() {
-  const { state } = useWorkspace()
-  return state.workspace ? (
-    <Settings projectId={state.workspace.project.id} />
-  ) : (
-    <>
-      <h1>Provider 设置</h1>
-      <ToolReadinessPanel />
-      <p>请先打开项目。</p>
-    </>
-  )
-}
-function Settings({ projectId }: { projectId: string }) {
-  const visual = useVisual(projectId)
-  const [videoTools, setVideoTools] = useState<number | null>(null)
-  useEffect(() => {
-    let active = true
-    void videoCommand({ op: 'profiles' }).then((result) => { if (active) setVideoTools(videoProfilesSchema.parse(result).length) }).catch(() => { if (active) setVideoTools(null) })
-    return () => { active = false }
-  }, [projectId])
-  return (
-    <>
-      <h1>Provider 设置</h1>
-      <ToolReadinessPanel />
-      <section aria-label="视频工具状态"><h2>Video Tools：{videoTools ?? '核验中'}</h2>{videoTools === 0 && <p>尚未配置可执行的视频生成工具。CompShare H3 当前仅开放非付费接入。</p>}</section>
-      <CompShareSettings />
-      <p>
-        下方为原有图像 Provider 配置，存于本地数据库。本地 ComfyUI
-        需要已安装模型和相应节点。
-      </p>
-      {visual.error && (
-        <p role="alert" className="error">
-          {visual.error}
-        </p>
-      )}
-      {visual.snapshot && (
-        <SettingsForm
-          key={projectId}
-          projectId={projectId}
-          snapshot={visual.snapshot}
-          execute={visual.execute}
-        />
-      )}
-      <ProductionSettings projectId={projectId} />
-    </>
-  )
-}
-function CompShareSettings() {
-  const [configured, setConfigured] = useState(false), [loaded, setLoaded] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('')
-  const [probe, setProbe] = useState<ReturnType<typeof compshareProbeSchema.parse> | null>(null)
-  useEffect(() => {
-    let active = true
-    void compshareCommand({ op: 'configuration' }).then(result => {
-      const configuration = compshareConfigurationSchema.parse(result)
-      if (active) { setConfigured(configuration.configured); setLoaded(true) }
-    }).catch(() => { if (active) setMessage('读取视频配置失败') })
-    return () => { active = false }
-  }, [])
-  const run = async (importKey: boolean) => {
-    setBusy(true); setMessage('')
-    try {
-      if (importKey) {
-        await compshareCommand({ op: 'importCredential' })
-        const saved = compshareConfigurationSchema.parse(await compshareCommand({ op: 'configuration' })).configured
-        setConfigured(saved); setMessage(saved ? '凭据已加密保存，真实生成仍关闭。' : '已取消导入。')
-      } else setProbe(compshareProbeSchema.parse(await compshareCommand({ op: 'probe' })))
-    } catch { setMessage('操作失败，请检查配置文件或重新检测。') } finally { setBusy(false) }
-  }
-  return <section aria-label="CompShare H3 非付费接入"><h2>CompShare · MiniMax H3</h2>
-    <p>协议已实现并通过本地模拟验证。真实生成未验证，当前不能生成视频。积分不等于货币费用。</p>
-    <p>{!loaded ? '读取配置中' : configured ? '已保存配置' : '尚未配置'} · 真实生成关闭</p>
-    <button disabled={!loaded || busy || configured} onClick={() => void run(true)}>导入 CompShare API Key（加密保存）</button>
-    <button disabled={!configured || busy} onClick={() => void run(false)}>检测鉴权与积分（不生成）</button>
-    <p>检测仅查询 CompShare 积分余额，不提交任务、不上传素材。请选择含 sk-ml- 密钥的本地文本文件；密钥仅由主进程读取。</p>
-    {message && <p role="status">{message}</p>}
-    {probe && <p role="status">{probe.authenticated && probe.points ? `鉴权查询成功 · 可用积分 ${probe.points.available} · 预占 ${probe.points.reserved} · 总积分 ${probe.points.total}` : `检测失败：${probe.errorCode}`} · 真实生成未验证 · {probe.checkedAt}</p>}
+  const [tab, setTab] = useState<typeof tabs[number]>('AI 服务')
+  const { state, navigate } = useWorkspace()
+  const projectId = state.workspace?.project.id
+  const [advanced, setAdvanced] = useState('')
+  return <section className="settings-page" aria-label="设置">
+    <header className="settings-heading"><div><p className="settings-eyebrow">让创作顺畅开始</p><h1>设置</h1><p>连接创作服务，按需要调整当前项目。</p></div><button onClick={() => navigate(projectId ? 'story' : 'projects')}>返回{projectId ? '创作' : '项目'}</button></header>
+    <nav className="settings-tabs" role="tablist" aria-label="设置分类">{tabs.map(name => <button key={name} role="tab" aria-selected={tab === name} onClick={() => { setTab(name); setAdvanced('') }}>{name}</button>)}</nav>
+    <div role="tabpanel" aria-label={tab}>
+      {tab === 'AI 服务' && <AIServiceCards />}
+      {tab === '基本设置' && <section className="settings-panel"><h2>当前项目的创作偏好</h2><p>这些设置只影响当前项目，不会改变其他项目或服务连接。</p>{projectId ? <ProjectPreferences projectId={projectId} /> : <p className="settings-note">请先返回项目列表，选择或创建项目，再调整创作偏好。AI 服务连接可以直接在这里配置。</p>}</section>}
+      {tab === '高级与诊断' && <>
+        <p>按需要打开专业配置或维护工具。测试工具只用于模拟流程测试。</p>
+        <div className="settings-advanced-nav">{['连接诊断', '测试工具', '项目专业配置', '维护与数据', '旧版兼容入口'].map(name => <button key={name} aria-pressed={advanced === name} onClick={() => setAdvanced(advanced === name ? '' : name)}>{name}</button>)}</div>
+        {advanced === '连接诊断' && <div className="settings-panel diagnostic-scroll"><ToolReadinessPanel /></div>}
+        {advanced === '测试工具' && <section className="settings-panel" aria-label="测试工具"><h2>用于模拟流程测试</h2><p>Alpha 内置测试图像与测试视频，不连接真实供应商，不消费积分。生成页会明确标记“测试视频 / 模拟生成”，批准候选后仍需单独采用。</p><ul><li>Mock Image：旧版图像流程测试。</li><li>Mock Video：旧版视频流程测试。</li><li>Reference Image / Video：当前 Alpha 主流程模拟工具。</li></ul><details><summary>模拟工具原始状态</summary><ToolReadinessPanel testTools /></details><button onClick={() => navigate(projectId ? 'generation' : 'projects')}>{projectId ? '前往生成，运行模拟流程' : '选择项目后开始模拟流程'}</button>{projectId && <details><summary>旧版模拟与项目图像参数</summary><ProjectAdvanced projectId={projectId} /><ProductionSettings projectId={projectId} testTools /></details>}</section>}
+        {advanced === '项目专业配置' && <section className="settings-panel"><h2>项目专业配置</h2><p>旧版视频连接与项目生产诊断。保存配置不代表真实生成已开放。</p>{projectId ? <ProductionSettings projectId={projectId} /> : <p>请先选择项目，再配置项目专属参数。</p>}</section>}
+        {advanced === '维护与数据' && <div className="settings-panel"><OperationsPage /></div>}
+        {advanced === '旧版兼容入口' && <section className="settings-panel creator-compat-links" aria-label="旧版兼容入口"><h2>旧版兼容入口</h2>{projectId ? (['characters', 'locations', 'props', 'assets', 'production', 'legacyGeneration'] as const).map(module => <button key={module} onClick={() => navigate(module)}>{{characters:'角色',locations:'场景',props:'道具',assets:'素材库',production:'生产看板',legacyGeneration:'旧版生成'}[module]}</button>) : <p>请先选择项目。</p>}</section>}
+      </>}
+    </div>
   </section>
+}
+function ProjectPreferences({ projectId }: { projectId: string }) {
+  const visual = useVisual(projectId)
+  const [message, setMessage] = useState('')
+  if (!visual.snapshot) return <p>正在读取项目设置…</p>
+  return <PreferencesForm key={projectId} settings={visual.snapshot.settings} busy={visual.busy} save={async settings => { try { await visual.execute({operation:'settings.save',projectId,settings}); setMessage('项目偏好已保存') } catch { setMessage('保存失败，请重试。') } }} message={message} />
+}
+function PreferencesForm({settings: original, busy, save, message}: {settings: ProviderSettings;busy:boolean;save:(s:ProviderSettings)=>Promise<void>;message:string}) {
+  const [settings,setSettings] = useState(original)
+  return <form className="settings-form" onSubmit={e=>{e.preventDefault();void save(settings)}}><label>画面风格<input value={settings.style} onChange={e=>setSettings({...settings,style:e.target.value})} /></label><p>这些图像偏好保留给兼容制作流程。Alpha 模拟生成使用固定演示素材，不改变画面；故事的题材、风格与画幅可在故事页调整。</p><div className="settings-field-row">{(['width','height'] as const).map(key=><label key={key}>{key==='width'?'图像宽度':'图像高度'}<input type="number" min="64" max="2048" step="8" value={settings[key]} onChange={e=>setSettings({...settings,[key]:Number(e.target.value)})} /></label>)}</div><button className="primary" disabled={busy}>保存项目偏好</button>{message && <p role="status">{message}</p>}</form>
+}
+function ProjectAdvanced({projectId}:{projectId:string}) {
+  const visual = useVisual(projectId)
+  return <>{visual.error && <p role="alert">{visual.error}</p>}{visual.snapshot && <SettingsForm projectId={projectId} snapshot={visual.snapshot} execute={visual.execute} />}</>
 }
 function SettingsForm({
   projectId,

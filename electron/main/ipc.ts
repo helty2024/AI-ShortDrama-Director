@@ -1,3 +1,4 @@
+import type { ServiceSettingsCommand } from '../../src/shared/service-settings.js'
 import { WorkflowService } from './workflow/service.js'
 import { LineageService } from './generation/lineage.js'
 import { toolReadiness } from './tools/readiness.js'
@@ -48,7 +49,10 @@ export function registerWorkspaceIPC(
     importCredential: () => Promise<null>
     probe: () => Promise<unknown>
   },
+  serviceSettings?: (command: ServiceSettingsCommand) => Promise<unknown>,
 ) {
+  let configuringComfy = false
+  let activeImageCommands = 0
   const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
   workflows?.runner.recoverUnfinished()
   const pilot = new ProductionIntelligenceService(
@@ -104,6 +108,7 @@ export function registerWorkspaceIPC(
             return { ok: true, data: z.json().parse(data) }
           }
           case 'workflow':
+            if (configuringComfy && !['getWorkflowRun', 'listWorkflowRuns'].includes(request.command.op)) throw new DomainError('CONFLICT', '正在保存图像连接，请稍候重试')
             if (!workflows) throw new DomainError('CONFLICT', '工作流服务未配置')
             return { ok: true, data: z.json().parse(workflows.execute(request.command)) }
           case 'operations':
@@ -128,6 +133,9 @@ export function registerWorkspaceIPC(
             return { ok: true, data: await production.execute(request.command) }
           case 'imageApi': {
             if (!imageApi) throw new DomainError('CONFLICT','Image API 未配置')
+            if (configuringComfy) throw new DomainError('CONFLICT', '正在保存本机图像连接，请稍候重试')
+            activeImageCommands++
+            try {
             const c=request.command
             let data:unknown
             switch(c.op){
@@ -140,6 +148,7 @@ export function registerWorkspaceIPC(
               case 'review': data=imageApi.review(c.projectId,c.versionId,c.revision,c.adopt,c.targetRevision);break
             }
             return {ok:true,data:z.json().parse(data??null)}
+            } finally { activeImageCommands-- }
           }
           case 'videoApi': {
             if (!videoApi) throw new DomainError('CONFLICT', 'Video API 未配置')
@@ -180,6 +189,14 @@ export function registerWorkspaceIPC(
                 break
             }
             return { ok: true, data: z.json().parse(data ?? null) }
+          }
+          case 'serviceSettings': {
+            if (!serviceSettings) throw new DomainError('CONFLICT', '服务设置暂不可用')
+            if (request.command.op === 'comfy.configuration') return { ok:true, data:z.json().parse(await serviceSettings(request.command)) }
+            if (configuringComfy || activeImageCommands) throw new DomainError('CONFLICT', '图像操作正在处理中，请稍候保存连接')
+            configuringComfy = true
+            try { return { ok:true, data:z.json().parse(await serviceSettings(request.command)) } }
+            finally { configuringComfy = false }
           }
           case 'compshareH3': {
             if (!compshareH3) throw new DomainError('CONFLICT', 'CompShare 未配置')

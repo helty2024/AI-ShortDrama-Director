@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 const execute = promisify(execFile)
 const output = resolve('build/alpha-runtime')
 const manifest = JSON.parse(await readFile('package.json', 'utf8'))
-if (process.platform !== 'win32' || manifest.version !== '0.9.0-alpha.1') throw new Error('Alpha Windows build only')
+if (process.platform !== 'win32' || manifest.version !== '0.9.0-alpha.2') throw new Error('Alpha Windows build only')
 await mkdir(output, { recursive: true })
 const report = { version: manifest.version, tools: [] }
 for (const tool of ['ffmpeg', 'ffprobe']) {
