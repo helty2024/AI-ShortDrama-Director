@@ -749,7 +749,7 @@ export class ImageGenerationService {
             sourceAssetIds: references.map(
               (r) => this.visual.version(p, r.assetVersionId).assetId,
             ),
-            metadata: {},
+            metadata: { targetId: v.record.targetObjectId },
           }),
         )
         new GenerationService(this.generation).completeAttempt(

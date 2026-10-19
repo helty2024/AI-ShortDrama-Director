@@ -205,10 +205,11 @@ test('image-to-video uploads only controlled AssetVersion bytes after explicit c
     assert.equal(preview.inputImageCount, 1)
     const task = value.service.confirm(value.project.id, preview.id, 100, true)
     await value.service.wait(task.id)
-    assert.equal(
-      (await value.service.query(value.project.id, task.id)).task.status,
-      'succeeded',
-    )
+    const result = await value.service.query(value.project.id, task.id)
+    assert.equal(result.task.status, 'succeeded')
+    assert.deepEqual(result.record.inputAssetVersionIds, [frame.id])
+    assert.deepEqual(result.versions[0]?.sourceKeyframeVersionIds, [frame.id])
+    assert.deepEqual(result.versions[0]?.sourceAssetIds, [frame.assetId])
     const body = JSON.stringify(value.server.body())
     assert.match(body, /base64/)
     assert.doesNotMatch(body, /storageKey|file:\/\/|VIDEO_FIXTURE_SECRET/)

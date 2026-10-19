@@ -753,6 +753,7 @@ export class VideoApiGenerationService {
           negativePrompt: 'negativePrompt' in input ? input.negativePrompt : '',
           generationTaskId: runtime.record.taskId,
           sourceAssetIds,
+          sourceKeyframeVersionIds: runtime.record.inputAssetVersionIds,
           metadata: {
             targetId: runtime.record.targetObjectId,
             generationRecordId: runtime.record.id,
