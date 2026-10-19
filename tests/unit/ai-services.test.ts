@@ -133,3 +133,39 @@ test('Configured production Story parsing calls the structured provider and stor
     assert.match(String(f.transport.calls.at(-1)?.body),/director_structured_script/)
   }finally{queue?.close();db.close();await f.close()}
 })
+
+test('First confirmed Story task validates the text service with one POST and survives reopening', async () => {
+  const f = await fixture(), db = new ProjectDatabase(':memory:'), repo = new IntelligenceRepository(db)
+  let queue: AITaskQueue | undefined
+  try {
+    await f.manager.execute({ op: 'ai.save', service: { ...f.input, textOutputMode: 'json-prompt' }, apiKey: 'sk-ml-FIXTURE_ONLY' })
+    const s = (await f.manager.snapshot()).services[0]!
+    await f.manager.execute({ op: 'ai.default', id: s.id })
+    f.transport.structured = { episodes: [{ name: '真实任务协议', scenes: [{ ...emptyScene, heading: '场次', action: '单次请求结果' }] }], warnings: [] }
+    const p = db.create({ name: '首任务验证', description: '', genre: '剧情', language: 'zh-CN', aspectRatio: '16:9' })
+    queue = new AITaskQueue(repo, f.manager.textProvider(new MockTextProvider(), { validateOnFirstTask: true }))
+    assert.throws(() => queue!.start(p.id, { type: 'parse', name: '故事', rawText: '未授权' }), /确认/)
+    assert.equal(f.transport.calls.length, 0)
+    const task = queue.start(p.id, { type: 'parse', name: '故事', rawText: '授权单次请求' }, true)
+    for (let n = 0; n < 100 && ['queued', 'running'].includes(repo.task(p.id, task.id).status); n++) await new Promise(r => setTimeout(r, 10))
+    assert.equal(repo.task(p.id, task.id).status, 'succeeded')
+    assert.equal(f.transport.calls.length, 1)
+    assert.equal(JSON.parse(String(f.transport.calls[0]!.body)).response_format, undefined)
+    const reopened = new AIServiceManager(f.path, f.credentials, f.host, false, f.transport)
+    await reopened.load()
+    assert.equal((await reopened.snapshot()).services[0]?.generation, 'validated')
+    assert.equal((await reopened.snapshot()).services[0]?.textOutputMode, 'json-prompt')
+  } finally { queue?.close(); db.close(); await f.close() }
+})
+
+test('An invalid first real task never marks the service validated or retries', async () => {
+  const f = await fixture()
+  try {
+    const s = await f.save()
+    await f.manager.execute({ op: 'ai.default', id: s.id })
+    f.transport.valid = false
+    await assert.rejects(f.manager.textProvider(new MockTextProvider(), { validateOnFirstTask: true }).generateStructured({ system: 'test', input: {}, schema: z.strictObject({ ok: z.literal(true) }), schemaName: 'test', signal: AbortSignal.timeout(1000) }))
+    assert.equal(f.transport.calls.length, 1)
+    assert.equal((await f.manager.snapshot()).services[0]?.generation, 'unverified')
+  } finally { await f.close() }
+})

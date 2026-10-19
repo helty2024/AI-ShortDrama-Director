@@ -7,6 +7,7 @@ import type { CredentialStore } from '../video/credentials.js'
 import { CompatibleTextProvider, AIError, type StructuredRequest, type TextGenerationProvider } from '../intelligence/provider.js'
 import { ImageHttpTransport } from '../tools/adapters/image-http.js'
 import { DomainError } from '../database.js'
+import { packyImageModels } from '../../../src/shared/packy-models.js'
 
 const storedSchema = aiServiceInputSchema.omit({ id: true }).extend({
   id: z.uuid(), credentialRef: z.uuid().nullable(), enabled: z.boolean(), deleted: z.boolean(),
@@ -106,14 +107,19 @@ export class AIServiceManager {
     }
     return new CompatibleTextProvider({ baseUrl: s.baseUrl, model: s.model, maxTokens: 4000, outputMode: s.textOutputMode ?? 'json-schema' }, { retries: 0, timeoutMs: 90000 }, fetcher)
   }
-  textProvider(mock: TextGenerationProvider): TextGenerationProvider {
+  textProvider(mock: TextGenerationProvider, options: { validateOnFirstTask?: boolean } = {}): TextGenerationProvider {
     const selected = () => this.defaultService('text'), mode = () => this.mode
     const generate = async <T>(request: StructuredRequest<T>) => {
       if (this.mode === 'test') return mock.generateStructured(request)
       const s = selected()
       if (!s || !s.credentialRef) throw new AIError('AUTH', '请先连接 AI 服务，并设为默认文本模型')
-      if (!s.structuredValidated || s.connection!=='accepted') throw new AIError('INVALID_OUTPUT', '请先在 AI 服务中检测连接并验证该模型的结构化输出协议')
-      return this.text(s).generateStructured(request)
+      if ((!s.structuredValidated || s.connection!=='accepted') && !options.validateOnFirstTask) throw new AIError('INVALID_OUTPUT', '请先在 AI 服务中检测连接并验证该模型的结构化输出协议')
+      const output = await this.text(s).generateStructured(request)
+      if (!s.structuredValidated || s.connection !== 'accepted') {
+        const current = this.services.find(v => v.id === s.id && v.revision === s.revision)
+        if (current) await this.persist({ ...this.catalog, services: this.catalog.services.map(v => v.id === s.id ? { ...current, connection: 'accepted', checkedAt: new Date().toISOString(), structuredValidated: true, reason: '首个真实任务结果已通过结构校验。后续任务仍需确认费用，失败不会自动重试。' } : v) }, false)
+      }
+      return output
     }
     return {
       get name() { const s = selected(); return mode() === 'test' ? mock.name : s ? `text:${s.id}:r${s.revision}` : 'text-unconfigured' },
@@ -138,7 +144,7 @@ export class AIServiceManager {
           throw new DomainError('INVALID_INPUT', '文本兼容方式仅适用于文本服务')
         if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.port && url.port !== '443')
           throw new DomainError('INVALID_INPUT', '云服务地址必须为 HTTPS，不含密钥、查询参数或自定义端口')
-        if (input.kind === 'packy-image' && (input.baseUrl !== 'https://cf.api.fan/v1' || input.model !== 'gpt-image-2.5-sunburst') ||
+        if (input.kind === 'packy-image' && (input.baseUrl !== 'https://cf.api.fan/v1' || !packyImageModels.some(model => model === input.model)) ||
           input.kind === 'compshare-video' && (input.baseUrl !== 'https://cp.compshare.cn' || input.model !== 'MiniMax-H3'))
           throw new DomainError('INVALID_INPUT', '请使用已实现供应商的固定协议模板')
         const old = input.id ? this.find(input.id) : undefined

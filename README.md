@@ -8,6 +8,8 @@
 
 Windows 安装包：`npm run dist:alpha`，包含 FFmpeg / FFprobe，使用独立 Alpha 安装标识和数据目录。构建工具只写入被忽略的 `build/alpha-runtime/`；模拟回执与媒体保存在本机用户数据中，不进入 Git。详见 [09-01 范围、安装说明与测试门禁](docs/test-ready-alpha-09-01.md)。安装版验收脚本为 `scripts/verify-alpha.ts`；UI 草案 stash 保持原样。
 
+2026-10-19 增加 SenseNova 6.8 Flash Lite 模板和 Packy Flare 模型选择，分别复用真实文本与原生图像执行路径；Flare 明确提示自动尺寸，只开放单张文生图。首个确认的故事请求可同时验证结构化协议，不额外发送收费探测。三模型各一次真实测试的范围、结果和未通过环节见 [三模型受控真实测试](docs/real-three-model-validation-2026-10-19.md)。模拟回归通过不能替代该报告中的真实验收。
+
 设置默认打开 **AI 服务**，按文本、图像、视频、本地生成服务展示连接与生成验证状态。**基本设置**只修改当前项目偏好；**高级与诊断**保留专业配置、维护和测试工具。无需项目即可配置服务：本机 ComfyUI 连接存放在 `comfyui-service-settings.json`，保存后即时应用、只读检测；该文件不进入 Git。模板导入及旧版模拟参数在高级测试区，云服务的密钥导入仍由主进程加密处理。未确认或未结束的 ComfyUI 生成会阻止更改连接。
 
 ## 产品方向与目标架构

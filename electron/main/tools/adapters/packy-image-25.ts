@@ -25,16 +25,17 @@ import {
   type ToolSubmitResult,
 } from '../../../../src/shared/tools.js'
 import { generationEstimateSchema } from '../../../../src/shared/generation.js'
+import { packyImageModels, packyImageModelNames } from '../../../../src/shared/packy-models.js'
 
 const currentPackyImage25ProfileSchema = z.strictObject({
   adapter: z.literal('packy-image-25'),
   toolId: z.literal('packy.image-25'),
-  displayName: z.literal('PackyAPI · GPT Image 2.5 Sunburst'),
-  modelId: z.literal('gpt-image-2.5-sunburst'),
+  displayName: z.string().max(120),
+  modelId: z.enum(packyImageModels),
   tokenGroup: z.literal('image'),
   credentialRef: z.uuid().nullable(),
   currency: z.literal('USD'),
-})
+}).refine(p => p.displayName === packyImageModelNames[p.modelId], 'Model and display name must match')
 export const packyImage25ProfileSchema = z.preprocess(
   (value) =>
     value &&
@@ -195,9 +196,7 @@ export class PackyImage25Adapter implements ImageApiTool {
       kind: 'api',
       executionMode: 'cloud',
       availability: 'unknown',
-      capabilities: (
-        ['image.generate', 'image.referenceGenerate'] as const
-      ).map((capability) => ({
+      capabilities: (this.profile.modelId === 'gpt-image-2.5-flare' ? ['image.generate'] as const : ['image.generate', 'image.referenceGenerate'] as const).map((capability) => ({
         capability,
         contractVersion: '1.0.0',
         models: { status: 'known', value: [this.profile.modelId] },
@@ -319,7 +318,7 @@ export class PackyImage25Adapter implements ImageApiTool {
     signal: AbortSignal,
   ) {
     const parsed = capabilityContracts[cap].input.safeParse(input)
-    let valid = parsed.success && ctx.model === this.profile.modelId
+    let valid = parsed.success && ctx.model === this.profile.modelId && !(this.profile.modelId === 'gpt-image-2.5-flare' && cap !== 'image.generate')
     if (parsed.success) {
       const v = parsed.data as CapabilityInput<ImageCapability>
       const ratio =
@@ -378,7 +377,7 @@ export class PackyImage25Adapter implements ImageApiTool {
         {
           code: 'tool-unavailable',
           field: null,
-          message: this.paidValidation
+          message: this.profile.modelId === 'gpt-image-2.5-flare' ? 'Flare 仅开放已明确授权的单张文生图测试；费用未独立报价，远端能力仍需验证。' : this.paidValidation
             ? 'Sunburst 单次付费验证；USD 0.4000，只允许一次固定文生图'
             : '本地映射不证明 Sunburst 远端能力；真实生成关闭',
         },
@@ -399,7 +398,7 @@ export class PackyImage25Adapter implements ImageApiTool {
       routingDecisionId: ctx.routingDecisionId,
       requestFingerprint: ctx.requestFingerprint,
       cost:
-        cap === 'image.generate'
+        cap === 'image.generate' && this.profile.modelId === 'gpt-image-2.5-sunburst'
           ? {
               status: 'known',
               estimatedCost: { amountMicros: 400_000, currency: 'USD' },
@@ -409,9 +408,9 @@ export class PackyImage25Adapter implements ImageApiTool {
       estimatedDurationRange: { status: 'unknown' },
       billingRisk: 'may-charge',
       basis:
-        cap === 'image.generate'
+        cap === 'image.generate' && this.profile.modelId === 'gpt-image-2.5-sunburst'
           ? `PackyAPI / ${this.profile.modelId} / endpoint type image-generation / POST images/generations; USD 0.4000 per request`
-          : `PackyAPI / ${this.profile.modelId} / image edit; price not confirmed`,
+          : `PackyAPI / ${this.profile.modelId}; price not confirmed`,
       createdAt: new Date().toISOString(),
       validUntil: new Date(
         Date.now() + (this.paidValidation ? 30 * 60 * 1000 : 60000),

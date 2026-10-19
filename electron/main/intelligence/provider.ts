@@ -108,10 +108,10 @@ export abstract class ValidatedTextProvider implements TextGenerationProvider {
 }
 export class CompatibleTextProvider extends ValidatedTextProvider {
   readonly name = 'compatible-text'
-  private readonly config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' }
+  private readonly config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' | 'json-prompt' }
   private readonly fetcher: typeof fetch
   constructor(
-    config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' },
+    config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' | 'json-prompt' },
     options?: ProviderOptions,
     fetcher: typeof fetch = fetch,
   ) {
@@ -141,6 +141,8 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
   ): Promise<unknown> {
     let response: Response
     const jsonObject = this.config.outputMode === 'json-object'
+    const promptOnly = this.config.outputMode === 'json-prompt'
+    const compatible = jsonObject || promptOnly
     const schema = z.toJSONSchema(request.schema)
     try {
       response = await this.fetcher(
@@ -157,19 +159,19 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
           },
           body: JSON.stringify({
             model: this.config.model,
-            ...(this.config.maxTokens ? jsonObject ? { max_tokens: this.config.maxTokens } : { max_completion_tokens: this.config.maxTokens } : {}),
+            ...(this.config.maxTokens ? compatible ? { max_tokens: this.config.maxTokens } : { max_completion_tokens: this.config.maxTokens } : {}),
             messages: [
-              { role: 'system', content: jsonObject ? `${request.system}\n只返回一个 JSON 对象，不要 Markdown 或额外说明。输出必须符合以下 JSON Schema：\n${JSON.stringify(schema)}` : request.system },
+              { role: 'system', content: compatible ? `${request.system}\n只返回一个 JSON 对象，不要 Markdown 或额外说明。输出必须符合以下 JSON Schema：\n${JSON.stringify(schema)}` : request.system },
               { role: 'user', content: JSON.stringify(request.input) },
             ],
-            response_format: jsonObject ? { type: 'json_object' } : {
+            ...(!promptOnly ? { response_format: jsonObject ? { type: 'json_object' } : {
               type: 'json_schema',
               json_schema: {
                 name: request.schemaName,
                 strict: true,
                 schema,
               },
-            },
+            } } : {}),
           }),
         },
       )

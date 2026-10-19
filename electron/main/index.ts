@@ -2,6 +2,7 @@ import { loadComfySettings, saveComfySettings, validateComfySettings } from './g
 import { WorkflowRepository, terminalWorkflow } from './workflow/repository.js'
 import { builtinTemplates } from './visual/workflows.js'
 import { AIServiceManager } from './generation/ai-services.js'
+import { packyImageModels, packyImageModelNames } from '../../src/shared/packy-models.js'
 import { PackyImage25Adapter } from './tools/adapters/packy-image-25.js'
 import { ProductionPackyAdapter } from './generation/production-packy.js'
 import { NativeProductionGate } from './generation/native-production.js'
@@ -203,13 +204,15 @@ app
           const report = await adapter.probe(AbortSignal.timeout(15000))
           return { accepted: report.authenticated, reason: report.authenticated ? (report.points!.available > 0 ? '连接检测通过。积分可用；模型权限、真实生成和安全下载尚需验证。' : '连接检测通过，但账户额度不足，请充值后继续。真实生成未开放。') : '密钥无效或服务不可达，请重新设置并检测；未提交视频任务。' }
         }
-        const adapter = new PackyImage25Adapter({ adapter: 'packy-image-25', toolId: 'packy.image-25', displayName: 'PackyAPI · GPT Image 2.5 Sunburst', modelId: 'gpt-image-2.5-sunburst', tokenGroup: 'image', credentialRef: service.credentialRef, currency: 'USD' }, async () => credentials.get(service.credentialRef!))
+        const model = packyImageModels.find(m => m === service.model)
+        if (!model) throw new DomainError('INVALID_INPUT', '不支持此 Packy 模型')
+        const adapter = new PackyImage25Adapter({ adapter: 'packy-image-25', toolId: 'packy.image-25', displayName: packyImageModelNames[model], modelId: model, tokenGroup: 'image', credentialRef: service.credentialRef, currency: 'USD' }, async () => credentials.get(service.credentialRef!))
         const report = await adapter.probeConnectivity(AbortSignal.timeout(15000))
         return { accepted: report.authentication === 'accepted' && report.modelVisible === true, reason: report.authentication === 'accepted' && report.modelVisible ? '连接检测通过。目标模型可见；真实生成响应仍需单独验证。' : '密钥无效或模型不可见，请重新设置并检查模型权限。' }
       },
     }, !app.isPackaged && Boolean(process.env.DIRECTOR_TEST_USER_DATA) && process.env.DIRECTOR_TEXT_PROVIDER === 'mock')
     await services.load()
-    const provider = services.textProvider(new MockTextProvider())
+    const provider = services.textProvider(new MockTextProvider(), { validateOnFirstTask: true })
     queue = new AITaskQueue(
       repo,
       provider,

@@ -40,25 +40,57 @@ const input: CapabilityInput<'image.generate'> = {
   count: 1,
   outputMime: 'image/png',
 }
-function context(cap: ImageCapability, data: CapabilityInput<ImageCapability>) {
+
+test('Flare keeps its exact model, unknown pricing and conservative single-image capability', async () => {
+  const p = packyImage25ProfileSchema.parse({ ...profile, modelId: 'gpt-image-2.5-flare', displayName: 'PackyAPI · GPT Image 2.5 Flare' })
+  assert.equal(packyImage25ProfileSchema.safeParse({ ...p, displayName: profile.displayName }).success, false)
+  const a = new PackyImage25Adapter(p, async () => 'FIXTURE_SECRET')
+  assert.deepEqual(a.describe().capabilities.map(c => c.capability), ['image.generate'])
+  const ctx = context('image.generate', input, p.modelId)
+  assert.equal((await a.estimate('image.generate', input, ctx, AbortSignal.timeout(1000))).cost.status, 'unknown')
+  assert.equal((await a.validate('image.referenceGenerate', { ...input, references: [] }, ctx, AbortSignal.timeout(1000))).valid, false)
+})
+function context(cap: ImageCapability, data: CapabilityInput<ImageCapability>, model: string = profile.modelId) {
   return {
     projectId: randomUUID(),
     taskId: randomUUID(),
     approvalId: randomUUID(),
     estimateId: randomUUID(),
     routingDecisionId: null,
-    model: profile.modelId,
+    model,
     requestFingerprint: requestFingerprint({
       fingerprintVersion: '1',
       snapshot: { capability: cap, contractVersion: '1.0.0', input: data },
       toolId: profile.toolId,
       toolVersion: '1.0.0',
-      model: profile.modelId,
+      model,
       sourceRevisions: {},
       routing: null,
     }),
   }
 }
+
+test('Flare submits its selected native model once and ingests a decoded PNG', async () => {
+  const f = await fixture()
+  try {
+    const p = packyImage25ProfileSchema.parse({ ...profile, modelId: 'gpt-image-2.5-flare', displayName: 'PackyAPI · GPT Image 2.5 Flare' })
+    const a = new PackyImage25Adapter(p, async () => 'FIXTURE_SECRET', new ImageHttpTransport({ fixtureOrigin: f.origin, timeoutMs: 1000 }))
+    const ctx = context('image.generate', input, p.modelId)
+    let ingested = 0
+    a.authorizeInputs(ctx, { references: [], billing: () => assert.fail('Not billing evidence'), ingest: async (bytes, mime) => {
+      ingested++
+      const metadata = await sharp(bytes).metadata()
+      assert.equal(mime, 'image/png')
+      return { handle: 'fixture-handle', mime: 'image/png', resolution: { width: metadata.width!, height: metadata.height! } }
+    } })
+    assert.equal((await a.submit('image.generate', input, ctx, AbortSignal.timeout(2000))).state, 'completed')
+    assert.equal(ingested, 1)
+    assert.equal(f.calls.length, 1)
+    const body = JSON.parse(f.calls[0]!.body.toString())
+    assert.equal(body.model, 'gpt-image-2.5-flare')
+    assert.equal(body.n, 1)
+  } finally { await f.close() }
+})
 async function fixture(mode = 'ok', generatedBytes?: Buffer) {
   generatedBytes ??= await sharp({
     create: {

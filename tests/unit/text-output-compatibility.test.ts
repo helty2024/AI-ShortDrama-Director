@@ -65,3 +65,32 @@ test('A service template clears the previous model without guessing account acce
   const native = { ...initial, kind: 'compshare-video' as const }
   assert.equal(applyTextServicePreset(native, 'deepseek'), native)
 })
+
+test('SenseNova preset uses the requested model and prompt-only JSON without unsupported format parameters', async () => {
+  const preset = applyTextServicePreset({ id: null, kind: 'text', name: '', baseUrl: 'https://fixture.example/v1', model: '' }, 'sensenova')
+  assert.equal(preset.baseUrl, 'https://token.sensenova.cn/v1')
+  assert.equal(preset.model, 'sensenova-6.8-flash-lite')
+  assert.equal(preset.textOutputMode, 'json-prompt')
+  let calls = 0
+  const provider = new CompatibleTextProvider({ ...preset, maxTokens: 4000, outputMode: preset.textOutputMode }, { retries: 0 }, async (_url, init) => {
+    calls++
+    const body = JSON.parse(String(init?.body))
+    assert.equal(body.response_format, undefined)
+    assert.equal(body.max_tokens, 4000)
+    assert.equal(body.max_completion_tokens, undefined)
+    assert.match(body.messages[0].content, /JSON Schema/)
+    assert.match(body.messages[0].content, /"const":true/)
+    return envelope('{"ok":true}')
+  })
+  assert.deepEqual(await provider.generateStructured(request()), { ok: true })
+  assert.equal(calls, 1)
+})
+
+test('Prompt-only JSON still rejects invalid structure and truncation without a paid retry', async () => {
+  for (const [content, reason] of [['{"wrong":true}', 'stop'], ['{"ok":true}', 'length']]) {
+    let calls = 0
+    const provider = new CompatibleTextProvider({ baseUrl: 'https://fixture.example/v1', model: 'fixture-model', outputMode: 'json-prompt' }, { retries: 0 }, async () => { calls++; return envelope(content!, reason) })
+    await assert.rejects(provider.generateStructured(request()))
+    assert.equal(calls, 1)
+  }
+})

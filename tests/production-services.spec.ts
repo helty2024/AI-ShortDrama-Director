@@ -5,6 +5,41 @@ import { join } from 'node:path'
 import { aiServicesSnapshotSchema } from '../src/shared/ai-services.js'
 import { createAlphaStory, createAlphaShot } from './fixtures/alpha-journey.js'
 
+test('SenseNova and Flare selections save and reload without sending a generation request', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'director-three-model-config-'))
+  let app = await launch(root)
+  try {
+    let page = await app.firstWindow()
+    await page.evaluate(() => window.desktop!.workspace.request({ action: 'serviceSettings', command: { op: 'ai.mode', mode: 'production', confirmed: true } }))
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('button', { name: '添加文本 AI服务' }).click()
+    let dialog = page.getByRole('dialog', { name: 'AI 服务配置' })
+    await dialog.getByLabel('选择服务模板').selectOption('sensenova')
+    await expect(dialog.getByLabel('模型名称', { exact: true })).toHaveValue('sensenova-6.8-flash-lite')
+    await dialog.getByText('模型兼容设置', { exact: true }).click()
+    await expect(dialog.getByLabel('输出兼容方式')).toHaveValue('json-prompt')
+    await dialog.getByRole('button', { name: '保存服务', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await page.getByRole('button', { name: '添加图像 AI服务' }).click()
+    dialog = page.getByRole('dialog', { name: 'AI 服务配置' })
+    await dialog.getByLabel('模型名称', { exact: true }).selectOption('gpt-image-2.5-flare')
+    await dialog.getByRole('button', { name: '保存服务', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await app.close(); app = await launch(root); page = await app.firstWindow()
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const result = await page.evaluate(() => window.desktop!.workspace.request({ action: 'serviceSettings', command: { op: 'ai.list' } }))
+    if (!result.ok) throw new Error(result.message)
+    const state = aiServicesSnapshotSchema.parse(result.data)
+    expect(state.services.find(s => s.kind === 'text')?.textOutputMode).toBe('json-prompt')
+    expect(state.services.find(s => s.kind === 'packy-image')?.model).toBe('gpt-image-2.5-flare')
+    expect(state.services.every(s => s.connection === 'unchecked' && s.generation === 'unverified')).toBe(true)
+    await expect(page.getByRole('region', { name: 'Packy Image', exact: true })).toContainText('自动尺寸')
+    await expect(page.locator('table')).toHaveCount(0)
+    await page.getByRole('region', { name: 'Packy Image', exact: true }).getByText('真实生成测试', { exact: true }).click()
+    await expect(page.getByRole('button', { name: '准备单次真实测试' }).first()).toBeDisabled()
+  } finally { await app.close(); await rm(root, { recursive: true, force: true }) }
+})
+
 async function launch(root:string) {
   const env:Record<string,string>=Object.fromEntries(Object.entries(process.env).filter((v):v is [string,string]=>v[1]!==undefined))
   delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL

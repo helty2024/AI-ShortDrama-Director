@@ -7,12 +7,15 @@ import type { StoredAIService } from './ai-services.js'
 import type { NativeProductionGate } from './native-production.js'
 import type { CredentialStore } from '../video/credentials.js'
 import { generationEstimateSchema } from '../../../src/shared/generation.js'
+import { packyImageModels, packyImageModelNames } from '../../../src/shared/packy-models.js'
 
 export class ProductionPackyAdapter extends PackyImage25Adapter {
   private readonly service: StoredAIService
   private readonly gate: NativeProductionGate
   constructor(service: StoredAIService, credentials: CredentialStore, gate: NativeProductionGate) {
-    super({adapter:'packy-image-25',toolId:'packy.image-25',displayName:'PackyAPI · GPT Image 2.5 Sunburst',modelId:'gpt-image-2.5-sunburst',credentialRef:service.credentialRef,tokenGroup:'image',currency:'USD'},
+    const model = packyImageModels.find(m => m === service.model)
+    if (!model) throw new Error('Unsupported Packy model')
+    super({adapter:'packy-image-25',toolId:'packy.image-25',displayName:packyImageModelNames[model],modelId:model,credentialRef:service.credentialRef,tokenGroup:'image',currency:'USD'},
       async()=>credentials.get(service.credentialRef!),new ImageHttpTransport({timeoutMs:180000}),{
         consume:async(cap,input,context)=>{if(input.count!==1)throw new Error('One output per confirmed request required');await gate.consume(service,cap,context)},
       })

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const aiServiceKindSchema = z.enum(['text', 'packy-image', 'compshare-video'])
-export const textOutputModeSchema = z.enum(['json-schema', 'json-object'])
+export const textOutputModeSchema = z.enum(['json-schema', 'json-object', 'json-prompt'])
 export const aiServiceInputSchema = z.strictObject({
   id: z.uuid().nullable(),
   kind: aiServiceKindSchema,
