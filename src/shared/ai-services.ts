@@ -1,15 +1,18 @@
 import { z } from 'zod'
 
 export const aiServiceKindSchema = z.enum(['text', 'packy-image', 'compshare-video'])
+export const textOutputModeSchema = z.enum(['json-schema', 'json-object'])
 export const aiServiceInputSchema = z.strictObject({
   id: z.uuid().nullable(),
   kind: aiServiceKindSchema,
   name: z.string().trim().min(1).max(120),
   baseUrl: z.url().max(1000),
   model: z.string().trim().min(1).max(200),
+  textOutputMode: textOutputModeSchema.optional(),
 })
 export const aiServiceStateSchema = z.strictObject({
   id: z.uuid(), kind: aiServiceKindSchema, name: z.string(), baseUrl: z.string(), model: z.string(),
+  textOutputMode: textOutputModeSchema.optional(),
   enabled: z.boolean(), isDefault: z.boolean(), credentialSaved: z.boolean(),
   connection: z.enum(['unchecked', 'accepted', 'rejected', 'unavailable']),
   generation: z.enum(['unverified', 'trial', 'validated', 'blocked']),

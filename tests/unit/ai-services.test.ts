@@ -75,6 +75,35 @@ test('Malformed structured output never validates a real service or triggers an 
   const f=await fixture()
   try{const s=await f.save();await f.manager.execute({op:'ai.probe',id:s.id});f.transport.valid=false;await f.manager.execute({op:'ai.validateText',id:s.id,confirmed:true});assert.equal((await f.manager.snapshot()).services[0]?.generation,'unverified');assert.equal(f.transport.calls.length,2)}finally{await f.close()}
 })
+
+test('Explicit JSON compatibility persists, uses the configured mode and invalidates old validation on change', async () => {
+  const f = await fixture()
+  try {
+    await f.manager.execute({ op: 'ai.save', service: { ...f.input, textOutputMode: 'json-object' }, apiKey: 'sk-ml-FIXTURE_ONLY' })
+    const s = (await f.manager.snapshot()).services[0]!
+    await f.manager.execute({ op: 'ai.probe', id: s.id })
+    await f.manager.execute({ op: 'ai.validateText', id: s.id, confirmed: true })
+    assert.equal((await f.manager.snapshot()).services[0]?.generation, 'validated')
+    assert.equal(JSON.parse(String(f.transport.calls[1]!.body)).response_format.type, 'json_object')
+    const reopened = new AIServiceManager(f.path, f.credentials, f.host, false, f.transport)
+    await reopened.load()
+    assert.equal((await reopened.snapshot()).services[0]?.textOutputMode, 'json-object')
+    await reopened.execute({ op: 'ai.save', service: { ...f.input, id: s.id, textOutputMode: 'json-schema' } })
+    assert.equal((await reopened.snapshot()).services[0]?.generation, 'unverified')
+    assert.equal((await reopened.snapshot()).services[0]?.connection, 'unchecked')
+  } finally { await f.close() }
+})
+
+test('Changing the endpoint cannot reuse the original secret or trigger any request to the new supplier', async () => {
+  const f = await fixture()
+  try {
+    const s = await f.save()
+    await assert.rejects(f.manager.execute({ op: 'ai.save', service: { ...f.input, id: s.id, baseUrl: 'https://different.example/v1' } }), /重新输入对应服务密钥/)
+    assert.equal((await f.manager.snapshot()).services[0]?.baseUrl, f.input.baseUrl)
+    assert.equal(f.transport.calls.length, 0)
+    await assert.rejects(f.manager.execute({ op: 'ai.save', service: { ...f.input, id: null, kind: 'compshare-video', textOutputMode: 'json-object' } }), /仅适用于文本/)
+  } finally { await f.close() }
+})
 test('Key replacement preserves historical references, invalidates verification and affects future requests without restart',async()=>{
   const f=await fixture()
   try{const s=await f.save();await f.manager.execute({op:'ai.default',id:s.id});await f.manager.execute({op:'ai.probe',id:s.id});await f.manager.execute({op:'ai.validateText',id:s.id,confirmed:true});const before=f.manager.textProvider(new MockTextProvider()).name;await f.manager.execute({op:'ai.save',service:{...f.input,id:s.id},apiKey:'sk-ml-FIXTURE_ONLY'});assert.notEqual(f.manager.textProvider(new MockTextProvider()).name,before);const stored=JSON.parse(await readFile(f.path,'utf8')) as {revisions:unknown[]};assert.equal(stored.revisions.length,1);assert.equal((await f.manager.snapshot()).services[0]?.connection,'unchecked');assert.equal((await f.manager.snapshot()).services[0]?.generation,'unverified')}finally{await f.close()}

@@ -58,11 +58,11 @@ export function registerWorkspaceIPC(
   const pilot = new ProductionIntelligenceService(
     production,
     intelligence.queue,
-    async () => {
+    async (kind, filename) => {
       const r = await dialog.showSaveDialog({
-        title: '导出 Production Manifest',
-        defaultPath: 'production-manifest.json',
-        filters: [{ name: 'Production Manifest', extensions: ['json'] }],
+        title: kind === 'storyboard' ? '导出离线分镜表' : '导出 Production Manifest',
+        defaultPath: kind === 'storyboard' ? filename : 'production-manifest.json',
+        filters: kind === 'storyboard' ? [{ name: '离线分镜表', extensions: ['html'] }] : [{ name: 'Production Manifest', extensions: ['json'] }],
       })
       return r.canceled ? null : (r.filePath ?? null)
     },

@@ -288,6 +288,11 @@ export const pilotCommandSchema = z.discriminatedUnion('operation', [
     operation: z.literal('manifest.export'),
     episodeId: id,
   }),
+  z.strictObject({
+    ...scope,
+    operation: z.literal('storyboard.export'),
+    shotIds: z.array(id).min(1).max(5000),
+  }),
 ])
 export const pilotSnapshotSchema = z.strictObject({
   continuity: z.array(continuitySnapshotSchema),

@@ -103,6 +103,21 @@ async function setup() {
     },
   }
 }
+
+test('Storyboard handoff validates project ownership before save and writes only requested shots', async () => {
+  const f = await setup()
+  try {
+    const shots = f.db.workspace(f.project.id).entities.filter(e => e.kind === 'shot')
+    await assert.rejects(f.pilot.execute({ operation: 'storyboard.export', projectId: f.project.id, shotIds: [randomUUID()] }), /不存在所选镜头/)
+    const before = JSON.stringify(f.db.workspace(f.project.id))
+    const result = await f.pilot.execute({ operation: 'storyboard.export', projectId: f.project.id, shotIds: [shots[0]!.id] })
+    assert.match(String(result), /共 1 个镜头/)
+    const html = await readFile(f.manifest, 'utf8')
+    assert.match(html, /<!doctype html>/)
+    assert.ok(html.includes(shots[0]!.name))
+    assert.equal(JSON.stringify(f.db.workspace(f.project.id)), before)
+  } finally { f.queue.close(); f.db.close(); await rm(f.dir, { recursive: true, force: true }) }
+})
 type App = Awaited<ReturnType<typeof setup>>
 function shots(app: App) {
   return app.db

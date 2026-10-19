@@ -67,7 +67,7 @@ export class AIServiceManager {
   }
   async snapshot() {
     return aiServicesSnapshotSchema.parse({ mode: this.mode, defaultImageTool:this.defaultImageTool, localEnabled:this.localEnabled, localArchived:this.catalog.localArchived, services: await Promise.all(this.services.map(async s => ({
-      ...aiServiceInputSchema.parse({ id: s.id, kind: s.kind, name: s.name, baseUrl: s.baseUrl, model: s.model }),
+      ...aiServiceInputSchema.parse({ id: s.id, kind: s.kind, name: s.name, baseUrl: s.baseUrl, model: s.model, ...(s.kind === 'text' ? { textOutputMode: s.textOutputMode ?? 'json-schema' } : {}) }),
       enabled: s.enabled, isDefault: this.catalog.defaults[s.kind] === s.id,
       credentialSaved: Boolean(s.credentialRef && await this.credentials.has(s.credentialRef)),
       connection: s.connection, generation: !s.enabled || ['rejected','unavailable'].includes(s.connection) ? 'blocked' : s.kind === 'text' ? s.structuredValidated && s.connection==='accepted' ? 'validated' : 'unverified' : await this.host.generationStatus?.(s) ?? 'unverified',
@@ -104,7 +104,7 @@ export class AIServiceManager {
         throw new AIError(code === 'authentication' || code === 'authorization' ? 'AUTH' : 'NETWORK', code === 'authentication' || code === 'authorization' ? '密钥无效，请重新设置' : '文本服务请求失败；未自动重复请求')
       }
     }
-    return new CompatibleTextProvider({ baseUrl: s.baseUrl, model: s.model, maxTokens: 4000 }, { retries: 0, timeoutMs: 90000 }, fetcher)
+    return new CompatibleTextProvider({ baseUrl: s.baseUrl, model: s.model, maxTokens: 4000, outputMode: s.textOutputMode ?? 'json-schema' }, { retries: 0, timeoutMs: 90000 }, fetcher)
   }
   textProvider(mock: TextGenerationProvider): TextGenerationProvider {
     const selected = () => this.defaultService('text'), mode = () => this.mode
@@ -134,12 +134,16 @@ export class AIServiceManager {
       if (command.op === 'ai.localDelete') return await this.persist({...this.catalog,localEnabled:false,localArchived:true})
       if (command.op === 'ai.save') {
         const input = aiServiceInputSchema.parse(command.service), url = new URL(input.baseUrl)
+        if (input.kind !== 'text' && input.textOutputMode !== undefined)
+          throw new DomainError('INVALID_INPUT', '文本兼容方式仅适用于文本服务')
         if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.port && url.port !== '443')
           throw new DomainError('INVALID_INPUT', '云服务地址必须为 HTTPS，不含密钥、查询参数或自定义端口')
         if (input.kind === 'packy-image' && (input.baseUrl !== 'https://cf.api.fan/v1' || input.model !== 'gpt-image-2.5-sunburst') ||
           input.kind === 'compshare-video' && (input.baseUrl !== 'https://cp.compshare.cn' || input.model !== 'MiniMax-H3'))
           throw new DomainError('INVALID_INPUT', '请使用已实现供应商的固定协议模板')
         const old = input.id ? this.find(input.id) : undefined
+        if (old && old.baseUrl !== input.baseUrl && !command.apiKey?.trim())
+          throw new DomainError('INVALID_INPUT', '更换服务地址时请重新输入对应服务密钥；不会将原密钥发送给新地址')
         if (old && old.kind !== input.kind) throw new DomainError('CONFLICT', '不能改变历史配置的接口协议')
         if (!old && input.kind !== 'text' && this.services.some(s => s.kind === input.kind))
           throw new DomainError('CONFLICT', '该原生服务已有配置，请修改原配置；历史关联不会删除')

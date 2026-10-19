@@ -4,6 +4,7 @@ import type { ServiceSettingsCommand } from '../../shared/service-settings'
 import { useWorkspace } from '../workspace/state'
 import { CreatorContext } from '../../components/creator-shell/creator-context'
 import { aiServiceCommand } from './service-command'
+import { applyTextServicePreset, textServicePresets } from './text-service-presets'
 const names = { text: '文本 AI', 'packy-image': '图像 AI', 'compshare-video': '视频 AI' }
 const template = (kind: AIServiceInput['kind']): AIServiceInput => ({ id: null, kind,
   name: kind === 'text' ? '兼容文本模型' : kind === 'packy-image' ? 'Packy Image' : 'CompShare · MiniMax H3',
@@ -25,7 +26,7 @@ export function ProductionServices({ localService }: { localService: ReactNode }
     {error && <p role="alert">{error}</p>}
     {(['text', 'packy-image', 'compshare-video'] as const).map(kind => <section className="production-service-group" key={kind} aria-label={names[kind]}>
       <header><h2>{names[kind]}</h2><button disabled={busy} onClick={() => setEditing(template(kind))}>添加{names[kind]}服务</button></header>
-      <div className="service-grid">{snapshot?.services.filter(s => s.kind === kind).map(s => <ServiceCard key={s.id} service={s} busy={busy} act={act} edit={() => setEditing({ id:s.id,kind:s.kind,name:s.name,baseUrl:s.baseUrl,model:s.model })} />)}</div>
+      <div className="service-grid">{snapshot?.services.filter(s => s.kind === kind).map(s => <ServiceCard key={s.id} service={s} busy={busy} act={act} edit={() => setEditing({ id:s.id,kind:s.kind,name:s.name,baseUrl:s.baseUrl,model:s.model,textOutputMode:s.textOutputMode })} />)}</div>
       {!snapshot?.services.some(s => s.kind === kind) && <p className="settings-note">请先连接{names[kind]}服务。{kind === 'text' ? '用于故事整理、剧本、角色/场景/道具提取和分镜。' : kind === 'packy-image' ? '用于资产参考图和分镜关键帧。' : '用于将已确认关键帧制作成镜头视频。'}</p>}
     </section>)}
     <section className="production-service-group"><h2>本地生成服务</h2>{localService}</section>
@@ -35,6 +36,7 @@ export function ProductionServices({ localService }: { localService: ReactNode }
 function ServiceCard({ service:s, busy, act, edit }: {service:AIServiceState;busy:boolean;act:(c:ServiceSettingsCommand)=>Promise<boolean>;edit:()=>void}) {
   const connection = {unchecked:'尚未检测',accepted:'连接检测通过',rejected:'连接检测未通过',unavailable:'服务不可用'}[s.connection]
   return <section className="service-card" aria-label={s.name}><div className="service-card-top"><span className="service-state">{!s.enabled ? '已停用' : connection}</span>{s.isDefault && <span>默认服务</span>}</div><h3>{s.name}</h3><p>模型：{s.model}</p><p>{s.kind === 'text' ? '故事、剧本与制作方案' : s.kind === 'packy-image' ? '参考图与关键帧' : '镜头视频'}</p><p>{s.credentialSaved ? '密钥已加密保存' : '请保存或导入密钥'}</p><p>{s.generation === 'validated' ? s.kind === 'text' ? '结构化生成协议已验证；任务可能收费。' : '已有能力完成真实结果入库验证；其他能力需分别测试。' : s.generation === 'trial' ? '单次真实测试已准备，尚未通过生产验收' : '尚未通过真实生成验收'}</p><p>{s.reason}</p>
+    {s.kind === 'text' && <p className="settings-note">{!s.enabled ? '启用服务后才能用于创作。' : !s.credentialSaved ? '下一步：在设置中保存密钥，或导入本机密钥文件。' : s.connection !== 'accepted' ? '下一步：检测连接，确认密钥与模型权限。' : s.generation !== 'validated' ? '下一步：确认一次小型结构化能力验证，可能收费。' : !s.isDefault ? '下一步：设为默认，故事整理和剧本分析将使用此模型。' : '已准备好：回到故事，点击 AI 整理。每次真实请求仍需确认。'}</p>}
     <div className="service-actions"><button disabled={busy} onClick={edit}>设置</button><button disabled={busy || !s.enabled || !s.credentialSaved} onClick={() => void act({op:'ai.probe',id:s.id})}>检测连接</button><button disabled={busy || !s.enabled || s.isDefault} onClick={() => void act({op:'ai.default',id:s.id})}>设为默认</button></div>
     {s.kind === 'text' && <button disabled={busy || !s.enabled || s.connection !== 'accepted'} onClick={() => { if (window.confirm('将向此文本模型发送一次小型结构化协议请求，可能收费；费用未知，不会自动重试。确认进行本次验证？')) void act({op:'ai.validateText',id:s.id,confirmed:true}) }}>验证结构化能力（可能收费）</button>}
     {s.kind !== 'text' && <NativeTestControls service={s} busy={busy} act={act} />}
@@ -57,7 +59,36 @@ function NativeTestControls({service:s,busy,act}:{service:AIServiceState;busy:bo
 }
 function ServiceForm({initial,busy,close,save}:{initial:AIServiceInput;busy:boolean;close:()=>void;save:(s:AIServiceInput,key:string)=>Promise<void>}) {
   const [value,setValue] = useState(initial), [key,setKey] = useState('')
-  return <div className="creator-generate-confirm-backdrop"><section className="creator-generate-confirm" role="dialog" aria-modal="true" aria-label="AI 服务配置"><h2>{names[value.kind]}设置</h2><form className="settings-form" onSubmit={e=>{e.preventDefault();const secret=key;setKey('');void save(value,secret)}}><p>保存后所有项目共用。密钥仅交给主进程加密保存，不写入普通配置或项目数据。</p><label>服务名称<input required value={value.name} onChange={e=>setValue({...value,name:e.target.value})} /></label><label>接口协议<input readOnly value={value.kind==='text'?'Chat Completions · 严格 JSON Schema':value.kind==='packy-image'?'Packy 原生图像接口':'CompShare MiniMax H3 原生异步接口'} /></label><label>API 地址<input required readOnly={value.kind!=='text'} value={value.baseUrl} onChange={e=>setValue({...value,baseUrl:e.target.value})} /></label><label>模型名称<input required readOnly={value.kind!=='text'} value={value.model} onChange={e=>setValue({...value,model:e.target.value})} /></label><label>API Key<input type="password" autoComplete="new-password" value={key} onChange={e=>setKey(e.target.value)} placeholder={value.id?'留空保留现有密钥；填写新值更换':'可以输入密钥，或保存后导入本机密钥文件'} /></label><div className="actions"><button type="button" disabled={busy} onClick={close}>取消</button><button className="primary" disabled={busy}>保存服务</button></div></form></section></div>
+  const [preset,setPreset] = useState('custom')
+  const addressChanged = Boolean(initial.id && value.baseUrl !== initial.baseUrl)
+  return <div className="creator-generate-confirm-backdrop">
+    <section className="creator-generate-confirm" role="dialog" aria-modal="true" aria-label="AI 服务配置">
+      <h2>{names[value.kind]}设置</h2>
+      <form className="settings-form" onSubmit={e=>{e.preventDefault();const secret=key;setKey('');void save(value,secret)}}>
+        <p>保存后所有项目共用。密钥仅交给主进程加密保存，不写入普通配置或项目数据。</p>
+        {value.kind === 'text' && <>
+          <label>选择服务模板<select value={preset} onChange={e=>{setPreset(e.target.value);setValue(applyTextServicePreset(value,e.target.value));setKey('')}}>
+            <option value="custom">自定义兼容服务</option>
+            {textServicePresets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+          <p>模板只填写连接方式，不代表账户已开通。请填写服务控制台中实际可用的模型名称；方舟填写模型或接入点标识。海外区域请使用自定义地址。切换模板不会联网或生成。</p>
+        </>}
+        <label>服务名称<input required value={value.name} onChange={e=>setValue({...value,name:e.target.value})} /></label>
+        <label>接口协议<input readOnly value={value.kind==='text'?'Chat Completions':value.kind==='packy-image'?'Packy 原生图像接口':'CompShare MiniMax H3 原生异步接口'} /></label>
+        <label>API 地址<input required readOnly={value.kind!=='text'} value={value.baseUrl} onChange={e=>setValue({...value,baseUrl:e.target.value})} /></label>
+        <label>模型名称<input required readOnly={value.kind!=='text'} value={value.model} onChange={e=>setValue({...value,model:e.target.value})} /></label>
+        {value.kind === 'text' && <details><summary>模型兼容设置</summary>
+          <label>输出兼容方式<select value={value.textOutputMode ?? 'json-schema'} onChange={e=>setValue({...value,textOutputMode:e.target.value === 'json-object'?'json-object':'json-schema'})}>
+            <option value="json-schema">严格结构化输出</option><option value="json-object">兼容 JSON 输出</option>
+          </select></label>
+          <p>按服务文档选择；两种方式都会严格检查结果。不支持时会停止并提示，不自动切换或重复收费请求。模板预选兼容 JSON，原配置保持严格模式。</p>
+        </details>}
+        <label>API Key<input type="password" required={addressChanged} autoComplete="new-password" value={key} onChange={e=>setKey(e.target.value)} placeholder={addressChanged?'地址已改变，请输入新服务的密钥':value.id?'留空保留现有密钥；填写新值更换':'可以输入密钥，或保存后导入本机密钥文件'} /></label>
+        {addressChanged && <p>更换地址必须重新输入对应密钥，原密钥不会交给新服务。</p>}
+        <div className="actions"><button type="button" disabled={busy} onClick={close}>取消</button><button className="primary" disabled={busy}>保存服务</button></div>
+      </form>
+    </section>
+  </div>
 }
 export function TestModeControl() {
   const [message,setMessage] = useState('')

@@ -10,6 +10,7 @@ import { AssetImage } from '../visual/AssetImage'
 import { StoryboardPage } from '../workspace/pages'
 import { orderedShots, officialVersion, shotCandidates, shotGroups, shotStatus, videoStatusWithReadiness } from './storyboard-model'
 import './storyboard-creator.css'
+import { pilotService } from '../../services/pilot'
 
 export function StoryboardCreatorPage() {
   const { state, modal } = useWorkspace()
@@ -32,6 +33,7 @@ function StoryboardWorkspace({ projectId, episodeId, setEpisodeId, sceneId, setS
   const entities = state.workspace?.entities ?? []
   const visual = useVisual(projectId), ai = useIntelligence(projectId), workflows = useWorkflowRuns(projectId)
   const [videoReady, setVideoReady] = useState<boolean | null>(null)
+  const [exporting, setExporting] = useState(false), [exportMessage, setExportMessage] = useState(''), [exportError, setExportError] = useState('')
   useEffect(() => { let active = true; void videoCommand({ op: 'profiles' }).then((result) => { if (active) setVideoReady(videoProfilesSchema.parse(result).length > 0) }).catch(() => { if (active) setVideoReady(false) }); return () => { active = false } }, [projectId])
   const episodes = entities.filter((e): e is Episode => e.kind === 'episode').toSorted((a, b) => a.order - b.order)
   const scenes = entities.filter((e): e is Scene => e.kind === 'scene').toSorted((a, b) => a.order - b.order)
@@ -41,9 +43,19 @@ function StoryboardWorkspace({ projectId, episodeId, setEpisodeId, sceneId, setS
   const shots = orderedShots(entities)
   const groups = shotGroups(entities).map((group) => ({ ...group, shots: group.shots.filter((shot) => (!effectiveEpisode || scenes.find((scene) => scene.id === shot.sceneId)?.episodeId === effectiveEpisode) && (!effectiveScene || shot.sceneId === effectiveScene)) })).filter((group) => group.shots.length)
   const versions = visual.snapshot?.versions ?? []
+  const exportSheet = async () => {
+    setExporting(true); setExportMessage(''); setExportError('')
+    try {
+      const result = await pilotService.command({ operation: 'storyboard.export', projectId, shotIds: groups.flatMap(g => g.shots.map(s => s.id)) })
+      setExportMessage(typeof result === 'string' ? result : '已取消导出，项目未改变。')
+    } catch (cause) { setExportError(cause instanceof Error ? cause.message : '导出失败，请检查保存位置后重试') }
+    finally { setExporting(false) }
+  }
   return <section className="storyboard-creator" aria-label="分镜工作区">
     <div className="page-heading"><div><h1>分镜</h1><p>按故事顺序查看镜头；正式关键帧只显示已确认版本。</p></div><button className="primary" onClick={() => create({ type: 'entity', kind: 'shot' })}>新增镜头</button></div>
-    <div className="storyboard-toolbar"><label>分集<select aria-label="筛选分集" value={effectiveEpisode} onChange={(e) => { setEpisodeId(e.target.value || '__all__'); setSceneId('__all__') }}><option value="">全部分集</option>{episodes.map((episode) => <option key={episode.id} value={episode.id}>{episode.name}</option>)}</select></label><label>场次<select aria-label="筛选场次" value={effectiveScene} onChange={(e) => setSceneId(e.target.value || '__all__')}><option value="">全部场次</option>{scenes.filter((scene) => !effectiveEpisode || scene.episodeId === effectiveEpisode).map((scene) => <option key={scene.id} value={scene.id}>{scene.content.heading || scene.name}</option>)}</select></label><button onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>更多操作</button></div>
+    <div className="storyboard-toolbar"><label>分集<select aria-label="筛选分集" value={effectiveEpisode} onChange={(e) => { setEpisodeId(e.target.value || '__all__'); setSceneId('__all__') }}><option value="">全部分集</option>{episodes.map((episode) => <option key={episode.id} value={episode.id}>{episode.name}</option>)}</select></label><label>场次<select aria-label="筛选场次" value={effectiveScene} onChange={(e) => setSceneId(e.target.value || '__all__')}><option value="">全部场次</option>{scenes.filter((scene) => !effectiveEpisode || scene.episodeId === effectiveEpisode).map((scene) => <option key={scene.id} value={scene.id}>{scene.content.heading || scene.name}</option>)}</select></label><button disabled={!groups.length || exporting || state.editorStatus !== 'saved'} title="先保存修改，再导出当前筛选范围的文字分镜表；可离线查看和打印，不包含媒体文件" onClick={()=>void exportSheet()}>{exporting ? '正在导出…' : '导出分镜表'}</button><button onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>更多操作</button></div>
+    {exportMessage && <p role="status">{exportMessage}</p>}
+    {exportError && <p role="alert" className="error">{exportError}</p>}
     {advanced && <section className="storyboard-advanced"><p>智能拆解、批量关键帧与旧版镜头记录保留在此入口。镜头编辑、场内排序和安全删除可在当前镜头检查器操作。</p><StoryboardPage /></section>}
     {(visual.error || ai.error || workflows.error) && <p role="alert" className="error">{visual.error || ai.error || workflows.error}</p>}
     {!shots.length ? <div className="storyboard-empty"><h2>还没有分镜</h2><p>可以先从剧本确认镜头计划，或新增第一个镜头。</p><button onClick={() => navigate('scripts')}>从剧本创建分镜</button><button className="primary" onClick={() => create({ type: 'entity', kind: 'shot' })}>新增第一个镜头</button></div> : !groups.length ? <p className="empty">当前范围没有镜头。</p> : groups.map((group) => <div key={group.scene?.id ?? 'continuous'} className="storyboard-group">{shots.length > 30 && <button className="storyboard-group-head" aria-expanded={!collapsed.includes(group.scene?.id ?? '')} onClick={() => setCollapsed(collapsed.includes(group.scene?.id ?? '') ? collapsed.filter((id) => id !== group.scene?.id) : [...collapsed, group.scene?.id ?? ''])}>{group.scene?.content.heading || group.scene?.name || '未命名场次'} <small>{group.shots.length} 镜头</small></button>}{!collapsed.includes(group.scene?.id ?? '') && <div className="storyboard-shot-grid">{group.shots.map((shot) => {

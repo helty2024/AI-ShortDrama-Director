@@ -34,17 +34,18 @@ import {
 } from './router.js'
 import { productionCosts, deriveShotStatus } from './status.js'
 import { MockMediaQCProvider, planRegeneration } from './qc.js'
+import { buildStoryboardSheet } from './storyboard-sheet.js'
 import type { MediaQCProvider } from './qc.js'
 export class ProductionIntelligenceService {
   readonly qcControllers = new Map<string, AbortController>()
   readonly production: ProductionService
   readonly queue: AITaskQueue
-  private saveManifest: () => Promise<string | null>
+  private saveManifest: (kind?: 'storyboard', filename?: string) => Promise<string | null>
   private qc: MediaQCProvider
   constructor(
     production: ProductionService,
     queue: AITaskQueue,
-    saveManifest: () => Promise<string | null>,
+    saveManifest: (kind?: 'storyboard', filename?: string) => Promise<string | null>,
     qc: MediaQCProvider = new MockMediaQCProvider(),
   ) {
     this.production = production
@@ -701,6 +702,16 @@ export class ProductionIntelligenceService {
             plan.id,
           )
         return '重生任务已创建一次，结果需重新审核'
+      }
+      case 'storyboard.export': {
+        const workspace = this.db.workspace(p)
+        const available = new Set(workspace.entities.filter(e => e.kind === 'shot').map(e => e.id))
+        if (c.shotIds.some(id => !available.has(id))) throw new DomainError('NOT_FOUND', '当前项目中不存在所选镜头')
+        const sheet = buildStoryboardSheet(workspace, this.visual.versions(p), c.shotIds)
+        const path = await this.saveManifest('storyboard', sheet.filename)
+        if (!path) return null
+        await writeFile(path, sheet.html, 'utf8')
+        return `分镜表已导出，共 ${sheet.count} 个镜头。仅包含文字，不包含媒体文件。`
       }
       case 'manifest.export': {
         const episode = this.repo.entity(p, c.episodeId)

@@ -108,10 +108,10 @@ export abstract class ValidatedTextProvider implements TextGenerationProvider {
 }
 export class CompatibleTextProvider extends ValidatedTextProvider {
   readonly name = 'compatible-text'
-  private readonly config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number }
+  private readonly config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' }
   private readonly fetcher: typeof fetch
   constructor(
-    config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number },
+    config: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' },
     options?: ProviderOptions,
     fetcher: typeof fetch = fetch,
   ) {
@@ -140,6 +140,8 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
     request: StructuredRequest<T>,
   ): Promise<unknown> {
     let response: Response
+    const jsonObject = this.config.outputMode === 'json-object'
+    const schema = z.toJSONSchema(request.schema)
     try {
       response = await this.fetcher(
         this.config.baseUrl.replace(/\/$/, '') + '/chat/completions',
@@ -155,17 +157,17 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
           },
           body: JSON.stringify({
             model: this.config.model,
-            ...(this.config.maxTokens ? { max_completion_tokens: this.config.maxTokens } : {}),
+            ...(this.config.maxTokens ? jsonObject ? { max_tokens: this.config.maxTokens } : { max_completion_tokens: this.config.maxTokens } : {}),
             messages: [
-              { role: 'system', content: request.system },
+              { role: 'system', content: jsonObject ? `${request.system}\n只返回一个 JSON 对象，不要 Markdown 或额外说明。输出必须符合以下 JSON Schema：\n${JSON.stringify(schema)}` : request.system },
               { role: 'user', content: JSON.stringify(request.input) },
             ],
-            response_format: {
+            response_format: jsonObject ? { type: 'json_object' } : {
               type: 'json_schema',
               json_schema: {
                 name: request.schemaName,
                 strict: true,
-                schema: z.toJSONSchema(request.schema),
+                schema,
               },
             },
           }),
@@ -189,6 +191,7 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
         choices: z
           .array(
             z.object({
+              finish_reason: z.string().nullable().optional(),
               message: z.object({
                 content: z.string().nullable(),
                 refusal: z.string().nullable().optional(),
@@ -198,7 +201,10 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
           .min(1),
       })
       .parse(body)
-    const message = envelope.choices[0]!.message
+    const choice = envelope.choices[0]!
+    if (choice.finish_reason && choice.finish_reason !== 'stop')
+      throw new AIError('INVALID_OUTPUT', choice.finish_reason === 'length' ? '文本输出达到长度限制，未写入结果。请缩短故事或按场次处理后重新确认请求。' : '文本服务未完整结束，未写入结果；请检查模型与内容后重新确认请求。')
+    const message = choice.message
     if (message.refusal || !message.content)
       throw new AIError('INVALID_OUTPUT', '文本服务未返回可用的结构化结果')
     return JSON.parse(message.content) as unknown
