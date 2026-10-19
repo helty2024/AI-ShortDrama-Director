@@ -24,15 +24,15 @@ Prompt 位于 electron/main/intelligence/prompts.ts，带 PROMPT_VERSION，可�
 
 程序没有自动读取 .env；这些值由启动进程环境传入。不要添加 VITE_ 前缀，不要把密钥写入配置源码或 Bible。renderer 只看到 Provider 名称，看不到密钥/URL。
 仅允许 HTTPS，或 localhost/127.0.0.1/::1 的 HTTP；不跟随重定向，避免认证信息被转发。
-适配器发送 POST /chat/completions 和 response_format=json_schema（strict），从 choices[0].message.content 读取 JSON，再进行 Zod 校验。服务需要支持该协议与结构化输出；不支持的 API 会返回可见错误，不降级为未校验文本。
-OpenAI、支持该协议的本地模型服务器或其他兼容服务可复用适配器。尚未用真实账户密钥进行联网验收。
+适配器发送 POST /chat/completions；可按服务配置使用严格 JSON Schema、兼容 JSON 对象或提示约束 JSON。三种方式均从 choices[0].message.content 读取结果并进行 Zod 校验；不支持的 API 会返回错误，不自动降级或切换服务。SenseNova 已有只读模型检测成功，但制作拆解和导演拆镜的真实请求曾失败，不能据此声称结构化生成通过。
+OpenAI、百炼 Qwen、DeepSeek 或其他兼容服务可复用适配器；模板只填地址与输出方式，准确模型名称和默认服务由用户手动选择。
 
 参考：[OpenAI Structured Outputs 官方文档](https://developers.openai.com/api/docs/guides/structured-outputs)。
 
 ## 错误、重试和取消
 
-单次请求默认 30 秒，最多额外重试 1 次。仅 NETWORK/RATE_LIMIT/TIMEOUT 自动重试；认证、输出无效、拒绝回答或其他 Provider 错误直接失败。重试等待同样响应取消。
-错误只返回规范化 code/message，不返回 HTTP 响应正文、堆栈或认证值。队列另外使用 INTERRUPTED/STALE_SOURCE 标记进程中断或来源变化。
+通用 Provider 可通过选项设置超时与重试；真实 AI 服务固定为单次请求、不自动重试，文本及底层 HTTP 传输超时均为 90 秒。制作拆解和导演拆镜的请求体上限 128 KiB、输出上限 8192 token；已验证的故事整理仍为 4000 token。
+真实任务错误只持久化规范化 code/message 与脱敏的类别、HTTP 状态码、耗时、请求是否开始发送，不保存 HTTP 响应正文、堆栈或认证值。队列另外使用 INTERRUPTED/STALE_SOURCE 标记进程中断或来源变化；未知结果须人工核对供应商记录，不能自动重发。
 即使测试 Provider 忽略 AbortSignal，超时/取消的迟到结果也不能发布到数据库。
 
 ## 持久化任务队列

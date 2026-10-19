@@ -57,13 +57,17 @@ test('Truncated or filtered completions never become accepted results, even when
 test('A service template clears the previous model without guessing account access, and cannot change native adapters', () => {
   const initial = { id: null, kind: 'text' as const, name: '旧服务', baseUrl: 'https://fixture.example/v1', model: 'old-model' }
   const result = applyTextServicePreset(initial, 'deepseek')
-  assert.equal(result.baseUrl, 'https://api.deepseek.com/v1')
+  assert.equal(result.baseUrl, 'https://api.deepseek.com')
   assert.equal(result.model, '')
   assert.equal(result.textOutputMode, 'json-object')
   assert.equal(initial.model, 'old-model')
   assert.equal(applyTextServicePreset(initial, 'custom'), initial)
   const native = { ...initial, kind: 'compshare-video' as const }
   assert.equal(applyTextServicePreset(native, 'deepseek'), native)
+  const qwen = applyTextServicePreset(initial, 'qwen')
+  assert.equal(qwen.baseUrl, 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+  assert.equal(qwen.model, '')
+  assert.equal(qwen.textOutputMode, 'json-object')
 })
 
 test('SenseNova preset uses the requested model and prompt-only JSON without unsupported format parameters', async () => {

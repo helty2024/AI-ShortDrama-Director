@@ -596,6 +596,8 @@ test('Creator Keyframe preview shows compiled prompt and keeps candidate separat
     await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const dialog = page.getByRole('dialog', { name: '确认生成' })
     await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('region', { name: '最终生成描述' })).toBeVisible()
+    await expect(dialog.locator('.generation-final-prompt')).not.toBeEmpty()
     await dialog.getByText('高级生成 · 实际编译 Prompt').click()
     await expect(dialog.getByText('Compiler Version')).toBeVisible()
     await expect(dialog.getByText('当前预览未返回')).toHaveCount(0)

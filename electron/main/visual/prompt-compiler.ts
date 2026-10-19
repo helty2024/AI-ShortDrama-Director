@@ -7,7 +7,7 @@ import type {
 } from '../../../src/shared/domain.js'
 import { promptPackageSchema } from '../../../src/shared/visual.js'
 import type { ImagePromptPackage } from '../../../src/shared/visual.js'
-export const IMAGE_PROMPT_VERSION = 'visual-compiler-v1'
+export const IMAGE_PROMPT_VERSION = 'visual-compiler-v2'
 type Bible = Character | Location | Prop
 const join = (values: (string | null | undefined)[]) =>
   values.filter(Boolean).join('; ')
@@ -19,6 +19,7 @@ function description(e: Bible) {
   return join([
     e.name,
     e.description,
+    e.kind === 'character' ? e.appearance : '',
     ...Object.entries(e.bible)
       .filter(
         ([k, v]) =>
@@ -70,12 +71,12 @@ export function compileCharacterPrompt(
   return pack(
     description(e),
     style,
-    'character costume portrait, clear face and full body',
-    'eye level, 50mm',
-    'soft even studio lighting',
-    join(['same character appearance, same costume', e.bible.continuityNotes]),
+    'one coherent portrait of the character in the project setting; show the face and the specified clothing',
+    '',
+    '',
+    join(['consistent character appearance and clothing as specified', e.bible.continuityNotes]),
     references(e),
-    e.bible.negativePrompt,
+    join(['collage, split panels, costume design board', e.bible.negativePrompt]),
   )
 }
 export function compileLocationPrompt(

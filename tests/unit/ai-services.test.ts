@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { AIServiceManager } from '../../electron/main/generation/ai-services.js'
-import { ImageHttpTransport, transportFailure, type ImageHttpDiagnostics } from '../../electron/main/tools/adapters/image-http.js'
+import { AIServiceManager, TEXT_ANALYSIS_MAX_REQUEST_BYTES, TEXT_ANALYSIS_MAX_TOKENS, TEXT_REQUEST_TIMEOUT_MS } from '../../electron/main/generation/ai-services.js'
+import { ImageHttpTransport, classifyTransportNetworkError, transportFailure, type ImageHttpDiagnostics, type TransportFailure } from '../../electron/main/tools/adapters/image-http.js'
+import { AIError } from '../../electron/main/intelligence/provider.js'
 import { aiServicesSnapshotSchema } from '../../src/shared/ai-services.js'
 import { EncryptedCredentialStore } from '../../electron/main/video/credentials.js'
 import { MockTextProvider } from '../../electron/main/intelligence/mock-provider.js'
@@ -18,17 +19,106 @@ import { emptyScene } from '../../src/shared/intelligence.js'
 
 class ProtocolTransport extends ImageHttpTransport {
   calls: { url: string; method: string | undefined; body: string | Buffer | undefined }[] = []
+  failure: TransportFailure | null = null
   valid = true
   auth = true
   structured: unknown = {ok:true}
   override async bytes(url: string, signal: AbortSignal, options: Parameters<ImageHttpTransport['bytes']>[2]) {
     signal.throwIfAborted(); this.calls.push({url,method:options.method,body:options.body})
+    if (this.failure) throw this.failure
     if(!this.auth)throw transportFailure('authentication',false)
     const body=url.endsWith('/models')?{data:[{id:'fixture-model'}]}:{choices:[{message:{content:JSON.stringify(this.valid?this.structured:{wrong:true})}}]}
     const diagnostics:ImageHttpDiagnostics={status:200,contentType:'application/json',contentLength:null,requestId:null,host:'fixture.example',redirectCount:0,redirectHosts:[]}
     return {bytes:Buffer.from(JSON.stringify(body)),mime:'application/json',diagnostics}
   }
 }
+
+test('Text diagnostics distinguish sanitized HTTP, timeout, DNS, TLS, interruption and invalid output without retry', async () => {
+  assert.equal(classifyTransportNetworkError({ code: 'ENOTFOUND' }), 'dns')
+  assert.equal(classifyTransportNetworkError({ code: 'ERR_TLS_CERT_ALTNAME_INVALID' }), 'tls')
+  assert.equal(classifyTransportNetworkError({ code: 'ECONNRESET' }), 'connection-interrupted')
+  const f = await fixture()
+  try {
+    const s = await f.save()
+    await f.manager.execute({ op: 'ai.default', id: s.id })
+    const provider = f.manager.textProvider(new MockTextProvider(), { validateOnFirstTask: true })
+    const request = () => ({ system: 'fixture', input: {}, schema: z.strictObject({ ok: z.literal(true) }), schemaName: 'fixture', signal: AbortSignal.timeout(1000) })
+    const cases = [
+      { failure: transportFailure('validation', true, { status: 400 } as ImageHttpDiagnostics), kind: 'http-4xx', code: 'PROVIDER', status: 400 },
+      { failure: transportFailure('rate-limit', true, { status: 429 } as ImageHttpDiagnostics), kind: 'http-429', code: 'RATE_LIMIT', status: 429 },
+      { failure: transportFailure('provider', true, { status: 503 } as ImageHttpDiagnostics), kind: 'http-5xx', code: 'PROVIDER', status: 503 },
+      { failure: transportFailure('timeout', true), kind: 'timeout', code: 'TIMEOUT', status: null },
+      { failure: transportFailure('network', false, undefined, 'dns'), kind: 'dns', code: 'NETWORK', status: null },
+      { failure: transportFailure('network', false, undefined, 'tls'), kind: 'tls', code: 'NETWORK', status: null },
+      { failure: transportFailure('network', true, undefined, 'connection-interrupted'), kind: 'connection-interrupted', code: 'NETWORK', status: null },
+    ] as const
+    for (const item of cases) {
+      f.transport.failure = item.failure
+      const before = f.transport.calls.length
+      await assert.rejects(provider.generateStructured(request()), (raw: unknown) => {
+        assert.ok(raw instanceof AIError)
+        assert.equal(raw.code, item.code)
+        assert.equal(raw.diagnostics?.kind, item.kind)
+        assert.equal(raw.diagnostics?.httpStatus, item.status)
+        assert.equal(raw.diagnostics?.requestSent, item.failure.sent)
+        assert.ok((raw.diagnostics?.elapsedMs ?? -1) >= 0)
+        assert.doesNotMatch(JSON.stringify(raw), /FIXTURE_ONLY|Authorization|Bearer|private response/)
+        return true
+      })
+      assert.equal(f.transport.calls.length, before + 1)
+    }
+    f.transport.failure = null
+    f.transport.valid = false
+    await assert.rejects(provider.generateStructured(request()), (raw: unknown) => {
+      assert.ok(raw instanceof AIError)
+      assert.equal(raw.diagnostics?.kind, 'structured-output')
+      assert.equal(raw.diagnostics?.httpStatus, 200)
+      assert.equal(raw.diagnostics?.requestSent, true)
+      return true
+    })
+  } finally { await f.close() }
+})
+
+test('Failed real text task persists only sanitized diagnostics and never repeats an ambiguous request', async () => {
+  const f = await fixture(), db = new ProjectDatabase(':memory:'), repo = new IntelligenceRepository(db)
+  let queue: AITaskQueue | undefined
+  try {
+    const s = await f.save()
+    await f.manager.execute({ op: 'ai.default', id: s.id })
+    f.transport.failure = transportFailure('timeout', true)
+    const project = db.create({ name: '诊断记录', description: '', genre: '剧情', language: 'zh-CN', aspectRatio: '16:9' })
+    queue = new AITaskQueue(repo, f.manager.textProvider(new MockTextProvider(), { validateOnFirstTask: true }))
+    const task = queue.start(project.id, { type: 'parse', name: '故事', rawText: '一个角色进入车站。' }, true)
+    for (let n = 0; n < 100 && ['queued', 'running'].includes(repo.task(project.id, task.id).status); n++) await new Promise(resolve => setTimeout(resolve, 10))
+    const failed = repo.task(project.id, task.id)
+    assert.equal(failed.status, 'failed')
+    assert.deepEqual(failed.error?.diagnostics && { kind: failed.error.diagnostics.kind, httpStatus: failed.error.diagnostics.httpStatus, requestSent: failed.error.diagnostics.requestSent }, { kind: 'timeout', httpStatus: null, requestSent: true })
+    assert.ok((failed.error?.diagnostics?.elapsedMs ?? -1) >= 0)
+    assert.doesNotMatch(JSON.stringify(failed.error), /FIXTURE_ONLY|Authorization|Bearer|private response/)
+    assert.equal(f.transport.calls.length, 1)
+  } finally { queue?.close(); db.close(); await f.close() }
+})
+
+test('Breakdown and shot planning use a larger output cap, one request and a bounded preflight; Story stays unchanged', async () => {
+  assert.equal(TEXT_REQUEST_TIMEOUT_MS, 90000)
+  assert.equal(TEXT_ANALYSIS_MAX_TOKENS, 8192)
+  const f = await fixture()
+  try {
+    await f.manager.execute({ op: 'ai.save', service: { ...f.input, textOutputMode: 'json-prompt' }, apiKey: 'FIXTURE_ONLY' })
+    const s = (await f.manager.snapshot()).services[0]!
+    await f.manager.execute({ op: 'ai.default', id: s.id })
+    const provider = f.manager.textProvider(new MockTextProvider(), { validateOnFirstTask: true })
+    for (const schemaName of ['production_breakdown', 'shot_plan']) {
+      await provider.generateStructured({ system: 'fixture', input: {}, schema: z.strictObject({ ok: z.literal(true) }), schemaName, signal: AbortSignal.timeout(1000) })
+      assert.equal(JSON.parse(String(f.transport.calls.at(-1)?.body)).max_tokens, TEXT_ANALYSIS_MAX_TOKENS)
+    }
+    const before = f.transport.calls.length
+    await assert.rejects(provider.generateStructured({ system: 'fixture', input: { value: 'a'.repeat(TEXT_ANALYSIS_MAX_REQUEST_BYTES) }, schema: z.strictObject({ ok: z.literal(true) }), schemaName: 'shot_plan', signal: AbortSignal.timeout(1000) }), /内容过长/)
+    assert.equal(f.transport.calls.length, before)
+    await provider.generateStructured({ system: 'fixture', input: {}, schema: z.strictObject({ ok: z.literal(true) }), schemaName: 'director_structured_script', signal: AbortSignal.timeout(1000) })
+    assert.equal(JSON.parse(String(f.transport.calls.at(-1)?.body)).max_tokens, 4000)
+  } finally { await f.close() }
+})
 async function fixture() {
   const root=await mkdtemp(join(tmpdir(),'director-ai-catalog-')), path=join(root,'ai-services.json'), transport=new ProtocolTransport()
   const credentials=new EncryptedCredentialStore(join(root,'credentials'),{available:()=>true,encrypt:value=>Buffer.from([...Buffer.from(value)].map(v=>v^0x7a)),decrypt:bytes=>Buffer.from([...bytes].map(v=>v^0x7a)).toString()})

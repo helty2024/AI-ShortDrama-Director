@@ -249,7 +249,12 @@ export const aiTaskSchema = z.strictObject({
   input: taskInputSchema,
   status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
   attempt: z.number().int().positive(),
-  error: z.strictObject({ code: short, message: short }).nullable(),
+  error: z.strictObject({ code: short, message: short, diagnostics: z.strictObject({
+    kind: z.enum(['http-4xx', 'http-429', 'http-5xx', 'timeout', 'dns', 'tls', 'connection-interrupted', 'structured-output']),
+    httpStatus: z.number().int().min(100).max(599).nullable(),
+    elapsedMs: z.number().int().nonnegative(),
+    requestSent: z.boolean().nullable(),
+  }).optional() }).nullable(),
   resultIds: z.array(id),
   sourceRevisions: z.record(z.string(), z.number().int().positive()),
 })

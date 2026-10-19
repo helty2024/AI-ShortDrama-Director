@@ -18,17 +18,26 @@ export interface TransportFailure {
   error: ToolError
   sent: boolean
   diagnostics?: ImageHttpDiagnostics
+  networkKind?: 'dns' | 'tls' | 'connection-interrupted'
 }
 export function transportFailure(
   code: ToolError['code'],
   sent: boolean,
   diagnostics?: ImageHttpDiagnostics,
+  networkKind?: TransportFailure['networkKind'],
 ): TransportFailure {
   return {
     error: normalizeToolError({ code }),
     sent,
     ...(diagnostics ? { diagnostics } : {}),
+    ...(networkKind ? { networkKind } : {}),
   }
+}
+export const classifyTransportNetworkError = (raw: unknown): TransportFailure['networkKind'] => {
+  const code = raw && typeof raw === 'object' && 'code' in raw ? raw.code : null
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ENODATA'].includes(String(code))) return 'dns'
+  if (typeof code === 'string' && (code.startsWith('ERR_TLS_') || code.startsWith('ERR_SSL_') || code.startsWith('ERR_OSSL_') || code.startsWith('CERT_') || code.startsWith('UNABLE_TO_') || ['DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN'].includes(code))) return 'tls'
+  return 'connection-interrupted'
 }
 const publicIPv4 = (a: string) => {
   const n = a.split('.').map(Number)
@@ -251,8 +260,8 @@ export class ImageHttpTransport {
                 diagnostics: details,
               }),
             )
-            res.on('error', () =>
-              reject(transportFailure('network', sent, details)),
+            res.on('error', (raw) =>
+              reject(transportFailure('network', sent, details, classifyTransportNetworkError(raw))),
             )
           },
         )
@@ -261,7 +270,7 @@ export class ImageHttpTransport {
           reject(transportFailure('timeout', sent, diagnostic(target.url)))
         }, this.timeoutMs)
         req.on('close', () => clearTimeout(timer))
-        req.on('error', () =>
+        req.on('error', (raw) =>
           reject(
             transportFailure(
               caller.aborted
@@ -271,6 +280,7 @@ export class ImageHttpTransport {
                   : 'network',
               sent,
               diagnostic(target.url),
+              classifyTransportNetworkError(raw),
             ),
           ),
         )
@@ -306,6 +316,8 @@ export class ImageHttpTransport {
       throw transportFailure(
         caller.aborted ? 'cancelled' : signal.aborted ? 'timeout' : 'network',
         sent,
+        undefined,
+        classifyTransportNetworkError(raw),
       )
     }
   }

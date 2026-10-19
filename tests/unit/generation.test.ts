@@ -12,7 +12,7 @@ test('decision, known/unknown estimates and compiler prompt snapshots persist im
     assert.equal(unknown.cost.status, 'unknown')
     assert.ok(!('estimatedCost' in unknown.cost))
     for (const [table, id] of [['routing_decisions', f.decision.id], ['generation_estimates', f.estimate.id], ['prompt_packages', f.prompt.id]]) assert.throws(() => f.db.connection.prepare(`UPDATE ${table} SET data=data WHERE id=?`).run(id))
-    assert.equal(f.prompt.compilerVersion, 'visual-compiler-v1')
+    assert.equal(f.prompt.compilerVersion, 'visual-compiler-v2')
     assert.throws(() => { f.prompt.compilerVersion = 'changed' })
   } finally { f.db.close() }
 })

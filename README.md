@@ -16,6 +16,8 @@ Windows 安装包：`npm run dist:alpha`，包含 FFmpeg / FFprobe，使用独�
 
 2026-10-19 已完成 [LocalMiniDrama 源码对比与落地清单](docs/localminidrama-comparison-2026-10-19.md)。文本 AI 设置增加 DeepSeek / 百炼 / 方舟连接模板，以及明确选择的 JSON 兼容方式；旧配置保持严格结构化协议，错误不自动降级或重发。修改服务地址需要重新录入对应密钥。分镜页可按当前筛选范围“导出分镜表”，生成可离线查看和打印的文字 HTML，不含密钥、原始 Prompt、媒体路径或媒体文件；这不是视频合成。
 
+文本制作拆解与导演拆镜使用单次请求：请求体上限 128 KiB、输出上限 8192 token、文本与 HTTP 传输超时均为 90 秒；故事整理仍使用原有 4000 token 与结构化协议。失败任务仅保存脱敏的错误类别、HTTP 状态码、耗时及请求是否开始发送；未知结果不会自动重试或切换供应商。DeepSeek 和百炼模板需手动填写模型并设为默认。角色参考图提示词以项目设定为准，生成确认页会展示最终描述供审核。
+
 产品主线为 **故事 → 剧本 → 资产 → 分镜 → 生成 → 分镜视频**，通过简单 UI 面向普通创作者。生成描述放在折叠区，PromptPackage 保留在内部。后台通过统一 Tool Protocol、validate / estimate、RoutingPolicy 和 GenerationRecord，按第三方 Image API → Video API → ComfyUI → Blender 顺序验证可替换工具；无限画布作为 Creator UI 的 ViewExtension。
 
 正式基线：[Architecture Baseline v2 · Approved for implementation](docs/platform-architecture.md)；文件级施工计划：[Implementation Roadmap v2](docs/implementation-roadmap-v2.md)。批准实施不等于已经实现，0.6.0 尚无通用插件宿主、ComfyUI 托管启动或 ComfyUI 视频适配器。当前实现仍以以下版本记录及 [现有架构](docs/architecture.md) 为准，不将进程隔离宣称为完整安全沙盒。

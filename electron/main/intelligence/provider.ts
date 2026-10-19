@@ -10,11 +10,20 @@ export type AIErrorCode =
   | 'PROVIDER'
   | 'INTERRUPTED'
   | 'STALE_SOURCE'
+export type TextFailureKind = 'http-4xx' | 'http-429' | 'http-5xx' | 'timeout' | 'dns' | 'tls' | 'connection-interrupted' | 'structured-output'
+export interface TextFailureDiagnostics {
+  kind: TextFailureKind
+  httpStatus: number | null
+  elapsedMs: number
+  requestSent: boolean | null
+}
 export class AIError extends Error {
   readonly code: AIErrorCode
-  constructor(code: AIErrorCode, message: string) {
+  readonly diagnostics?: TextFailureDiagnostics
+  constructor(code: AIErrorCode, message: string, diagnostics?: TextFailureDiagnostics) {
     super(message)
     this.code = code
+    this.diagnostics = diagnostics
   }
 }
 export function normalizeAIError(error: unknown): AIError {

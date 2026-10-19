@@ -7,7 +7,7 @@
 - compilePropPrompt：外观/材质/尺寸/状态，道具母版。
 - compileShotKeyframePrompt：当前 Shot 引用的角色/地点/道具 Bible、镜头计划与 Scene 时间，优先使用固定描述。
 
-返回 ImagePromptPackage：positivePrompt、negativePrompt、subjectDescription、composition、camera、lighting、style、continuity、referenceAssetIds、providerHints、promptVersion。promptVersion 当前为 visual-compiler-v1。
+返回 ImagePromptPackage：positivePrompt、negativePrompt、subjectDescription、composition、camera、lighting、style、continuity、referenceAssetIds、providerHints、promptVersion。promptVersion 当前为 visual-compiler-v2；旧版本已保存的提示词和来源记录不重写。
 
 Shot 自动加入 framing、cameraAngle、cameraMovement、focalLengthSuggestion、action、emotion、lighting 和 continuityNotes。连续性短语覆盖同一人物外貌、服装、地点、时间和道具状态。providerHints 记录源实体 revision 与可选上一 Shot 固定版本 ID；ComfyUI 节点配置仍只在 providerOptions。
 

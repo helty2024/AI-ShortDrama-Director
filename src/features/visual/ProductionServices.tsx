@@ -74,7 +74,7 @@ function ServiceForm({initial,busy,close,save}:{initial:AIServiceInput;busy:bool
             <option value="custom">自定义兼容服务</option>
             {textServicePresets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select></label>
-          <p>模板只填写连接方式，不代表账户已开通。请填写服务控制台中实际可用的模型名称；方舟填写模型或接入点标识。海外区域请使用自定义地址。切换模板不会联网或生成。</p>
+          <p>可选百炼通义千问或 DeepSeek 模板。模板只填写连接方式，不代表账户已开通；请手动填写本账户可用的准确模型名称，并在服务卡片中手动设为默认。百炼模板为北京区域，其他区域请使用自定义地址。切换模板不会联网或生成，任务失败也不会自动切换供应商。</p>
         </>}
         <label>服务名称<input required value={value.name} onChange={e=>setValue({...value,name:e.target.value})} /></label>
         <label>接口协议<input readOnly value={value.kind==='text'?'Chat Completions':value.kind==='packy-image'?'Packy 原生图像接口':'CompShare MiniMax H3 原生异步接口'} /></label>

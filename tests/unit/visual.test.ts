@@ -257,6 +257,12 @@ test('Prompt Compiler injects stable Bible identity, camera, lighting and option
     )
     assert.match(c.positivePrompt, /左眼下痣/)
     assert.match(c.positivePrompt, /深蓝风衣/)
+    assert.doesNotMatch(c.positivePrompt, /costume portrait|studio lighting|costume board|collage/i)
+    assert.match(c.negativePrompt, /costume design board|collage/)
+    const modern = compileCharacterPrompt({ ...char, appearance: '现代都市女性，短发，米色外套，在秋日窗边', description: '现实题材主角' }, '暖色自然光写实摄影')
+    assert.match(modern.positivePrompt, /现代都市女性，短发，米色外套，在秋日窗边/)
+    assert.match(modern.positivePrompt, /暖色自然光写实摄影/)
+    assert.doesNotMatch(modern.positivePrompt, /costume board|studio lighting|costume portrait/i)
     assert.match(
       compileLocationPrompt(location).positivePrompt,
       /empty location/,

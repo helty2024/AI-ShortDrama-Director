@@ -4,8 +4,8 @@ import { z } from 'zod'
 import { aiServiceInputSchema, aiServicesSnapshotSchema, type AIServiceInput } from '../../../src/shared/ai-services.js'
 import type { ServiceSettingsCommand } from '../../../src/shared/service-settings.js'
 import type { CredentialStore } from '../video/credentials.js'
-import { CompatibleTextProvider, AIError, type StructuredRequest, type TextGenerationProvider } from '../intelligence/provider.js'
-import { ImageHttpTransport } from '../tools/adapters/image-http.js'
+import { CompatibleTextProvider, AIError, normalizeAIError, type StructuredRequest, type TextFailureKind, type TextGenerationProvider } from '../intelligence/provider.js'
+import { ImageHttpTransport, type TransportFailure } from '../tools/adapters/image-http.js'
 import { DomainError } from '../database.js'
 import { packyImageModels } from '../../../src/shared/packy-models.js'
 
@@ -24,6 +24,9 @@ const catalogSchema = z.strictObject({
   localEnabled: z.boolean().default(true), localArchived: z.boolean().default(false),
 })
 type Catalog = z.infer<typeof catalogSchema>
+export const TEXT_REQUEST_TIMEOUT_MS = 90000
+export const TEXT_ANALYSIS_MAX_TOKENS = 8192
+export const TEXT_ANALYSIS_MAX_REQUEST_BYTES = 128 * 1024
 interface ServicesHost {
   assertIdle: () => void
   apply: (catalog: Catalog) => Promise<void>
@@ -39,7 +42,7 @@ export class AIServiceManager {
   readonly credentials: CredentialStore
   private readonly host: ServicesHost
   private readonly transport: ImageHttpTransport
-  constructor(path: string, credentials: CredentialStore, host: ServicesHost, testMode = false, transport = new ImageHttpTransport()) {
+  constructor(path: string, credentials: CredentialStore, host: ServicesHost, testMode = false, transport = new ImageHttpTransport({ timeoutMs: TEXT_REQUEST_TIMEOUT_MS })) {
     this.path = path; this.credentials = credentials; this.host = host; this.transport = transport
     this.catalog = { mode: testMode ? 'test' : 'production', services: [], defaults: {}, revisions: [], defaultImageTool: null, localEnabled: true, localArchived: false }
   }
@@ -91,21 +94,50 @@ export class AIServiceManager {
   }
   private text(s: StoredAIService): TextGenerationProvider {
     const transport = this.transport, credentials = this.credentials
-    const fetcher: typeof fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-      try {
-        const result = await transport.bytes(url, init?.signal ?? AbortSignal.timeout(90000), {
-          method: 'POST', key: s.credentialRef ? await credentials.get(s.credentialRef) : undefined,
-          body: String(init?.body ?? ''), limit: 4 * 1024 * 1024,
-        })
-        return new Response(result.bytes.toString('utf8'), { status: 200, headers: { 'Content-Type': result.mime } })
-      } catch (raw) {
-        if(raw instanceof AIError)throw raw
-        const code = raw && typeof raw === 'object' && 'error' in raw && raw.error && typeof raw.error === 'object' && 'code' in raw.error ? raw.error.code : 'network'
-        throw new AIError(code === 'authentication' || code === 'authorization' ? 'AUTH' : 'NETWORK', code === 'authentication' || code === 'authorization' ? '密钥无效，请重新设置' : '文本服务请求失败；未自动重复请求')
+    return { name: 'compatible-text', model: s.model, generateStructured: async <T>(request: StructuredRequest<T>): Promise<T> => {
+      const started = Date.now()
+      let sent: boolean | null = false
+      const fetcher: typeof fetch = async (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        try {
+          const key = s.credentialRef ? await credentials.get(s.credentialRef) : undefined
+          const body = String(init?.body ?? '')
+          if (['production_breakdown', 'shot_plan'].includes(request.schemaName) && Buffer.byteLength(body, 'utf8') > TEXT_ANALYSIS_MAX_REQUEST_BYTES)
+            throw new AIError('PROVIDER', '当前场次与已知资产内容过长，请缩短场次或整理资产后再手动确认请求')
+          sent = null
+          const result = await transport.bytes(url, init?.signal ?? AbortSignal.timeout(TEXT_REQUEST_TIMEOUT_MS), {
+            method: 'POST', key, body, limit: 4 * 1024 * 1024,
+          })
+          sent = true
+          return new Response(result.bytes.toString('utf8'), { status: 200, headers: { 'Content-Type': result.mime } })
+        } catch (raw) {
+          if (raw instanceof AIError) throw raw
+          const failure = raw as Partial<TransportFailure> | null
+          sent = typeof failure?.sent === 'boolean' ? failure.sent : sent
+          const status = failure?.diagnostics?.status
+          const httpStatus = typeof status === 'number' && status >= 100 && status <= 599 ? status : null
+          const transportCode = failure?.error?.code
+          const kind: TextFailureKind = httpStatus === 429 ? 'http-429' : httpStatus !== null ? httpStatus >= 500 ? 'http-5xx' : 'http-4xx'
+            : transportCode === 'timeout' ? 'timeout' : failure?.networkKind ?? 'connection-interrupted'
+          const code = httpStatus === 401 || httpStatus === 403 ? 'AUTH' : kind === 'http-429' ? 'RATE_LIMIT'
+            : kind === 'timeout' ? 'TIMEOUT' : kind === 'http-4xx' || kind === 'http-5xx' ? 'PROVIDER' : 'NETWORK'
+          const message = kind === 'http-429' ? '文本服务限流；请稍后手动重试' : kind === 'http-4xx' ? '文本服务拒绝请求；请核对模型、权限与输出格式'
+            : kind === 'http-5xx' ? '文本服务端暂时失败；结果未知，请先核对供应商记录' : kind === 'timeout' ? '文本服务请求超时；结果未知，请先核对供应商记录'
+              : kind === 'dns' ? '无法解析文本服务地址，请检查网络和地址' : kind === 'tls' ? '文本服务安全连接失败，请检查证书和网络' : '文本服务连接中断；结果未知，请先核对供应商记录'
+          throw new AIError(code, message, { kind, httpStatus, elapsedMs: Date.now() - started, requestSent: sent })
+        }
       }
-    }
-    return new CompatibleTextProvider({ baseUrl: s.baseUrl, model: s.model, maxTokens: 4000, outputMode: s.textOutputMode ?? 'json-schema' }, { retries: 0, timeoutMs: 90000 }, fetcher)
+      const analysis = ['production_breakdown', 'shot_plan'].includes(request.schemaName)
+      const provider = new CompatibleTextProvider({ baseUrl: s.baseUrl, model: s.model, maxTokens: analysis ? TEXT_ANALYSIS_MAX_TOKENS : 4000, outputMode: s.textOutputMode ?? 'json-schema' }, { retries: 0, timeoutMs: TEXT_REQUEST_TIMEOUT_MS }, fetcher)
+      try { return await provider.generateStructured(request) }
+      catch (raw) {
+        const error = normalizeAIError(raw)
+        if (error.diagnostics) throw error
+        if (error.code === 'INVALID_OUTPUT') throw new AIError(error.code, error.message, { kind: 'structured-output', httpStatus: 200, elapsedMs: Date.now() - started, requestSent: true })
+        if (error.code === 'TIMEOUT') throw new AIError(error.code, error.message, { kind: 'timeout', httpStatus: null, elapsedMs: Date.now() - started, requestSent: sent })
+        throw error
+      }
+    } }
   }
   textProvider(mock: TextGenerationProvider, options: { validateOnFirstTask?: boolean } = {}): TextGenerationProvider {
     const selected = () => this.defaultService('text'), mode = () => this.mode

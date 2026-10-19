@@ -342,7 +342,7 @@ export class AITaskQueue {
             ...current,
             completedAt: new Date().toISOString(),
             status: controller.signal.aborted ? 'cancelled' : 'failed',
-            error: { code: normalized.code, message: normalized.message },
+            error: { code: normalized.code, message: normalized.message, ...(normalized.diagnostics ? { diagnostics: normalized.diagnostics } : {}) },
             revision: current.revision + 1,
             updatedAt: new Date().toISOString(),
           })
