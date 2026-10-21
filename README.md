@@ -249,3 +249,7 @@ docs/               架构和领域说明
 
 真实生产集成边界、运行产物及验收状态见 [09-01 Real Production Integration](docs/real-production-09-01.md)。全局服务目录保存于 userData 的 `ai-services.json`，密钥只保存在加密凭据存储；`production-validation/` 保存配置修订对应的单次提交意图和下载证据，不写入 Git。历史配置和凭据引用保留，停用/删除配置不会删除任务或素材。
 `npm run test:smoke` 的自动失败截图与运行产物仅写入 `test-results/automated-smoke/`，不会清理其他 UI 审计或安装版截图目录。
+
+### seedance-20 可选实验
+
+剧本、分镜和生成页面提供单根 Skill 开关及三环节离线 A/B 提示词预览。固定上游提交、MIT 和逐文件 hash 随 Windows 应用分发；不自动改写正式数据。真实模型效果需另行授权的 6 次文本对比，本轮未调用收费 API。入口、边界和证据见 [实验说明](docs/seedance-20-experiment.md)。

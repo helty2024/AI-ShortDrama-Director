@@ -1,0 +1,105 @@
+{
+  "name": "seedance-20",
+  "version": "6.7.0",
+  "upstream": "https://github.com/Emily2040/seedance-2.0",
+  "commit": "4668457e560eee06e95d7fcfdf441c8c0bba802e",
+  "license": "MIT",
+  "selection": "One root registration; selected Markdown dependencies only; no upstream executables",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "sha256": "9cc2161b0dad7f0fb75490106eda34f314de503bcadfba515364053cf7bdcd92",
+      "bytes": 29515
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "c84a6216f6e006b4e4a65e9d056837a61ee9c4ca79f43f386df2992bc690a7f6",
+      "bytes": 1085
+    },
+    {
+      "path": "skills/seedance-prompt/SKILL.md",
+      "sha256": "3ae6968f00c6c9a9b07dd90c2e9853af4dc568bb5fd5c4840b59c92153104cfb",
+      "bytes": 15096
+    },
+    {
+      "path": "skills/seedance-sequence/SKILL.md",
+      "sha256": "8c8e85ee081ee9cbe73c46a7b0dedd6cf5b7a6627fcdde498f9a46c2b58592ed",
+      "bytes": 10244
+    },
+    {
+      "path": "references/directors-read.md",
+      "sha256": "f7021ac0e01d5c570fa262f9c3970272377eb775dc7c0616e6e8b6af2859071d",
+      "bytes": 12070
+    },
+    {
+      "path": "references/storytelling-framework.md",
+      "sha256": "658099155a600b755da852db13aef7bcd295f1e09f804f041f7f102f8a3398b1",
+      "bytes": 2412
+    },
+    {
+      "path": "references/shot-table.md",
+      "sha256": "c614f8b5ab86e5f30320d994cc8c8ee62317bcfdcc890b1afe0650e33cca2e50",
+      "bytes": 6426
+    },
+    {
+      "path": "references/shot-list-continuity.md",
+      "sha256": "b5198924d1b1f236860be3568c9e55069f0da4f4a80b3ba3f03e6dc9a8899061",
+      "bytes": 4116
+    },
+    {
+      "path": "references/direct-for-the-model.md",
+      "sha256": "f7358e82eb6f8bfd7ec653bc3e537d0a3dfbb9f01277c3f79f786f1cd017d942",
+      "bytes": 9598
+    },
+    {
+      "path": "references/reference-transfer-contract.md",
+      "sha256": "f8523b810f7be505c6cd978cdafe2313f8ab5a179ad9b707c401d2dfc1f4f252",
+      "bytes": 1887
+    },
+    {
+      "path": "references/surface-prompt-profiles.md",
+      "sha256": "6a0067ec6b2f2d9bfc0ebd4f2a809128a4cb7ce857b19f2382c5e1efd836d835",
+      "bytes": 3394
+    },
+    {
+      "path": "references/prompt-compiler.md",
+      "sha256": "e007ec58fd6499c1fb84479f1f7e025a7a7cef5397110b18eee576f70f2480ef",
+      "bytes": 8960
+    },
+    {
+      "path": "references/multishot-grammar.md",
+      "sha256": "6d48c37565c3d51bc4ebd7a3d57330d8648080f38cf4e690b2af27832808e8dc",
+      "bytes": 15052
+    },
+    {
+      "path": "references/continuity-qc.md",
+      "sha256": "1199e0233292743e3d36298d371b977dba1cbd8c2859dae93cdd955198516150",
+      "bytes": 1215
+    },
+    {
+      "path": "references/sequence-project-state.md",
+      "sha256": "5420106f7e5f7b31ce9cbc0228ea8284ea003846e1fb2b3438334444c6081ad9",
+      "bytes": 19964
+    },
+    {
+      "path": "references/continuation-handoff.md",
+      "sha256": "ea7178642162eda4d8695830a613e13c2f6d4f11706a61512e86a6ce18d2c37d",
+      "bytes": 7848
+    },
+    {
+      "path": "references/event-density.md",
+      "sha256": "cda274d6fe4ead2d834063a0b96641ad640c6671d8787aaed111a2af5cc2e244",
+      "bytes": 2370
+    },
+    {
+      "path": "references/directing-engine.md",
+      "sha256": "dcbe307516ab76601abaa1ed5ef6558ac42fedec506e769f73094364c77c6999",
+      "bytes": 25796
+    },
+    {
+      "path": "references/pro-filmmaking-standards.md",
+      "sha256": "cf66cdff1438ddd59e0d361e41685196964018f47fd6d7da3fbb3e09fd2f9a90",
+      "bytes": 4441
+    }
+  ]
+}

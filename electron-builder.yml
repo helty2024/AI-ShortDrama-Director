@@ -9,6 +9,8 @@ files:
   - package.json
   - '!node_modules/zod/src/**/*'
 extraResources:
+  - from: resources/skills/seedance-20
+    to: skills/seedance-20
   - from: build/icon.png
     to: icon.png
 electronDist: node_modules/electron/dist

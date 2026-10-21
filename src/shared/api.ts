@@ -1,3 +1,4 @@
+import { skillExperimentCommandSchema } from './skill-experiment.js'
 import { serviceSettingsCommandSchema } from './service-settings.js'
 import { workflowCommandSchema } from './workflow.js'
 import { compatibilityCommandSchema } from './compatibility.js'
@@ -27,6 +28,7 @@ import {
 import type { Entity, Project, Workspace } from './domain.js'
 
 export const requestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('skillExperiment'), command: skillExperimentCommandSchema }),
   z.strictObject({ action: z.literal('serviceSettings'), command: serviceSettingsCommandSchema }),
   z.strictObject({ action: z.literal('workflow'), command: workflowCommandSchema }),
   z.strictObject({ action: z.literal('compatibility'), command: compatibilityCommandSchema }),

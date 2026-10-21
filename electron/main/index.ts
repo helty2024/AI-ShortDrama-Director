@@ -381,6 +381,7 @@ app
         if(services.localEnabled)imageApi.register(adapter)
         return { settings, templates: builtinTemplates }
       },
+      () => services.captureSkillText(),
     )
     session.defaultSession.setPermissionRequestHandler(
       (_contents, _permission, callback) => callback(false),

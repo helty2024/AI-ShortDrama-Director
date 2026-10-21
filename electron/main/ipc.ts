@@ -1,3 +1,6 @@
+import { SkillExperimentService, type SkillTextBinding } from './skills/experiment.js'
+import { Seedance20Loader } from './skills/seedance-20.js'
+import { join } from 'node:path'
 import type { ServiceSettingsCommand } from '../../src/shared/service-settings.js'
 import { WorkflowService } from './workflow/service.js'
 import { LineageService } from './generation/lineage.js'
@@ -50,7 +53,9 @@ export function registerWorkspaceIPC(
     probe: () => Promise<unknown>
   },
   serviceSettings?: (command: ServiceSettingsCommand) => Promise<unknown>,
+  skillText: () => SkillTextBinding | null = () => null,
 ) {
+  const skillExperiments = new SkillExperimentService(database, new Seedance20Loader(join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'skills/seedance-20' : 'resources/skills/seedance-20')), join(app.getPath('userData'), 'skill-experiments'), skillText)
   let configuringComfy = false
   let activeImageCommands = 0
   const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
@@ -100,6 +105,7 @@ export function registerWorkspaceIPC(
       try {
         const request = requestSchema.parse(raw)
         switch (request.action) {
+          case 'skillExperiment': return { ok: true, data: z.json().parse(await skillExperiments.execute(request.command)) }
           case 'compatibility': {
             const c = request.command, lineage = new LineageService(database)
             const data = c.op === 'lineage' ? lineage.version(c.projectId, c.versionId)

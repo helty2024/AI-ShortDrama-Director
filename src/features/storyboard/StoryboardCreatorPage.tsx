@@ -1,3 +1,4 @@
+import { SkillExperimentPanel } from '../skills/SkillExperimentPanel'
 import { useEffect, useState } from 'react'
 import type { Episode, Scene } from '../../shared/domain'
 import { useCreator } from '../../components/creator-shell/creator-context'
@@ -52,6 +53,7 @@ function StoryboardWorkspace({ projectId, episodeId, setEpisodeId, sceneId, setS
     finally { setExporting(false) }
   }
   return <section className="storyboard-creator" aria-label="分镜工作区">
+    <SkillExperimentPanel stage="director" />
     <div className="page-heading"><div><h1>分镜</h1><p>按故事顺序查看镜头；正式关键帧只显示已确认版本。</p></div><button className="primary" onClick={() => create({ type: 'entity', kind: 'shot' })}>新增镜头</button></div>
     <div className="storyboard-toolbar"><label>分集<select aria-label="筛选分集" value={effectiveEpisode} onChange={(e) => { setEpisodeId(e.target.value || '__all__'); setSceneId('__all__') }}><option value="">全部分集</option>{episodes.map((episode) => <option key={episode.id} value={episode.id}>{episode.name}</option>)}</select></label><label>场次<select aria-label="筛选场次" value={effectiveScene} onChange={(e) => setSceneId(e.target.value || '__all__')}><option value="">全部场次</option>{scenes.filter((scene) => !effectiveEpisode || scene.episodeId === effectiveEpisode).map((scene) => <option key={scene.id} value={scene.id}>{scene.content.heading || scene.name}</option>)}</select></label><button disabled={!groups.length || exporting || state.editorStatus !== 'saved'} title="先保存修改，再导出当前筛选范围的文字分镜表；可离线查看和打印，不包含媒体文件" onClick={()=>void exportSheet()}>{exporting ? '正在导出…' : '导出分镜表'}</button><button onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>更多操作</button></div>
     {exportMessage && <p role="status">{exportMessage}</p>}

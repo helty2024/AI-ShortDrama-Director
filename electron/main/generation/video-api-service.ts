@@ -1,3 +1,4 @@
+import { assertTargetPromptCompatibility } from '../skills/seedance-20.js'
 import { randomUUID } from 'node:crypto'
 import { DomainError, metadata } from '../database.js'
 import { VisualRepository } from '../visual/repository.js'
@@ -191,6 +192,7 @@ export class VideoApiGenerationService {
       target.plan?.action.trim() ||
       target.description.trim() ||
       target.name
+    assertTargetPromptCompatibility(promptText, adapter.profile.modelId)
     const prompt = this.generation.create('prompt_packages', {
       id: randomUUID(),
       projectId: input.projectId,

@@ -1,3 +1,4 @@
+import { SkillExperimentPanel } from '../skills/SkillExperimentPanel'
 import { useEffect, useState } from 'react'
 import { useWorkspace } from '../workspace/state'
 import { useCreator } from '../../components/creator-shell/creator-context'
@@ -92,6 +93,7 @@ function ScriptWorkspace({
   const storyPreview = ai.snapshot.imports.filter(item => !item.confirmedScriptId).at(-1)
   return (
     <>
+    <SkillExperimentPanel stage="script" />
       <div className="page-heading">
         <div>
           <h1>剧本</h1>

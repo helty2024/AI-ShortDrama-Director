@@ -5,6 +5,8 @@ nsis:
   shortcutName: AI ShortDrama Director Alpha
   uninstallDisplayName: AI ShortDrama Director Alpha
 extraResources:
+  - from: resources/skills/seedance-20
+    to: skills/seedance-20
   - from: build/icon.png
     to: icon.png
   - from: build/alpha-runtime

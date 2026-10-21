@@ -159,6 +159,14 @@ export class AIServiceManager {
       generateStructured: generate,
     }
   }
+  /** Uses the existing text adapter and freezes one configuration for an A/B pair.
+   * Preparing this binding never decrypts credentials or performs a request. */
+  captureSkillText() {
+    const service = this.defaultService('text')
+    if (this.mode !== 'production' || !service?.credentialRef || service.connection !== 'accepted' || !service.structuredValidated) return null
+    const frozen = structuredClone(service)
+    return { snapshot: { real: true, serviceId: frozen.id, revision: frozen.revision, model: frozen.model, baseUrl: frozen.baseUrl, textOutputMode: frozen.textOutputMode ?? 'json-schema', credentialRef: frozen.credentialRef }, provider: this.text(frozen) }
+  }
   async execute(command: ServiceSettingsCommand) {
     if (command.op === 'ai.list') return this.snapshot()
     if (!command.op.startsWith('ai.')) throw new DomainError('INVALID_INPUT', '非 AI 服务命令')
