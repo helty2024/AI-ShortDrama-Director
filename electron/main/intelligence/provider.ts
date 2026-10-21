@@ -41,6 +41,8 @@ export interface StructuredRequest<T> {
   schema: z.ZodType<T>
   schemaName: string
   signal: AbortSignal
+  onResponse?: (metadata: { rawOutput: string | null; usage: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } | null; model: string | null }) => void
+  sampling?: { temperature: number; top_p: number }
 }
 export interface TextGenerationProvider {
   readonly name: string
@@ -51,6 +53,20 @@ export interface ProviderOptions {
   timeoutMs?: number
   retries?: number
   retryDelayMs?: number
+}
+/** The same wire body is used by preview and execution; it contains no credential. */
+export function structuredTextBody(config: { model: string; maxTokens?: number; outputMode?: 'json-schema' | 'json-object' | 'json-prompt' }, request: Pick<StructuredRequest<unknown>, 'system' | 'input' | 'schema' | 'schemaName' | 'sampling'>) {
+  const mode = config.outputMode ?? 'json-schema', compatible = mode !== 'json-schema', schema = z.toJSONSchema(request.schema)
+  return {
+    model: config.model,
+    ...(request.sampling ? z.strictObject({ temperature: z.number().min(0).max(2), top_p: z.number().min(0).max(1) }).parse(request.sampling) : {}),
+    ...(config.maxTokens ? compatible ? { max_tokens: config.maxTokens } : { max_completion_tokens: config.maxTokens } : {}),
+    messages: [
+      { role: 'system', content: compatible ? `${request.system}\n只返回一个 JSON 对象，不要 Markdown 或额外说明。输出必须符合以下 JSON Schema：\n${JSON.stringify(schema)}` : request.system },
+      { role: 'user', content: JSON.stringify(request.input) },
+    ],
+    ...(mode !== 'json-prompt' ? { response_format: mode === 'json-object' ? { type: 'json_object' } : { type: 'json_schema', json_schema: { name: request.schemaName, strict: true, schema } } } : {}),
+  }
 }
 export abstract class ValidatedTextProvider implements TextGenerationProvider {
   abstract readonly name: string
@@ -149,10 +165,6 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
     request: StructuredRequest<T>,
   ): Promise<unknown> {
     let response: Response
-    const jsonObject = this.config.outputMode === 'json-object'
-    const promptOnly = this.config.outputMode === 'json-prompt'
-    const compatible = jsonObject || promptOnly
-    const schema = z.toJSONSchema(request.schema)
     try {
       response = await this.fetcher(
         this.config.baseUrl.replace(/\/$/, '') + '/chat/completions',
@@ -166,22 +178,7 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
               ? { Authorization: `Bearer ${this.config.apiKey}` }
               : {}),
           },
-          body: JSON.stringify({
-            model: this.config.model,
-            ...(this.config.maxTokens ? compatible ? { max_tokens: this.config.maxTokens } : { max_completion_tokens: this.config.maxTokens } : {}),
-            messages: [
-              { role: 'system', content: compatible ? `${request.system}\n只返回一个 JSON 对象，不要 Markdown 或额外说明。输出必须符合以下 JSON Schema：\n${JSON.stringify(schema)}` : request.system },
-              { role: 'user', content: JSON.stringify(request.input) },
-            ],
-            ...(!promptOnly ? { response_format: jsonObject ? { type: 'json_object' } : {
-              type: 'json_schema',
-              json_schema: {
-                name: request.schemaName,
-                strict: true,
-                schema,
-              },
-            } } : {}),
-          }),
+          body: JSON.stringify(structuredTextBody(this.config, request)),
         },
       )
     } catch (error) {
@@ -199,6 +196,8 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
     const body: unknown = await response.json()
     const envelope = z
       .object({
+        model: z.string().optional(),
+        usage: z.object({ prompt_tokens: z.number().int().nonnegative().optional(), completion_tokens: z.number().int().nonnegative().optional(), total_tokens: z.number().int().nonnegative().optional() }).nullish(),
         choices: z
           .array(
             z.object({
@@ -213,6 +212,7 @@ export class CompatibleTextProvider extends ValidatedTextProvider {
       })
       .parse(body)
     const choice = envelope.choices[0]!
+    request.onResponse?.({ rawOutput: choice.message.content, model: envelope.model ?? null, usage: envelope.usage ? { inputTokens: envelope.usage.prompt_tokens ?? null, outputTokens: envelope.usage.completion_tokens ?? null, totalTokens: envelope.usage.total_tokens ?? null } : null })
     if (choice.finish_reason && choice.finish_reason !== 'stop')
       throw new AIError('INVALID_OUTPUT', choice.finish_reason === 'length' ? '文本输出达到长度限制，未写入结果。请缩短故事或按场次处理后重新确认请求。' : '文本服务未完整结束，未写入结果；请检查模型与内容后重新确认请求。')
     const message = choice.message

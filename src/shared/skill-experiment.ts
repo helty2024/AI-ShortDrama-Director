@@ -18,7 +18,7 @@ export const skillExperimentCommandSchema = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('list'), ...scope }),
   z.strictObject({ op: z.literal('toggle'), ...scope, enabled: z.boolean() }),
   z.strictObject({ op: z.literal('prepare'), ...scope, stage: skillStageSchema, sceneId: z.uuid(), shotIds: z.array(z.uuid()).min(1).max(20), target: z.enum(['generic', 'seedance-2.0']) }),
-  z.strictObject({ op: z.literal('runComparisons'), ...scope, ids: z.array(z.uuid()).length(3), confirmed: z.literal(true), maxRequests: z.literal(6), currency: z.string().regex(/^[A-Z]{3}$/), maxCostMicro: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), allowUnknownCost: z.literal(true) }),
+  z.strictObject({ op: z.literal('runComparisons'), ...scope, ids: z.array(z.uuid()).min(1).max(3), confirmed: z.literal(true), maxRequests: z.union([z.literal(2), z.literal(6)]), currency: z.string().regex(/^[A-Z]{3}$/), maxCostMicro: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), allowUnknownCost: z.literal(true) }).refine(c => c.ids.length * 2 === c.maxRequests, '授权次数必须精确匹配 OFF/ON 实验数量'),
 ])
 export type SkillExperimentCommand = z.infer<typeof skillExperimentCommandSchema>
 export const skillTraceSchema = z.strictObject({
@@ -32,8 +32,8 @@ export const skillExperimentSchema = z.strictObject({
   requests: z.array(z.strictObject({ enabled: z.boolean(), system: z.string(), input: z.json(), fingerprint: z.string(), bytes: z.number(), trace: skillTraceSchema.nullable() })).length(2),
   historicalBaseline: z.json(), offlineAdvice: z.array(z.string()),
   status: z.enum(['offline', 'running', 'completed', 'failed', 'unknown']),
-  attempts: z.array(z.strictObject({ enabled: z.boolean(), status: z.enum(['intent', 'succeeded', 'failed', 'unknown']), output: skillOutputSchema.nullable(), rawOutput: z.string().nullable(), error: z.string().nullable() })).max(2),
-  budget: z.strictObject({ currency: z.string(), maxCostMicro: z.number(), maxRequests: z.literal(6), actualCost: z.null() }).nullable(),
+  attempts: z.array(z.strictObject({ enabled: z.boolean(), status: z.enum(['intent', 'succeeded', 'failed', 'unknown']), output: skillOutputSchema.nullable(), rawOutput: z.string().nullable(), error: z.string().nullable(), wireBody: z.string().nullable().default(null), wireFingerprint: z.string().nullable().default(null), elapsedMs: z.number().nonnegative().nullable().default(null), usage: z.object({ inputTokens: z.number().nullable(), outputTokens: z.number().nullable(), totalTokens: z.number().nullable() }).nullable().default(null), responseModel: z.string().nullable().default(null) })).max(2),
+  budget: z.strictObject({ currency: z.string(), maxCostMicro: z.number(), maxRequests: z.union([z.literal(2), z.literal(6)]), actualCost: z.null() }).nullable(),
 })
 export type SkillExperiment = z.infer<typeof skillExperimentSchema>
 export const skillExperimentSnapshotSchema = z.strictObject({ enabled: z.boolean(), experiments: z.array(skillExperimentSchema) })

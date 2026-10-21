@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { DomainError, type ProjectDatabase } from '../database.js'
 import type { TextGenerationProvider } from '../intelligence/provider.js'
+import { structuredTextBody } from '../intelligence/provider.js'
 import { skillExperimentCommandSchema, skillExperimentSnapshotSchema, skillOutputSchema, type SkillExperiment, type SkillExperimentCommand, type SkillStage } from '../../../src/shared/skill-experiment.js'
 import { Seedance20Loader, assertPortableSkillOutput, hash, skillRules } from './seedance-20.js'
 
@@ -92,9 +93,13 @@ export class SkillExperimentService {
       }
       const items = c.ids.map(id => state.experiments.find(e => e.id === id))
       const current = this.binding()
-      if (!current || items.some(e => !e || e.status !== 'offline') || new Set(items.map(e => e!.stage)).size !== 3 || new Set(items.map(e => e!.inputHash)).size !== 1 || new Set(c.ids).size !== 3)
-        throw new DomainError('CONFLICT', '需要同一输入下尚未执行的三个环节，以及已配置的真实文本服务')
-      for (const e of items) if (JSON.stringify(e!.modelSnapshot) !== JSON.stringify(current.snapshot) || hash(JSON.stringify(this.source(c.projectId, e!.sceneId, e!.shotIds))) !== e!.sourceHash)
+      const validScope = c.maxRequests === 2 ? items.length === 1 && items[0]?.stage === 'director' : items.length === 3 && new Set(items.map(e => e?.stage)).size === 3
+      if (!current || !validScope || items.some(e => !e || e.status !== 'offline') || new Set(items.map(e => e!.inputHash)).size !== 1 || new Set(c.ids).size !== items.length)
+        throw new DomainError('CONFLICT', '只允许单个导演 OFF/ON 两次，或同输入三个环节六次；需要未执行记录及已配置文本服务')
+      // Sampling is pinned to the experiment, not a mutable service default.
+      const serviceIdentity = (snapshot: Record<string, Json>) => JSON.stringify(Object.fromEntries(Object.entries(snapshot).filter(([key]) => key !== 'sampling')))
+      if (new Set(items.map(e => JSON.stringify(e!.modelSnapshot))).size !== 1) throw new DomainError('CONFLICT', '整组实验的模型参数快照不一致')
+      for (const e of items) if (serviceIdentity(e!.modelSnapshot) !== serviceIdentity(current.snapshot) || hash(JSON.stringify(this.source(c.projectId, e!.sceneId, e!.shotIds))) !== e!.sourceHash)
         throw new DomainError('CONFLICT', '模型配置或正式数据已变化；请重新准备并审核预算')
       for (const e of items as SkillExperiment[]) for (const request of e.requests) {
         const assembled = await this.loader.assemble(bases[e.stage] + guard, e.stage, e.target, request.enabled)
@@ -106,11 +111,14 @@ export class SkillExperimentService {
       await this.save(c.projectId, state)
       for (const e of items as SkillExperiment[]) {
         for (const request of e.requests) {
-          const attempt: SkillExperiment['attempts'][number] = { enabled: request.enabled, status: 'intent', output: null, rawOutput: null, error: null }
+          const sampling = e.modelSnapshot.sampling ? z.strictObject({ temperature: z.number().min(0).max(2), top_p: z.number().min(0).max(1) }).parse(e.modelSnapshot.sampling) : undefined
+          const wireBody = JSON.stringify(structuredTextBody({ model: String(current.snapshot.model), maxTokens: Number(current.snapshot.maxTokens ?? 4000), outputMode: z.enum(['json-schema', 'json-object', 'json-prompt']).parse(current.snapshot.textOutputMode ?? 'json-schema') }, { system: request.system, input: request.input, schema: skillOutputSchema, schemaName: 'skill_experiment', sampling }))
+          const attempt: SkillExperiment['attempts'][number] = { enabled: request.enabled, status: 'intent', output: null, rawOutput: null, error: null, wireBody, wireFingerprint: hash(wireBody), elapsedMs: null, usage: null, responseModel: null }
           e.attempts.push(attempt); await this.save(c.projectId, state)
+          const started = performance.now()
           try {
-            const output = await current.provider.generateStructured({ system: request.system, input: request.input, schema: skillOutputSchema, schemaName: 'skill_experiment', signal: AbortSignal.timeout(90000) })
-            attempt.rawOutput = JSON.stringify(output)
+            const output = await current.provider.generateStructured({ system: request.system, input: request.input, schema: skillOutputSchema, schemaName: 'skill_experiment', sampling, signal: AbortSignal.timeout(90000), onResponse: metadata => { attempt.rawOutput = metadata.rawOutput; attempt.usage = metadata.usage; attempt.responseModel = metadata.model } })
+            attempt.rawOutput ??= JSON.stringify(output)
             const parsed = skillOutputSchema.parse(output)
             assertPortableSkillOutput(parsed)
             const allowed = new Set((request.input as { entities: { id: string }[] }).entities.map(entity => entity.id))
@@ -127,7 +135,7 @@ export class SkillExperimentService {
             // Stop the entire approved bundle. Unsent experiments cannot reuse this budget.
             for (const next of items) if (next!.status === 'running') next!.status = 'failed'
             await this.save(c.projectId, state); return state
-          }
+          } finally { attempt.elapsedMs = Math.round(performance.now() - started); await this.save(c.projectId, state) }
         }
         e.status = 'completed'; await this.save(c.projectId, state)
       }
