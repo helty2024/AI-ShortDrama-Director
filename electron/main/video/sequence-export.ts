@@ -9,6 +9,14 @@ import { videoTimelineClipSchema, type VideoTimelineClip } from '../../../src/sh
 import { orderedShots } from '../../../src/shared/shot-order.js'
 import { sequenceDraftClipsSchema, sequenceDraftSchema } from '../../../src/shared/video-sequence.js'
 
+/** A filename suggestion only; the native dialog still chooses the output path. */
+export function sequenceExportFilename(projectName: string, clipCount: number) {
+  let name = Array.from(projectName, c => c.codePointAt(0)! < 32 || c.codePointAt(0) === 127 ? '_' : c).join('').replace(/[<>:"/\\|?*]/g, '_')
+  name = Array.from(name).slice(0, 60).join('').trim().replace(/[. ]+$/u, '') || '项目'
+  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(name)) name = `_${name}`
+  return `${name}-成片-${clipCount}镜头.mp4`
+}
+
 export function saveSequenceDraft(visual: VisualRepository, projectId: string, expectedRevision: number, raw: VideoTimelineClip[]) {
   const clips = sequenceDraftClipsSchema.parse(raw)
   const db = visual.repo.database
@@ -97,7 +105,7 @@ export async function exportVideoSequence(visual: VisualRepository, projectId: s
     const stored = await visual.storage.storeVideo(projectId, assetId, await readFile(path))
     return visual.repo.database.transaction(() => {
       validateTimeline(visual, projectId, shotIds, clips)
-      visual.repo.database.insertEntities(projectId, [{ ...metadata(), id: assetId, projectId, kind: 'asset', name: '成片 · 已确认镜头', description: '按正式镜头顺序与剪辑区间合成的无声视频', mediaType: 'video', uri: null, status: 'placeholder', source: null, previousVersionId: null }])
+      visual.repo.database.insertEntities(projectId, [{ ...metadata(), id: assetId, projectId, kind: 'asset', name: `成片 · ${clips.length} 镜头`, description: '按正式镜头顺序与剪辑区间合成的无声视频', mediaType: 'video', uri: null, status: 'placeholder', source: null, previousVersionId: null }])
       return visual.commitVersion(projectId, assetId, stored, { sourceType: 'imported', provider: null, model: null, prompt: '', negativePrompt: '', generationTaskId: null,
         sourceAssetIds: [...new Set(versions.map(v => v.assetId))], metadata: { localAssembly: true, audio: 'none', expectedDuration: duration,
           sequence: shots.map((shot, i) => ({ ...clips[i], shotNumber: shot.plan?.shotNumber ?? shot.order, duration: clips[i].outSeconds - clips[i].inSeconds })) } })

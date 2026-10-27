@@ -5,12 +5,32 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { sequenceFixture } from '../fixtures/sequence.js'
-import { exportVideoSequence, saveSequenceDraft, validateTimeline } from '../../electron/main/video/sequence-export.js'
+import { exportVideoSequence, saveSequenceDraft, sequenceExportFilename, validateTimeline } from '../../electron/main/video/sequence-export.js'
 import { ProjectDatabase } from '../../electron/main/database.js'
 import { IntelligenceRepository } from '../../electron/main/intelligence/repository.js'
 import { VisualRepository } from '../../electron/main/visual/repository.js'
 import { probeVideo, runMediaTool } from '../../electron/main/video/ffmpeg.js'
 import { videoBatchCommandSchema } from '../../src/shared/video-batch.js'
+import { sequenceClipLabel } from '../../src/features/shot-videos/shot-video-model.js'
+
+test('sequence export filename keeps project identity and count with Windows-safe names', () => {
+  assert.equal(sequenceExportFilename('雨夜来信', 2), '雨夜来信-成片-2镜头.mp4')
+  assert.equal(sequenceExportFilename('雨夜来信', 3), '雨夜来信-成片-3镜头.mp4')
+  assert.equal(sequenceExportFilename('  雨<夜>:"/\\|?*\u0000\n.  ', 2), '雨_夜__________-成片-2镜头.mp4')
+  for (const name of ['CON', 'nul.txt', 'COM1', 'lPt9.后缀', 'COM¹']) assert(sequenceExportFilename(name, 2).startsWith('_'))
+  assert.equal(sequenceExportFilename(' . . ', 2), '项目-成片-2镜头.mp4')
+  assert.equal(sequenceExportFilename('剧'.repeat(120), 100), `${'剧'.repeat(60)}-成片-100镜头.mp4`)
+  assert(!sequenceExportFilename('😀'.repeat(120), 2).includes('\ufffd'))
+})
+
+test('sequence history labels use stored sequence count and tolerate missing or malformed legacy metadata', () => {
+  const clip = { shotId: 'shot', versionId: 'version' }
+  assert.equal(sequenceClipLabel({ metadata: { sequence: [clip, clip] } }), '2 镜头')
+  assert.equal(sequenceClipLabel({ metadata: { sequence: [clip, clip, clip] } }), '3 镜头')
+  assert.equal(sequenceClipLabel({ metadata: {} }), '镜数未知')
+  for (const sequence of [null, [], 'old', [null], [{ shotId: 'shot' }]])
+    assert.equal(sequenceClipLabel({ metadata: { sequence } }), '镜数未知')
+})
 
 test('formal sequence exports only selected confirmed candidates in story order with current trims and no generation batch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'director-sequence-unit-'))
@@ -39,6 +59,8 @@ test('formal sequence exports only selected confirmed candidates in story order 
     assert.equal(videoBatchCommandSchema.safeParse({ op: 'exportSequence', projectId: f.project.id, clips, path: 'C:/unsafe.mp4' }).success, false)
     const result = await exportVideoSequence(f.visual, f.project.id, [...ids].reverse(), clips)
     assert.equal(result.metadata.localAssembly, true)
+    assert.equal(f.visual.asset(f.project.id, result.assetId).name, '成片 · 2 镜头')
+    assert.equal(sequenceClipLabel(result), '2 镜头')
     assert.deepEqual(result.metadata.sequence, clips.map((c, i) => ({ ...c, shotNumber: selectedShots[i].order, duration: 0.5 })))
     const file = await f.visual.storage.resolveRegisteredFile(result.storageKey)
     assert(Math.abs((await probeVideo(file)).duration - 1) < 0.05)
@@ -50,6 +72,9 @@ test('formal sequence exports only selected confirmed candidates in story order 
     }
     assert.equal(f.db.connection.prepare('SELECT count(*) AS count FROM production_batches').get()?.count, 0)
     assert.equal(f.db.connection.prepare('SELECT count(*) AS count FROM generation_records').get()?.count, 0)
+    const full = await exportVideoSequence(f.visual, f.project.id, f.shots.map(s => s.id))
+    assert.equal(f.visual.asset(f.project.id, full.assetId).name, '成片 · 3 镜头')
+    assert.equal(sequenceClipLabel(full), '3 镜头')
     // A stale adoption cannot be silently substituted on a subsequent export.
     const shot = f.repo.entity(f.project.id, ids[0])
     f.repo.updateEntity(f.project.id, shot.id, shot.revision, { confirmedVideoAssetId: null, confirmedVideoAssetVersionId: null })

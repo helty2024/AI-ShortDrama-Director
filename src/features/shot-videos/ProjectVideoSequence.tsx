@@ -6,6 +6,7 @@ import { videoTimelineClipSchema, type VideoTimelineClip } from '../../shared/vi
 import { VideoTimeline } from './VideoTimeline'
 import { ShotVideoPlayer } from './ShotVideoPlayer'
 import { sequenceDraftSchema } from '../../shared/video-sequence'
+import { sequenceClipLabel } from './shot-video-model'
 
 // Navigation can remount this view before its last IPC reply. Read only after
 // the previous instance has drained its writes for the same project.
@@ -120,7 +121,7 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
     <p aria-live="polite" data-testid="sequence-draft-status">{saveError ? `时间线草稿未保存：${saveError}` : saveStatus || (ready ? '尚未建立时间线草稿' : '正在读取本地时间线草稿…')}</p>
     {saveError && draft && <button disabled={busy} onClick={() => persist(draft.clips)}>重试保存草稿</button>}
     {draft && <VideoTimeline key={draft.key} shots={shots.filter(s => draft.clips.some(c => c.shotId === s.id))} versions={versions} initial={draft.clips} busy={busy} onEdit={clips => { setDraft(previous => previous && { ...previous, clips }); persist(clips) }} onExport={exportSequence} />}
-    {exports.length > 0 && <details className="project-sequence-history"><summary>已导出成片（{exports.length}）</summary>{exports.map(v => <div key={v.id} className="actions"><span>{new Date(v.createdAt).toLocaleString('zh-CN')} · {v.duration?.toFixed(3)} 秒 · {v.width}×{v.height}</span><button disabled={busy} onClick={() => setPreviewId(v.id)}>预览此成片</button><button disabled={!ready || busy} onClick={() => restore(v)}>载入此成片时间线</button></div>)}</details>}
+    {exports.length > 0 && <details className="project-sequence-history"><summary>已导出成片（{exports.length}）</summary>{exports.map(v => <div key={v.id} className="actions"><span>{sequenceClipLabel(v)} · {new Date(v.createdAt).toLocaleString('zh-CN')} · {v.duration?.toFixed(3)} 秒 · {v.width}×{v.height}</span><button disabled={busy} onClick={() => setPreviewId(v.id)}>预览此成片</button><button disabled={!ready || busy} onClick={() => restore(v)}>载入此成片时间线</button></div>)}</details>}
     {preview && <section aria-label="已导出成片预览"><h3>已导出成片 · {preview.duration?.toFixed(3)} 秒</h3><button onClick={() => setPreviewId('')}>收起成片预览</button><ShotVideoPlayer version={preview} label="已导出成片" onSource={() => setNotice('成片剪辑来源保存在已导出成片的时间线记录中。')} /></section>}
   </section>
 }

@@ -339,6 +339,7 @@ test('formal project offline candidates → partial selection → draft survives
   const directory = await mkdtemp(join(tmpdir(), 'director-formal-sequence-'))
   const f = await sequenceFixture(directory, true)
   const selectedShots = [f.shots[0], f.shots[2]]
+  f.db.update({ id: f.project.id, expectedRevision: f.project.revision, changes: { name: '离线:雨夜/来信?' } })
   // Start with empty slots; exercise the native local-file import through the formal UI.
   for (const version of f.versions) f.visual.deleteAsset(f.project.id, version.assetId, f.visual.asset(f.project.id, version.assetId).revision)
   f.db.close()
@@ -452,9 +453,15 @@ test('formal project offline candidates → partial selection → draft survives
     await timeline.getByRole('button', { name: '连续预览时间线' }).click()
     await expect.poll(() => timeline.locator('video').getAttribute('aria-label')).toBe('时间线镜 2')
     const output = join(directory, 'formal-sequence.mp4')
-    await application.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }) }, output)
+    const partialSuggestions = await application.evaluateHandle(({ dialog }, path) => {
+      const suggestions: string[] = []
+      dialog.showSaveDialog = async options => { suggestions.push('defaultPath' in options ? String(options.defaultPath) : ''); return { canceled: false, filePath: path } }
+      return suggestions
+    }, output)
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
     await expect(sequence.getByRole('status').filter({ hasText: 'MP4 已保存' })).toBeVisible({ timeout: 30000 })
+    expect(await partialSuggestions.jsonValue()).toEqual(['离线_雨夜_来信_-成片-2镜头.mp4'])
+    await partialSuggestions.dispose()
     expect(Math.abs((await probeVideo(output)).duration - 1)).toBeLessThan(0.05)
     // Decode every output frame: selected red → blue; no excluded green frame.
     const frames = join(directory, 'decoded')
@@ -482,6 +489,7 @@ test('formal project offline candidates → partial selection → draft survives
     await page.getByRole('button', { name: '关闭检查器' }).click()
     sequence = page.getByRole('region', { name: '项目成片', exact: true })
     await sequence.getByText('已导出成片（1）', { exact: true }).click()
+    await expect(sequence.locator('.project-sequence-history .actions')).toContainText('2 镜头')
     await sequence.getByRole('button', { name: '载入此成片时间线' }).click()
     timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
     await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
@@ -490,6 +498,31 @@ test('formal project offline candidates → partial selection → draft survives
     await application.evaluate(({ dialog }) => { dialog.showSaveDialog = async () => ({ canceled: true, filePath: '' }) })
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
     await expect(sequence.getByRole('status').filter({ hasText: '已取消文件保存' })).toBeVisible({ timeout: 30000 })
+    await sequence.getByRole('button', { name: '全选镜头' }).click()
+    await sequence.getByRole('button', { name: '按当前已确认视频重新建立时间线' }).click()
+    await expect(timeline.locator('tbody tr')).toHaveCount(3)
+    const fullSuggestions = await application.evaluateHandle(({ dialog }, path) => {
+      const suggestions: string[] = []
+      dialog.showSaveDialog = async options => { suggestions.push('defaultPath' in options ? String(options.defaultPath) : ''); return { canceled: false, filePath: path } }
+      return suggestions
+    }, join(directory, 'formal-full-sequence.mp4'))
+    await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
+    await expect(sequence.getByRole('status').filter({ hasText: 'MP4 已保存' })).toBeVisible({ timeout: 30000 })
+    expect(await fullSuggestions.jsonValue()).toEqual(['离线_雨夜_来信_-成片-3镜头.mp4'])
+    await fullSuggestions.dispose()
+    const history = sequence.locator('.project-sequence-history')
+    await expect(history.getByText('已导出成片（3）', { exact: true })).toBeVisible()
+    await expect(history.locator('.actions')).toHaveCount(3)
+    await expect(history.locator('.actions').filter({ hasText: '2 镜头' })).toHaveCount(2)
+    await expect(history.locator('.actions').filter({ hasText: '3 镜头' })).toHaveCount(1)
+    // Labels come from each export's metadata, even while the draft now has 3 clips.
+    const library = await page.evaluate(id => window.desktop!.workspace.request({ action: 'workspace.get', id }), f.project.id)
+    expect(library.ok).toBe(true)
+    if (!library.ok) throw new Error(library.message)
+    const assetNames = workspaceSchema.parse(library.data).entities.filter(e => e.kind === 'asset').map(e => e.name)
+    expect(assetNames).toContain('成片 · 2 镜头')
+    expect(assetNames).toContain('成片 · 3 镜头')
+    await history.screenshot({ path: 'test-results/formal-project-export-labels-1920.png' })
     const batches = await page.evaluate(projectId => window.desktop!.workspace.request({ action: 'videoBatch', command: { op: 'list', projectId } }), f.project.id)
     expect(batches).toEqual({ ok: true, data: [] })
     await application.close()

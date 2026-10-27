@@ -3,6 +3,12 @@ import type { AITask } from '../../shared/intelligence.js'
 import type { AssetVersion } from '../../shared/visual.js'
 import { officialVersion } from '../storyboard/storyboard-model.js'
 
+export function sequenceClipLabel(version: Pick<AssetVersion, 'metadata'>) {
+  const sequence = version.metadata.sequence
+  const valid = Array.isArray(sequence) && sequence.length > 0 && sequence.every(c => c && typeof c === 'object' && !Array.isArray(c) && typeof c.shotId === 'string' && typeof c.versionId === 'string')
+  return valid ? `${sequence.length} 镜头` : '镜数未知'
+}
+
 export function shotVideoCandidates(shot: Shot, versions: AssetVersion[], tasks: AITask[]) {
   const outputOwners = new Map<string, string>()
   const taskOwners = new Map<string, string>()

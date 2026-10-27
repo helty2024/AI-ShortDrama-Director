@@ -10,7 +10,7 @@ import type { VideoApiGenerationService } from './generation/video-api-service.j
 import { OperationsService } from './operations/service.js'
 import { app } from 'electron'
 import { VideoBatchService } from './generation/video-batch.js'
-import { exportVideoSequence, saveSequenceDraft } from './video/sequence-export.js'
+import { exportVideoSequence, saveSequenceDraft, sequenceExportFilename } from './video/sequence-export.js'
 import { copyFile } from 'node:fs/promises'
 import { ProductionService } from './video/service.js'
 import { AIError } from './intelligence/provider.js'
@@ -172,7 +172,7 @@ export function registerWorkspaceIPC(
             if (c.op === 'saveSequenceDraft') return { ok: true, data: z.json().parse(saveSequenceDraft(visual.visual, c.projectId, c.expectedRevision, c.clips)) }
             if (c.op === 'exportSequence') {
               const version = await exportVideoSequence(visual.visual, c.projectId, c.clips.map(clip => clip.shotId), c.clips)
-              const save = await dialog.showSaveDialog({ title: '导出已选镜头连续成片', defaultPath: '短剧成片.mp4', filters: [{ name: 'MP4 无声视频', extensions: ['mp4'] }] })
+              const save = await dialog.showSaveDialog({ title: '导出已选镜头连续成片', defaultPath: sequenceExportFilename(database.get(c.projectId).name, c.clips.length), filters: [{ name: 'MP4 无声视频', extensions: ['mp4'] }] })
               const saved = !save.canceled && Boolean(save.filePath)
               if (saved) await copyFile(await visual.visual.storage.resolveRegisteredFile(version.storageKey), save.filePath!)
               return { ok: true, data: z.json().parse({ version, saved }) }
