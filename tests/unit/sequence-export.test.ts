@@ -14,13 +14,15 @@ import { videoBatchCommandSchema } from '../../src/shared/video-batch.js'
 import { sequenceClipLabel } from '../../src/features/shot-videos/shot-video-model.js'
 
 test('sequence export filename keeps project identity and count with Windows-safe names', () => {
-  assert.equal(sequenceExportFilename('雨夜来信', 2), '雨夜来信-成片-2镜头.mp4')
-  assert.equal(sequenceExportFilename('雨夜来信', 3), '雨夜来信-成片-3镜头.mp4')
-  assert.equal(sequenceExportFilename('  雨<夜>:"/\\|?*\u0000\n.  ', 2), '雨_夜__________-成片-2镜头.mp4')
-  for (const name of ['CON', 'nul.txt', 'COM1', 'lPt9.后缀', 'COM¹']) assert(sequenceExportFilename(name, 2).startsWith('_'))
-  assert.equal(sequenceExportFilename(' . . ', 2), '项目-成片-2镜头.mp4')
-  assert.equal(sequenceExportFilename('剧'.repeat(120), 100), `${'剧'.repeat(60)}-成片-100镜头.mp4`)
-  assert(!sequenceExportFilename('😀'.repeat(120), 2).includes('\ufffd'))
+  const id = '11111111-1111-4111-8111-111111111111'
+  const filename = (name: string, count: number) => sequenceExportFilename(name, count, id)
+  assert.equal(filename('雨夜来信', 2), `雨夜来信-成片-2镜头-${id}.mp4`)
+  assert.equal(filename('雨夜来信', 3), `雨夜来信-成片-3镜头-${id}.mp4`)
+  assert.equal(filename('  雨<夜>:"/\\|?*\u0000\n.  ', 2), `雨_夜__________-成片-2镜头-${id}.mp4`)
+  for (const name of ['CON', 'nul.txt', 'COM1', 'lPt9.后缀', 'COM¹']) assert(filename(name, 2).startsWith('_'))
+  assert.equal(filename(' . . ', 2), `项目-成片-2镜头-${id}.mp4`)
+  assert.equal(filename('剧'.repeat(120), 100), `${'剧'.repeat(60)}-成片-100镜头-${id}.mp4`)
+  assert(!filename('😀'.repeat(120), 2).includes('\ufffd'))
 })
 
 test('sequence history labels use stored sequence count and tolerate missing or malformed legacy metadata', () => {
@@ -61,6 +63,12 @@ test('formal sequence exports only selected confirmed candidates in story order 
     assert.equal(result.metadata.localAssembly, true)
     assert.equal(f.visual.asset(f.project.id, result.assetId).name, '成片 · 2 镜头')
     assert.equal(sequenceClipLabel(result), '2 镜头')
+    const repeat = await exportVideoSequence(f.visual, f.project.id, ids, clips)
+    const firstName = sequenceExportFilename(f.project.name, clips.length, result.id)
+    const repeatName = sequenceExportFilename(f.project.name, clips.length, repeat.id)
+    assert.notEqual(firstName, repeatName, 'two actual same-count exports have unique filename suggestions')
+    assert(firstName.endsWith(`-${result.id}.mp4`))
+    assert(repeatName.endsWith(`-${repeat.id}.mp4`))
     assert.deepEqual(result.metadata.sequence, clips.map((c, i) => ({ ...c, shotNumber: selectedShots[i].order, duration: 0.5 })))
     const file = await f.visual.storage.resolveRegisteredFile(result.storageKey)
     assert(Math.abs((await probeVideo(file)).duration - 1) < 0.05)

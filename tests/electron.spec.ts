@@ -504,7 +504,10 @@ test('formal project offline candidates → partial selection → draft survives
     }, output)
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
     await expect(sequence.getByRole('status').filter({ hasText: 'MP4 已保存' })).toBeVisible({ timeout: 30000 })
-    expect(await partialSuggestions.jsonValue()).toEqual(['离线_雨夜_来信_-成片-2镜头.mp4'])
+    const partialPaths = await partialSuggestions.jsonValue()
+    const uniqueSuffix = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    expect(partialPaths).toHaveLength(1)
+    expect(partialPaths[0]).toMatch(new RegExp(`^离线_雨夜_来信_-成片-2镜头-${uniqueSuffix}\\.mp4$`))
     await partialSuggestions.dispose()
     expect(Math.abs((await probeVideo(output)).duration - 1)).toBeLessThan(0.05)
     // Decode every output frame: selected red → blue; no excluded green frame.
@@ -550,9 +553,18 @@ test('formal project offline candidates → partial selection → draft survives
     await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
     await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
     await expect(selection().getByRole('checkbox').nth(1)).not.toBeChecked()
-    await application.evaluate(({ dialog }) => { dialog.showSaveDialog = async () => ({ canceled: true, filePath: '' }) })
+    const repeatedSuggestions = await application.evaluateHandle(({ dialog }) => {
+      const suggestions: string[] = []
+      dialog.showSaveDialog = async options => { suggestions.push('defaultPath' in options ? String(options.defaultPath) : ''); return { canceled: true, filePath: '' } }
+      return suggestions
+    })
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
     await expect(sequence.getByRole('status').filter({ hasText: '已取消文件保存' })).toBeVisible({ timeout: 30000 })
+    const repeatedPaths = await repeatedSuggestions.jsonValue()
+    expect(repeatedPaths).toHaveLength(1)
+    expect(repeatedPaths[0]).toMatch(new RegExp(`^离线_雨夜_来信_-成片-2镜头-${uniqueSuffix}\\.mp4$`))
+    expect(repeatedPaths[0]).not.toBe(partialPaths[0])
+    await repeatedSuggestions.dispose()
     await sequence.getByRole('button', { name: '全选镜头' }).click()
     await sequence.getByRole('button', { name: '按当前已确认视频重新建立时间线' }).click()
     await expect(timeline.locator('tbody tr')).toHaveCount(3)
@@ -563,7 +575,10 @@ test('formal project offline candidates → partial selection → draft survives
     }, join(directory, 'formal-full-sequence.mp4'))
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
     await expect(sequence.getByRole('status').filter({ hasText: 'MP4 已保存' })).toBeVisible({ timeout: 30000 })
-    expect(await fullSuggestions.jsonValue()).toEqual(['离线_雨夜_来信_-成片-3镜头.mp4'])
+    const fullPaths = await fullSuggestions.jsonValue()
+    expect(fullPaths).toHaveLength(1)
+    expect(fullPaths[0]).toMatch(new RegExp(`^离线_雨夜_来信_-成片-3镜头-${uniqueSuffix}\\.mp4$`))
+    await writeFile('test-results/formal-project-unique-default-paths.json', JSON.stringify({ partial: partialPaths[0], repeatedPartial: repeatedPaths[0], full: fullPaths[0] }, null, 2))
     await fullSuggestions.dispose()
     const history = sequence.locator('.project-sequence-history')
     await expect(history.getByText('已导出成片（3）', { exact: true })).toBeVisible()

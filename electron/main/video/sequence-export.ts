@@ -9,12 +9,12 @@ import { videoTimelineClipSchema, type VideoTimelineClip } from '../../../src/sh
 import { orderedShots } from '../../../src/shared/shot-order.js'
 import { sequenceDraftClipsSchema, sequenceDraftSchema } from '../../../src/shared/video-sequence.js'
 
-/** A filename suggestion only; the native dialog still chooses the output path. */
-export function sequenceExportFilename(projectName: string, clipCount: number) {
+/** Use the newly committed version UUID; the native dialog chooses the final path. */
+export function sequenceExportFilename(projectName: string, clipCount: number, versionId: string) {
   let name = Array.from(projectName, c => c.codePointAt(0)! < 32 || c.codePointAt(0) === 127 ? '_' : c).join('').replace(/[<>:"/\\|?*]/g, '_')
   name = Array.from(name).slice(0, 60).join('').trim().replace(/[. ]+$/u, '') || '项目'
   if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(name)) name = `_${name}`
-  return `${name}-成片-${clipCount}镜头.mp4`
+  return `${name}-成片-${clipCount}镜头-${versionId}.mp4`
 }
 
 export function saveSequenceDraft(visual: VisualRepository, projectId: string, expectedRevision: number, raw: VideoTimelineClip[]) {
