@@ -30,7 +30,7 @@ test('image-to-video workflow uses explicitly selected approved frame and still 
     await writeFile(path, f.imageServer.bytes)
     const stored = await f.services.visual.importFile(f.project.id, path, 'frame', null)
     // Import is a separate human input, no generated image request is made.
-    const version = f.services.visual.review(f.project.id, stored.id, stored.revision, 'approved', null, null)
+    const version = f.services.visual.review(f.project.id, stored.id, stored.revision, 'approved', f.target.id, f.target.revision)
     assert.equal(f.input.workflowType, 'shot-video')
     if (f.input.workflowType !== 'shot-video') throw new Error()
     const created = workflowSnapshotSchema.parse(f.services.workflow.execute({ op: 'createWorkflowRun', input: { ...f.input, generation: {

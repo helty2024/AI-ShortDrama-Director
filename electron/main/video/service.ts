@@ -299,14 +299,8 @@ export class ProductionService {
         prompt.providerHints.continuityFingerprint = context.fingerprint
         if (c.actionOverride !== null) prompt.action = c.actionOverride
         if (c.operation === 'video.compile') return prompt
-        if (profile.provider === 'seedance' && !c.costAccepted)
-          throw new DomainError('CONFLICT', '请确认可能产生费用后再提交')
-        if (
-          profile.provider === 'seedance' &&
-          (!profile.credentialRef ||
-            !(await this.credentials.has(profile.credentialRef)))
-        )
-          throw new DomainError('CONFLICT', '请先配置安全凭据')
+        if (profile.provider !== 'mock-video')
+          throw new DomainError('FORBIDDEN', '旧视频入口缺少指纹绑定的费用授权；请使用 Video API 生产入口')
         if (!profile.capabilities.resolutions.includes(c.resolution))
           throw new DomainError('CONFLICT', '不支持该分辨率')
         const request = videoRequestSchema.parse({

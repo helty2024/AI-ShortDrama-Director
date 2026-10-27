@@ -25,17 +25,17 @@ import {
   type ToolSubmitResult,
 } from '../../../../src/shared/tools.js'
 import { generationEstimateSchema } from '../../../../src/shared/generation.js'
-import { packyImageModels, packyImageModelNames } from '../../../../src/shared/packy-models.js'
+import { packyImageModels, packyImageModelNames, packyTextOnlyModels } from '../../../../src/shared/packy-models.js'
 
 const currentPackyImage25ProfileSchema = z.strictObject({
   adapter: z.literal('packy-image-25'),
   toolId: z.literal('packy.image-25'),
   displayName: z.string().max(120),
   modelId: z.enum(packyImageModels),
-  tokenGroup: z.literal('image'),
+  tokenGroup: z.enum(['image', 'sora']),
   credentialRef: z.uuid().nullable(),
   currency: z.literal('USD'),
-}).refine(p => p.displayName === packyImageModelNames[p.modelId], 'Model and display name must match')
+}).refine(p => p.displayName === packyImageModelNames[p.modelId], 'Model and display name must match').refine(p => p.tokenGroup === (p.modelId === 'gpt-image-2' ? 'sora' : 'image'), 'Required token group does not match model')
 export const packyImage25ProfileSchema = z.preprocess(
   (value) =>
     value &&
@@ -196,7 +196,7 @@ export class PackyImage25Adapter implements ImageApiTool {
       kind: 'api',
       executionMode: 'cloud',
       availability: 'unknown',
-      capabilities: (this.profile.modelId === 'gpt-image-2.5-flare' ? ['image.generate'] as const : ['image.generate', 'image.referenceGenerate'] as const).map((capability) => ({
+      capabilities: (packyTextOnlyModels.includes(this.profile.modelId) ? ['image.generate'] as const : ['image.generate', 'image.referenceGenerate'] as const).map((capability) => ({
         capability,
         contractVersion: '1.0.0',
         models: { status: 'known', value: [this.profile.modelId] },
@@ -267,7 +267,7 @@ export class PackyImage25Adapter implements ImageApiTool {
         authentication: 'accepted',
         modelVisible,
         message: modelVisible
-          ? 'GET /models 已接受凭据，目标模型可见；Image 分组与生成参数仍未验证'
+          ? 'GET /models 已接受凭据，目标模型可见；所需令牌分组与当前账户生成参数仍未验证'
           : 'GET /models 已接受凭据，但目标模型不可见；未探测生成端点',
       }
     } catch (raw) {
@@ -318,7 +318,7 @@ export class PackyImage25Adapter implements ImageApiTool {
     signal: AbortSignal,
   ) {
     const parsed = capabilityContracts[cap].input.safeParse(input)
-    let valid = parsed.success && ctx.model === this.profile.modelId && !(this.profile.modelId === 'gpt-image-2.5-flare' && cap !== 'image.generate')
+    let valid = parsed.success && ctx.model === this.profile.modelId && !(packyTextOnlyModels.includes(this.profile.modelId) && cap !== 'image.generate')
     if (parsed.success) {
       const v = parsed.data as CapabilityInput<ImageCapability>
       const ratio =
@@ -377,7 +377,7 @@ export class PackyImage25Adapter implements ImageApiTool {
         {
           code: 'tool-unavailable',
           field: null,
-          message: this.profile.modelId === 'gpt-image-2.5-flare' ? 'Flare 仅开放已明确授权的单张文生图测试；费用未独立报价，远端能力仍需验证。' : this.paidValidation
+          message: this.profile.modelId === 'gpt-image-2' ? 'Packy gpt-image-2 支持 Images 协议单图编辑；要求 sora 分组；账户编辑权限未经真实执行验证。' : packyTextOnlyModels.includes(this.profile.modelId) ? `${this.profile.displayName} 仅开放已明确授权的单张文生图测试；费用未独立报价，远端能力仍需验证。` : this.paidValidation
             ? 'Sunburst 单次付费验证；USD 0.4000，只允许一次固定文生图'
             : '本地映射不证明 Sunburst 远端能力；真实生成关闭',
         },
@@ -439,17 +439,6 @@ export class PackyImage25Adapter implements ImageApiTool {
       throw transportFailure('authorization', false)
     if (!(await this.validate(cap, input, ctx, signal)).valid)
       throw transportFailure('validation', false)
-    if (!this.transport.fixtureOrigin) {
-      try {
-        await this.paidValidation!.consume(
-          cap,
-          input as CapabilityInput<ImageCapability>,
-          ctx,
-        )
-      } catch {
-        throw transportFailure('authorization', false)
-      }
-    }
     let key: string
     try {
       key = await this.credential()
@@ -465,6 +454,7 @@ export class PackyImage25Adapter implements ImageApiTool {
       model: this.profile.modelId,
       prompt,
       n: 1,
+      ...(this.profile.modelId === 'gpt-image-2' ? { size: `${input.resolution.width}x${input.resolution.height}`, quality: 'high', output_format: 'png', response_format: 'url', ...(cap === 'image.referenceGenerate' ? { input_fidelity: 'high' } : {}) } : {}),
     }
     let body: string | Buffer = JSON.stringify(fields),
       contentType = 'application/json'
@@ -478,6 +468,15 @@ export class PackyImage25Adapter implements ImageApiTool {
         file.bytes.length > 30 * 1024 * 1024
       )
         throw transportFailure('validation', false)
+      if (this.profile.modelId === 'gpt-image-2') {
+        try {
+          const decoded = sharp(file.bytes, { limitInputPixels: 40_000_000, failOn: 'error' })
+          const meta = await decoded.metadata()
+          const mime = meta.format === 'jpeg' ? 'image/jpeg' : `image/${meta.format}`
+          if (mime !== file.mime || (meta.pages ?? 1) !== 1) throw new Error('invalid-input-image')
+          await decoded.stats()
+        } catch { throw transportFailure('validation', false) }
+      }
       const boundary = 'director-' + randomUUID()
       const chunks: Buffer[] = Object.entries(fields).map(([k, v]) =>
         Buffer.from(
@@ -493,6 +492,17 @@ export class PackyImage25Adapter implements ImageApiTool {
       )
       body = Buffer.concat(chunks)
       contentType = 'multipart/form-data; boundary=' + boundary
+    }
+    if (!this.transport.fixtureOrigin) {
+      try {
+        await this.paidValidation!.consume(
+          cap,
+          input as CapabilityInput<ImageCapability>,
+          ctx,
+        )
+      } catch {
+        throw transportFailure('authorization', false)
+      }
     }
     let stage: z.infer<typeof packyOutputStageSchema> = 'generation-response'
     let failureRecorded = false

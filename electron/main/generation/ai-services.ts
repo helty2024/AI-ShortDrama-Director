@@ -58,6 +58,11 @@ export class AIServiceManager {
   get localEnabled() { return this.catalog.localEnabled && !this.catalog.localArchived }
   async applyCurrent() { await this.host.apply(this.catalog) }
   get services() { return this.catalog.services.filter(s => !s.deleted) }
+  /** Never substitutes another service/default for historical execution. */
+  historicalService(id: string, revision: number) {
+    const found = [...this.catalog.services, ...this.catalog.revisions].find(s => s.id === id && s.revision === revision)
+    return found ? structuredClone(found) : null
+  }
   async retainExisting(input: Omit<AIServiceInput, 'id'>, credentialRef: string | null) {
     if (this.catalog.services.some(s => s.kind === input.kind)) return
     const s = storedSchema.parse({ ...input, id: randomUUID(), credentialRef, enabled: true, deleted: false, revision: 1,
@@ -173,7 +178,9 @@ export class AIServiceManager {
     if (this.busy) throw new DomainError('CONFLICT', '服务配置操作正在进行，请稍候')
     this.busy = true
     try {
-      if(!['ai.probe','ai.verifyVideoDownload'].includes(command.op))this.host.assertIdle()
+      const nonTextChange = command.op === 'ai.save' ? command.service.kind !== 'text'
+        : 'id' in command && this.find(command.id).kind !== 'text' && ['ai.default', 'ai.importKey', 'ai.enable', 'ai.delete'].includes(command.op)
+      if(!nonTextChange && !['ai.probe','ai.verifyVideoDownload'].includes(command.op))this.host.assertIdle()
       if (command.op === 'ai.mode') return await this.persist({ ...this.catalog, mode: command.mode })
       if (command.op === 'ai.defaultLocal') return await this.persist({...this.catalog,defaultImageTool:'comfyui.local'})
       if (command.op === 'ai.localEnable') return await this.persist({...this.catalog,localEnabled:command.enabled,localArchived:false})

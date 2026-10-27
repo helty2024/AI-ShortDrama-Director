@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { VideoApiPreviewInput } from '../../../../src/shared/video-api.js'
 import { z } from 'zod'
 import type { ToolAdapter } from '../protocol.js'
 import { immutable } from '../registry.js'
@@ -59,6 +60,8 @@ export interface VideoExecutionAccess {
 export interface VideoApiTool extends ToolAdapter<VideoCapability> {
   readonly profile: VideoApiProfile
   readonly generationEnabled?: boolean
+  planBatchInput?(input: Omit<VideoApiPreviewInput, 'toolId' | 'fps' | 'resolution'>): VideoApiPreviewInput | null
+  batchReservation?(input: VideoApiPreviewInput): { currency: string; amountMicro: number | null; basis: string }
   authorizeInputs(ctx: ToolExecutionContext, access: VideoExecutionAccess): void
   authorizeRecovery(
     ctx: ToolExecutionContext,
@@ -111,6 +114,25 @@ function isTransportFailure(
 export abstract class VideoLifecycleAdapter implements VideoApiTool {
   readonly profile: VideoApiProfile
   readonly transport: ImageHttpTransport
+  batchReservation(input: VideoApiPreviewInput) {
+    const policy = this.profile.batchPolicy
+    if (!policy) throw normalizeToolError({ code: 'validation' })
+    return { currency: policy.budgetCurrency,
+      amountMicro: policy.reservationQuote ? Math.ceil(input.durationSeconds * policy.reservationQuote.microUnitsPerSecond) : null,
+      basis: policy.reservationQuote?.basis ?? '供应商报价未知；人工预算不是供应商硬限额' }
+  }
+  planBatchInput(input: Omit<VideoApiPreviewInput, 'toolId' | 'fps' | 'resolution'>): VideoApiPreviewInput | null {
+    const p = this.profile, policy = p.batchPolicy
+    if (!policy || !input.prompt || input.prompt.length > policy.maxPromptLength ||
+      !p.supportedCapabilities.includes(input.mode === 'image-to-video' ? 'video.imageToVideo' : 'video.textToVideo') ||
+      !p.supportedAspectRatios.includes(input.aspectRatio) || (input.lastFrameAssetVersionId && !p.supportsLastFrame)) return null
+    const duration = [...p.supportedDurations].sort((a, b) => a - b).find(d => d >= input.durationSeconds)
+    const ratios = { '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, custom: null }
+    const ratio = ratios[input.aspectRatio]
+    const resolution = p.supportedResolutions.find(r => ratio !== null && Math.abs(r.width / r.height - ratio) < 0.02)
+    if (!duration || !resolution) return null
+    return { ...input, toolId: p.toolId, durationSeconds: duration, resolution, fps: policy.fps }
+  }
   private readonly credential: () => Promise<string>
   private readonly pending = new Map<
     string,
@@ -215,6 +237,7 @@ export abstract class VideoLifecycleAdapter implements VideoApiTool {
           (r) => r.width === value.resolution.width && r.height === value.resolution.height,
         ) &&
         value.outputMime === 'video/mp4' &&
+        (!p.batchPolicy || (value.prompt.length <= p.batchPolicy.maxPromptLength && value.fps === p.batchPolicy.fps)) &&
         (!('lastFrameAssetVersionId' in value) ||
           value.lastFrameAssetVersionId === null ||
           p.supportsLastFrame) &&

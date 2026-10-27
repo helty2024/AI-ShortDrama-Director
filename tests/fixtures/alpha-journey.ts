@@ -98,6 +98,7 @@ export async function runAlphaJourney(application: ElectronApplication, data: st
   await page.locator('.generate-candidate-main').getByRole('button', { name: '设为镜头关键帧' }).click()
   await expect.poll(async () => (await workspace()).entities.find(item => item.kind === 'shot')?.approvedKeyframeVersionId).toBeTruthy()
   await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByLabel('生产用途').selectOption('technical-test')
   await page.getByRole('button', { name: '开始生成 1 个镜头', exact: true }).click()
   await closeDetails(page)
   await confirmAlpha(page)

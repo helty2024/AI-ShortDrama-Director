@@ -200,6 +200,7 @@ test('Creator closeout fresh project completes Story to Shot Video journey witho
     await page.locator('.generate-candidate-main').getByRole('button', { name: '设为镜头关键帧' }).click()
     expect((await currentShot())?.kind === 'shot' && (await currentShot() as { approvedKeyframeVersionId: string | null }).approvedKeyframeVersionId).toBeTruthy()
     await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByLabel('生产用途').selectOption('technical-test')
     await expect(page.getByText('尚未配置可用的视频生成工具')).toBeVisible()
     await capture('Generate-Video-Unavailable-2560')
     await nav.getByRole('button', { name: '分镜', exact: true }).click()
@@ -448,6 +449,7 @@ test('Storyboard and Generate Creator keep Shot context and block unconfigured V
     await expect(page.getByText('LEGACY_NOT_AUTHORITATIVE')).toHaveCount(0)
     await page.screenshot({ path: 'test-results/Generate-Keyframe-2560.png' })
     await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByLabel('生产用途').selectOption('technical-test')
     await expect(page.getByText('尚未配置可用的视频生成工具')).toBeVisible()
     await expect(page.getByText('VIDEO_PROMPT_SOURCE')).toBeVisible()
     await expect(page.getByRole('button', { name: '开始生成 1 个镜头' })).toHaveCount(0)
@@ -492,6 +494,7 @@ test('test-only Reference Video Tool drives Creator preview, approval and explic
     await page.locator('.storyboard-shot-card').first().click()
     await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
     await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByLabel('生产用途').selectOption('technical-test')
     await page.getByRole('radio', { name: '文生视频' }).check()
     await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const dialog = page.getByRole('dialog', { name: '确认生成' })
@@ -559,6 +562,7 @@ test('Creator unknown video submission offers query-only recovery and never resu
     await page.locator('.storyboard-shot-card').first().click()
     await page.getByRole('complementary', { name: '上下文检查器' }).getByRole('button', { name: '去生成' }).click()
     await page.getByRole('tab', { name: '镜头视频' }).click()
+    await page.getByLabel('生产用途').selectOption('technical-test')
     await page.getByRole('radio', { name: '文生视频' }).check()
     await page.getByRole('button', { name: '开始生成 1 个镜头' }).click()
     const dialog = page.getByRole('dialog', { name: '确认生成' })
@@ -920,7 +924,7 @@ test('project workspace persists CRUD, seed relations and safe IPC', async () =>
         command: { operation: 'about' },
       }),
     )
-    expect(about).toMatchObject({ ok: true, data: { version: '0.9.0-alpha.2', schema: 10 } })
+    expect(about).toMatchObject({ ok: true, data: { version: '0.9.0-alpha.2', schema: 11 } })
     const isolation = await page.evaluate(() => ({
       bridge: Boolean(window.desktop?.workspace),
       require: typeof Reflect.get(window, 'require'),

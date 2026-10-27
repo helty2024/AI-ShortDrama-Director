@@ -3,6 +3,7 @@ import { WorkflowRepository } from './repository.js'
 import { WorkflowRunner } from './runner.js'
 import type { ImageGenerationService } from '../generation/image-service.js'
 import type { VideoApiGenerationService } from '../generation/video-api-service.js'
+import { videoProductionEvidence } from '../generation/video-production-gate.js'
 
 export class WorkflowService {
   readonly repository: WorkflowRepository
@@ -14,6 +15,7 @@ export class WorkflowService {
   execute(raw: WorkflowCommand) {
     const c = workflowCommandSchema.parse(raw)
     if (c.op === 'createWorkflowRun') {
+      if (c.input.workflowType === 'shot-video') videoProductionEvidence(this.runner.video.visual, c.input.generation)
       const result = this.repository.create(c.input)
       this.runner.resume(result.run.projectId, result.run.id)
       return this.repository.get(result.run.projectId, result.run.id)

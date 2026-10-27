@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { aiServicesSnapshotSchema } from '../src/shared/ai-services.js'
 import { createAlphaStory, createAlphaShot } from './fixtures/alpha-journey.js'
 
-test('SenseNova and Flare selections save and reload without sending a generation request', async () => {
+for (const imageModel of ['gpt-image-2.5-flare', 'gpt-image-2'])
+test(`SenseNova and ${imageModel} selections save and reload without sending a generation request`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'director-three-model-config-'))
   let app = await launch(root)
   try {
@@ -22,7 +23,7 @@ test('SenseNova and Flare selections save and reload without sending a generatio
     await expect(dialog).toHaveCount(0)
     await page.getByRole('button', { name: '添加图像 AI服务' }).click()
     dialog = page.getByRole('dialog', { name: 'AI 服务配置' })
-    await dialog.getByLabel('模型名称', { exact: true }).selectOption('gpt-image-2.5-flare')
+    await dialog.getByLabel('模型名称', { exact: true }).selectOption(imageModel)
     await dialog.getByRole('button', { name: '保存服务', exact: true }).click()
     await expect(dialog).toHaveCount(0)
     await app.close(); app = await launch(root); page = await app.firstWindow()
@@ -31,9 +32,9 @@ test('SenseNova and Flare selections save and reload without sending a generatio
     if (!result.ok) throw new Error(result.message)
     const state = aiServicesSnapshotSchema.parse(result.data)
     expect(state.services.find(s => s.kind === 'text')?.textOutputMode).toBe('json-prompt')
-    expect(state.services.find(s => s.kind === 'packy-image')?.model).toBe('gpt-image-2.5-flare')
+    expect(state.services.find(s => s.kind === 'packy-image')?.model).toBe(imageModel)
     expect(state.services.every(s => s.connection === 'unchecked' && s.generation === 'unverified')).toBe(true)
-    await expect(page.getByRole('region', { name: 'Packy Image', exact: true })).toContainText('自动尺寸')
+    await expect(page.getByRole('region', { name: 'Packy Image', exact: true })).toContainText(imageModel === 'gpt-image-2' ? 'sora 分组令牌' : '自动尺寸')
     await expect(page.locator('table')).toHaveCount(0)
     await page.getByRole('region', { name: 'Packy Image', exact: true }).getByText('真实生成测试', { exact: true }).click()
     await expect(page.getByRole('button', { name: '准备单次真实测试' }).first()).toBeDisabled()

@@ -16,6 +16,7 @@ export function immutable<T>(value: T): T {
   return value
 }
 export interface RegisteredTool {
+  readonly executionIdentity?: string
   readonly descriptor: ToolDescriptor
   readonly adapter: ToolAdapter<Capability>
 }

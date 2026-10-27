@@ -57,6 +57,24 @@ test('No approval or bound generation record can consume a native paid grant',as
     assert.equal(await f.gate.available(f.image,'image.generate'),true)
   }finally{await f.close()}
 })
+
+test('H3 reuses verified native integration for supported modes without falsely marking another capability validated', async () => {
+  const f = await fixture()
+  const video: StoredAIService = { ...f.image, kind: 'compshare-video', model: 'MiniMax-H3', baseUrl: 'https://cp.compshare.cn' }
+  class VerifiedGate extends NativeProductionGate {
+    override async validated(service: StoredAIService, cap: Parameters<NativeProductionGate['validated']>[1]) {
+      return service.id === video.id && service.revision === 1 && cap === 'video.imageToVideo'
+    }
+    override async hosts() { return ['cdn.example.com'] }
+  }
+  try {
+    const gate = new VerifiedGate(f.root, { get: async () => '', set: async () => {}, has: async () => true }, new GenerationRepository(f.db), f.visual)
+    assert.equal(await gate.available(video, 'video.textToVideo'), true)
+    assert.equal(await gate.validated(video, 'video.textToVideo'), false)
+    assert.equal(await gate.available({ ...video, revision: 2 }, 'video.textToVideo'), false)
+    assert.equal(await gate.available(f.image, 'image.referenceGenerate'), false)
+  } finally { await f.close() }
+})
 test('Single native trial is consumed once under concurrency and remains consumed after a simulated crash',async()=>{
   const f=await fixture(), source=await generationFixture(), approvalId=randomUUID()
   class BoundRepository extends GenerationRepository {

@@ -53,6 +53,7 @@ function VideoApiSession() {
   const { state, reload } = useWorkspace()
   const projectId = state.workspace?.project.id
   const entities = state.workspace?.entities ?? []
+  const [purpose, setPurpose] = useState<'narrative-production' | 'technical-test'>('narrative-production')
   const [profiles, setProfiles] = useState<z.infer<typeof profilesSchema>>([])
   const [versions, setVersions] = useState<AssetVersion[]>([])
   const [toolId, setToolId] = useState('')
@@ -128,7 +129,7 @@ function VideoApiSession() {
       ) : (
         <>
           <fieldset disabled={busy} onChange={() => setPreview(null)}>
-            <legend>视频生成输入</legend>
+            <legend>视频生成输入</legend><label>生产用途<select value={purpose} onChange={e => setPurpose(e.target.value as typeof purpose)}><option value="narrative-production">叙事生产（角色主参考＋批准关键帧）</option><option value="technical-test">独立文生视频技术测试（不验收叙事一致性）</option></select></label>
             <label>
               Shot
               <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
@@ -175,7 +176,7 @@ function VideoApiSession() {
           </fieldset>
           <button disabled={busy || !targetId || !selectedProfile} onClick={() => void act(async () => {
             setPreview(videoApiPreviewSchema.parse(await command({ op: 'preview', input: {
-              projectId, targetId, toolId, mode, prompt: prompt.trim() || null,
+              purpose, projectId, targetId, toolId, mode, prompt: prompt.trim() || null,
               durationSeconds: duration, fps, resolution: { width, height }, aspectRatio,
               seed: null, firstFrameAssetVersionId: mode === 'image-to-video' ? firstFrame || null : null,
               lastFrameAssetVersionId: mode === 'image-to-video' ? lastFrame || null : null,
@@ -188,7 +189,7 @@ function VideoApiSession() {
       )}
       <button disabled={busy || !targetId || !selectedProfile} onClick={() => void act(async () => {
         await createWorkflow({ workflowType: 'shot-video', generation: {
-          projectId, targetId, toolId, mode, prompt: prompt.trim() || null,
+          purpose, projectId, targetId, toolId, mode, prompt: prompt.trim() || null,
           durationSeconds: duration, fps, resolution: { width, height }, aspectRatio,
           seed: null, firstFrameAssetVersionId: mode === 'image-to-video' ? firstFrame || null : null,
           lastFrameAssetVersionId: mode === 'image-to-video' ? lastFrame || null : null,
@@ -202,9 +203,9 @@ function VideoApiSession() {
           <p>Prompt：{preview.prompt}</p>
           <p>{preview.disclosure}</p>
           <p>{preview.estimate}（{preview.currency}）</p>
-          <label>最大授权金额（micro {preview.currency}）<input type="number" min={0} value={ceiling} onChange={(event) => setCeiling(event.target.value)} /></label>
+          <label>最大授权金额（micro {preview.currency}）<input type="number" min={1} value={ceiling} onChange={(event) => setCeiling(event.target.value)} /></label>
           <label className="check-label"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />我明确确认本次云端提交，并授权上述单次费用上限</label>
-          <button disabled={busy || !confirmed || ceiling === ''} onClick={() => void act(async () => {
+          <button disabled={busy || !confirmed || ceiling === '' || !(Number(ceiling) > 0)} onClick={() => void act(async () => {
             const task = aiTaskSchema.parse(await command({ op: 'confirm', projectId, previewId: preview.id, maxCostMicro: Number(ceiling), allowUnknownCost: true }))
             localStorage.setItem(`video-api-task:${projectId}`, task.id)
             setPreview(null)

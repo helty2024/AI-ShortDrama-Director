@@ -129,6 +129,37 @@ async function fixture() {
   const save=async()=>{await manager.execute({op:'ai.save',service:input,apiKey:'sk-ml-FIXTURE_ONLY'});return (await manager.snapshot()).services[0]!}
   return {root,path,manager,credentials,host,transport,input,save,lock:()=>{locked=true},applied:()=>applied,close:()=>rm(root,{recursive:true,force:true})}
 }
+test('Packy model change preserves credentials and archives the prior revision without remote calls', async () => {
+  const f = await fixture()
+  try {
+    const input = { id: null, kind: 'packy-image' as const, name: 'Packy', baseUrl: 'https://cf.api.fan/v1', model: 'gpt-image-2.5-flare' }
+    await f.manager.execute({ op: 'ai.save', service: input, apiKey: 'FIXTURE_SECRET' })
+    const old = f.manager.services[0]!
+    await f.manager.execute({ op: 'ai.default', id: old.id })
+    f.lock()
+    await f.manager.execute({ op: 'ai.save', service: { ...input, id: old.id, model: 'gpt-image-2' } })
+    const current = f.manager.services[0]!
+    assert.equal(current.id, old.id)
+    assert.equal(current.model, 'gpt-image-2')
+    assert.equal(current.revision, old.revision + 1)
+    assert.equal(current.credentialRef, old.credentialRef)
+    assert.equal(current.connection, 'unchecked')
+    assert.equal(current.structuredValidated, false)
+    assert.equal((await f.manager.snapshot()).services[0]?.generation, 'unverified')
+    assert.equal((await f.manager.snapshot()).services[0]?.isDefault, true)
+    assert.equal(f.transport.calls.length, 0)
+    const stored = JSON.parse(await readFile(f.path, 'utf8'))
+    assert.deepEqual(stored.revisions, [old])
+    const reopened = new AIServiceManager(f.path, f.credentials, f.host, false, f.transport)
+    await reopened.load()
+    assert.equal(reopened.services[0]?.model, 'gpt-image-2')
+    assert.equal(reopened.services[0]?.credentialRef, old.credentialRef)
+    assert.deepEqual(reopened.historicalService(old.id, old.revision), old)
+    assert.equal(reopened.historicalService(old.id, old.revision + 99), null)
+    assert.equal(reopened.historicalService(randomUUID(), old.revision), null)
+  } finally { await f.close() }
+})
+
 test('Production catalog does not fall back to Mock, and encrypted config is project-independent',async()=>{
   const f=await fixture()
   try {

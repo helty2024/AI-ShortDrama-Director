@@ -50,7 +50,7 @@ test('Alpha video persists one accepted task across runtime restart and approve 
     const shot = db.workspace(project.id).entities.find(item => item.kind === 'shot')!
     const visual = new VisualRepository(new IntelligenceRepository(db), new MediaStorage(join(root, 'media')))
     let service = new VideoApiGenerationService(visual, [runtime.videoAdapter])
-    const preview = await service.preview({ projectId: project.id, targetId: shot.id, toolId: alphaVideoTool, mode: 'text-to-video', prompt: 'ALPHA_PRIVATE_PROMPT', durationSeconds: 4, fps: 24, resolution: { width: 640, height: 360 }, aspectRatio: '16:9', seed: null, firstFrameAssetVersionId: null, lastFrameAssetVersionId: null, allowAssetUpload: true, localOnly: false })
+    const preview = await service.preview({ projectId: project.id, targetId: shot.id, toolId: alphaVideoTool, purpose: 'technical-test', mode: 'text-to-video', prompt: 'ALPHA_PRIVATE_PROMPT', durationSeconds: 4, fps: 24, resolution: { width: 640, height: 360 }, aspectRatio: '16:9', seed: null, firstFrameAssetVersionId: null, lastFrameAssetVersionId: null, allowAssetUpload: true, localOnly: false })
     const task = service.confirm(project.id, preview.id, 0, true)
     await service.wait(task.id)
     const receipts = await readFile(join(root, 'reference/reference-tasks.json'), 'utf8')

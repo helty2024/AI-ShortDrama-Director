@@ -29,6 +29,7 @@ export interface PreflightResult {
 }
 interface PreflightRecord { request: BrokerRequest; result: PreflightResult; entry: RegisteredTool }
 interface Execution {
+  pinned: boolean
   context: ToolExecutionContext
   entry: RegisteredTool
   capability: Capability
@@ -147,6 +148,29 @@ export class ToolBroker {
     this.preflights.set(key, { request: immutable(request), result, entry })
     return result
   }
+  /** Planning only: each adapter proposes its own parameters for the entire
+   * scope. A single adapter must validate every item; no execution/fallback occurs. */
+  async selectPlan(plans: BrokerRequest[][], signal: AbortSignal): Promise<number | null> {
+    const eligible: { index: number; candidate: ToolCandidate }[] = []
+    for (const [index, requests] of plans.entries()) {
+      if (!requests.length) continue
+      let candidate: ToolCandidate | undefined
+      let valid = true
+      for (const request of requests) {
+        const tool = request.policy.selection
+        if (tool.mode !== 'fixed' || (this.autoEligible && !await this.autoEligible(tool.toolId, request.snapshot.capability))) { valid = false; break }
+        const result = await this.preflight(request, signal)
+        if (!result.ready) { valid = false; break }
+        candidate ??= result.candidates.find(c => c.descriptor.id === result.routingDecision?.selectedToolId)
+      }
+      if (valid && candidate) eligible.push({ index, candidate })
+    }
+    if (!eligible.length) return null
+    const first = plans[eligible[0].index][0]
+    const selected = route({ id: randomUUID(), projectId: first.projectId, createdAt: this.now().toISOString(),
+      capability: first.snapshot.capability, policy: { ...first.policy, selection: { mode: 'AUTO' } }, candidates: eligible.map(e => e.candidate) })
+    return selected.ready ? eligible.find(e => e.candidate.descriptor.id === selected.decision.selectedToolId && e.candidate.descriptor.version === selected.decision.selectedToolVersion)?.index ?? null : null
+  }
   assertCurrent(raw: BrokerRequest, result: PreflightResult): void {
     const request = this.validResponse(brokerRequestSchema, raw)
     const record = this.preflights.get(requestKey(request.projectId, request.requestId))
@@ -164,6 +188,7 @@ export class ToolBroker {
     rawContext: ToolExecutionContext,
     rawHandle: ToolTaskHandle | null,
     options: {
+      boundEntry?: RegisteredTool
       allowProviderSelectedResolution?: boolean
       durationToleranceSeconds?: number
     } = {},
@@ -171,6 +196,8 @@ export class ToolBroker {
     this.assertCurrent(request, result)
     const ctx = this.validResponse(toolExecutionContextSchema, rawContext), decision = result.routingDecision
     if (!decision || ctx.projectId !== request.projectId || ctx.taskId !== request.requestId || ctx.requestFingerprint !== result.requestFingerprint || ctx.model !== decision.selectedModel || ctx.routingDecisionId !== decision.id || ctx.estimateId !== result.estimate?.id) throw boundaryError('ownership-mismatch')
+    const selected = this.registry.get(decision.selectedToolId, decision.selectedToolVersion)
+    if (options.boundEntry && (options.boundEntry.adapter !== selected.adapter || JSON.stringify(options.boundEntry.descriptor) !== JSON.stringify(selected.descriptor))) throw boundaryError('ownership-mismatch')
     const key = requestKey(ctx.projectId, ctx.taskId)
     if (this.submitted.has(key)) throw boundaryError('preflight-invalid')
     if (
@@ -181,12 +208,14 @@ export class ToolBroker {
       throw boundaryError('preflight-invalid')
     const handle = rawHandle === null ? null : this.validResponse(toolTaskHandleSchema, rawHandle)
     if (handle && (handle.toolId !== decision.selectedToolId || handle.toolVersion !== decision.selectedToolVersion)) throw boundaryError('ownership-mismatch')
-    const externalKey = handle ? `${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}` : null
+    const entry = options.boundEntry ?? selected
+    const externalKey = handle ? `${entry.executionIdentity ?? ''}/${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}` : null
     if (externalKey && this.externalOwners.has(externalKey)) throw boundaryError('ownership-mismatch')
     const id = randomUUID()
     this.executions.set(id, {
+      pinned: Boolean(options.boundEntry),
       context: immutable(ctx),
-      entry: this.registry.get(decision.selectedToolId, decision.selectedToolVersion),
+      entry,
       capability: decision.requestedCapability,
       input: immutable(structuredClone(request.snapshot.input)),
       handle: handle ? immutable(handle) : null,
@@ -209,13 +238,15 @@ export class ToolBroker {
     toolVersion: string,
     rawHandle: ToolTaskHandle,
     options: {
+      boundEntry?: RegisteredTool
       allowProviderSelectedResolution?: boolean
       durationToleranceSeconds?: number
     } = {},
   ): string {
     const snapshot = this.validResponse(capabilitySnapshotSchema, rawSnapshot)
     const ctx = this.validResponse(toolExecutionContextSchema, rawContext)
-    const entry = this.registry.get(toolId, toolVersion)
+    const entry = options.boundEntry ?? this.registry.get(toolId, toolVersion)
+    if (entry.descriptor.id !== toolId || entry.descriptor.version !== toolVersion) throw boundaryError('ownership-mismatch')
     const handle = this.validResponse(toolTaskHandleSchema, rawHandle)
     const fingerprint = requestFingerprint({
       fingerprintVersion: '1',
@@ -236,7 +267,7 @@ export class ToolBroker {
     )
       throw boundaryError('ownership-mismatch')
     const taskKey = requestKey(ctx.projectId, ctx.taskId)
-    const externalKey = `${toolId}/${toolVersion}/${handle.externalTaskId}`
+    const externalKey = `${entry.executionIdentity ?? ''}/${toolId}/${toolVersion}/${handle.externalTaskId}`
     if (this.submitted.has(taskKey) || this.externalOwners.has(externalKey))
       throw boundaryError('ownership-mismatch')
     const durationToleranceSeconds = options.durationToleranceSeconds ?? 0
@@ -244,6 +275,7 @@ export class ToolBroker {
       throw boundaryError('preflight-invalid')
     const id = randomUUID()
     this.executions.set(id, {
+      pinned: Boolean(options.boundEntry),
       context: immutable(ctx),
       entry,
       capability: snapshot.capability,
@@ -266,7 +298,7 @@ export class ToolBroker {
     const parsed = toolExecutionContextSchema.safeParse(ctx), execution = this.executions.get(id)
     if (!parsed.success || !execution || JSON.stringify(parsed.data) !== JSON.stringify(execution.context)) throw boundaryError('ownership-mismatch')
     if (handle && (!execution.handle || handle.toolId !== execution.handle.toolId || handle.toolVersion !== execution.handle.toolVersion || handle.externalTaskId !== execution.handle.externalTaskId)) throw boundaryError('ownership-mismatch')
-    if (this.registry.get(execution.entry.descriptor.id, execution.entry.descriptor.version) !== execution.entry) throw boundaryError('tool-not-registered')
+    if (!execution.pinned && this.registry.get(execution.entry.descriptor.id, execution.entry.descriptor.version) !== execution.entry) throw boundaryError('tool-not-registered')
     return execution
   }
   /** Host ingestion signs validated metadata, never an adapter-provided path or URL. */
@@ -319,7 +351,7 @@ export class ToolBroker {
   bindAccepted(ctx: ToolExecutionContext, id: string, raw: ToolTaskHandle): void {
     const execution=this.own(ctx,id),handle=this.validResponse(toolTaskHandleSchema,raw)
     if(execution.handle||handle.toolId!==execution.entry.descriptor.id||handle.toolVersion!==execution.entry.descriptor.version)throw boundaryError('ownership-mismatch')
-    const key=`${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}`
+    const key=`${execution.entry.executionIdentity ?? ''}/${handle.toolId}/${handle.toolVersion}/${handle.externalTaskId}`
     if(this.externalOwners.has(key))throw boundaryError('ownership-mismatch')
     execution.handle=handle;this.externalOwners.set(key,id)
   }

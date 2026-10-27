@@ -73,12 +73,17 @@ test('cancel after acceptance keeps task/record and does not fake remote cancell
   try {
     f.imageServer.setMode('running')
     const first = await f.create(), work = f.confirm(first.run.id)
-    for (let i = 0; i < 100 && f.imageServer.counts.submit === 0; i++) await new Promise(resolve => setTimeout(resolve, 10))
+    // Receipt of POST is earlier than acceptance/polling. Wait for one complete
+    // running observation before switching the fixture to completed; otherwise
+    // the test changes history and queue between the two status reads.
+    for (let i = 0; i < 100 && f.imageServer.counts.queue === 0; i++) await new Promise(resolve => setTimeout(resolve, 10))
+    assert(f.imageServer.counts.queue > 0)
+    assert(f.services.image.generation.task(f.project.id, f.get(first.run.id).steps[1].relatedTaskId!).providerTaskId)
     f.services.workflow.runner.cancel(f.project.id, first.run.id)
     f.imageServer.setMode('ok'); await work
     const stopped = f.get(first.run.id), result = f.services.image.query(f.project.id, stopped.steps[1].relatedTaskId!)
     assert.equal(stopped.run.status, 'cancelled')
-    assert.equal(result.task.status, 'succeeded')
+    assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
     assert.equal(result.versions[0].status, 'draft')
     assert.equal(result.reservationStatus, 'consumed')
     assert.equal(f.imageServer.counts.submit, 1)

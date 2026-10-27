@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { nativeVideoBatchSchema } from './video-batch.js'
 const id = z.uuid(),
   text = z.string().max(20000),
   small = z.string().max(2000)
@@ -153,6 +154,7 @@ export const batchSchema = z.strictObject({
   updatedAt: z.iso.datetime(),
   status: z.enum(['active', 'paused']).default('active'),
   kind: z.enum(['keyframe', 'video']),
+  nativeVideo: nativeVideoBatchSchema.optional(),
   entries: z
     .array(
       z.strictObject({

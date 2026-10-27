@@ -1,5 +1,6 @@
 import { migrateWorkflow } from './workflow/migration.js'
-import { migrateStory, STORY_SCHEMA_VERSION } from './story/migration.js'
+import { migrateStory } from './story/migration.js'
+import { migrateExecutionBinding, EXECUTION_SCHEMA_VERSION } from './generation/execution-binding-migration.js'
 import { migrateApproval } from './generation/approval-migration.js'
 import { migrateGeneration } from './generation/migration.js'
 import { migrateOperations } from './operations/migration.js'
@@ -105,7 +106,7 @@ export class ProjectDatabase {
   private migrate() {
     const row = this.db.prepare('PRAGMA user_version').get()
     const version = Number(row?.user_version ?? 0)
-    if (version > STORY_SCHEMA_VERSION) throw new Error('数据库版本高于当前应用支持版本')
+    if (version > EXECUTION_SCHEMA_VERSION) throw new Error('数据库版本高于当前应用支持版本')
     if (version === 0)
       this.transaction(() => {
         this.db.exec(`
@@ -138,6 +139,7 @@ export class ProjectDatabase {
     }
     if (version < 9) this.transaction(() => migrateWorkflow(this.db))
     if (version < 10) this.transaction(() => migrateStory(this.db))
+    if (version < 11) this.transaction(() => migrateExecutionBinding(this.db))
   }
   transaction<T>(operation: () => T): T {
     if (this.db.isTransaction) return operation()

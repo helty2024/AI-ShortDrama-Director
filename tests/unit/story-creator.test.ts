@@ -19,7 +19,7 @@ test('schema9 project gains empty Story fields without changing identity, revisi
     const raw = new DatabaseSync(path)
     const legacy = Object.fromEntries(Object.entries(project).filter(([key]) => !['logline', 'style', 'worldview', 'creativeRequirements'].includes(key)))
     raw.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify(legacy), project.id)
-    raw.exec('PRAGMA user_version=9')
+    raw.exec('DROP TABLE execution_bindings; PRAGMA user_version=9')
     raw.close()
     for (let i = 0; i < 2; i++) {
       const db = new ProjectDatabase(path)
@@ -28,7 +28,7 @@ test('schema9 project gains empty Story fields without changing identity, revisi
         for (const key of ['id', 'name', 'description', 'genre', 'aspectRatio', 'language', 'revision', 'createdAt', 'updatedAt'] as const)
           assert.equal(actual[key], project[key])
         for (const key of ['logline', 'style', 'worldview', 'creativeRequirements'] as const) assert.equal(actual[key], '')
-        assert.equal(db.connection.prepare('PRAGMA user_version').get()?.user_version, 10)
+        assert.equal(db.connection.prepare('PRAGMA user_version').get()?.user_version, 11)
       } finally { db.close() }
     }
   } finally { await rm(dir, { recursive: true, force: true }) }
@@ -61,8 +61,8 @@ test('format5 preserves Story; simulated format4/schema9 restores empty Story an
     const folder = await backupProject(f.services.visual, f.project.id, f.dir)
     const manifestPath = join(folder, 'manifest.json')
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-    assert.equal(manifest.format, 5)
-    assert.equal(manifest.schema, 10)
+    assert.equal(manifest.format, 6)
+    assert.equal(manifest.schema, 11)
     const restored5 = await restoreProject(f.services.visual, folder)
     for (const [key, value] of Object.entries(story)) assert.equal(restored5[key as keyof typeof story], value)
     assert.equal(f.services.workflow.repository.list(restored5.id)[0]?.executionAllowed, false)

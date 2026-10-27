@@ -32,5 +32,17 @@ export const videoApiProfileSchema = z.strictObject({
   estimateSupport: z.literal('unknown'),
   cancelSupport: z.boolean(),
   recoverSupport: z.boolean(),
+  // Optional: absent means batch planning is not certified for this adapter.
+  // These are adapter limits, never defaults imposed by the batch workflow.
+  batchPolicy: z.strictObject({
+    fps: z.number().int().min(1).max(120),
+    maxPromptLength: z.number().int().positive().max(32000),
+    maxConcurrent: z.number().int().min(1).max(100),
+    budgetCurrency: z.string().regex(/^[A-Z]{3}$/),
+    reservationQuote: z.strictObject({
+      microUnitsPerSecond: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      basis: z.string().min(1).max(500),
+    }).nullable(),
+  }).optional(),
 })
 export type VideoApiProfile = z.infer<typeof videoApiProfileSchema>

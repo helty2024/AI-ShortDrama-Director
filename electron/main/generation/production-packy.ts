@@ -15,7 +15,7 @@ export class ProductionPackyAdapter extends PackyImage25Adapter {
   constructor(service: StoredAIService, credentials: CredentialStore, gate: NativeProductionGate) {
     const model = packyImageModels.find(m => m === service.model)
     if (!model) throw new Error('Unsupported Packy model')
-    super({adapter:'packy-image-25',toolId:'packy.image-25',displayName:packyImageModelNames[model],modelId:model,credentialRef:service.credentialRef,tokenGroup:'image',currency:'USD'},
+    super({adapter:'packy-image-25',toolId:'packy.image-25',displayName:packyImageModelNames[model],modelId:model,credentialRef:service.credentialRef,tokenGroup:model === 'gpt-image-2' ? 'sora' : 'image',currency:'USD'},
       async()=>credentials.get(service.credentialRef!),new ImageHttpTransport({timeoutMs:180000}),{
         consume:async(cap,input,context)=>{if(input.count!==1)throw new Error('One output per confirmed request required');await gate.consume(service,cap,context)},
       })

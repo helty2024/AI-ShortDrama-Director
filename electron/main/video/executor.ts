@@ -29,6 +29,8 @@ export class VideoTaskExecutor implements MediaTaskExecutor {
   ) {
     if (task.input.type !== 'shot-video')
       throw new AIError('PROVIDER', '不是视频任务')
+    if (task.input.request.provider !== 'mock-video' && !task.providerTaskId)
+      throw new AIError('PROVIDER', '旧视频任务没有指纹绑定费用授权，禁止新增收费提交；请使用 Video API')
     const input = task.input,
       request = input.request,
       p = request.prompt,

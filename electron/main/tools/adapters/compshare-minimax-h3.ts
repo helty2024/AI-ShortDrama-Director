@@ -2,11 +2,12 @@ import { z } from 'zod'
 import { capabilityContracts, type CapabilityInput, type CapabilityOutput } from '../../../../src/shared/capabilities/index.js'
 import { toolHealthSchema, type ToolCallContext, type ToolExecutionContext, type ToolTaskHandle, type ToolCancelResult, type ToolSubmitResult } from '../../../../src/shared/tools.js'
 import { compshareProfileSchema, compshareProbeSchema, type CompShareProfile } from '../../../../src/shared/compshare-minimax-h3.js'
-import { videoApiProfileSchema } from '../../../../src/shared/video-tool-profile.js'
+import { videoApiProfileSchema, type VideoApiProfile } from '../../../../src/shared/video-tool-profile.js'
 import { VideoLifecycleAdapter, type VideoCapability } from './video-lifecycle.js'
 import { ImageHttpTransport, transportFailure } from './image-http.js'
 import { normalizeToolError } from '../errors.js'
 import { immutable } from '../registry.js'
+import { h3RequestBodySchema } from './compshare-h3-contract.js'
 
 const pointsSchema = z.object({ total_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), reserved_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), available_points: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })
   .refine(p => p.available_points === Math.max(0, p.total_points - p.reserved_points))
@@ -18,6 +19,8 @@ const taskSchema = z.object({ task: z.object({
 }) })
 // Only the documented native 480P dimensions are mapped in this baseline.
 const dimensions = { '16:9': { width: 864, height: 480 }, '9:16': { width: 480, height: 864 }, '1:1': { width: 480, height: 480 }, '4:3': { width: 640, height: 480 }, '3:4': { width: 480, height: 640 } } as const
+const batchPolicy: VideoApiProfile['batchPolicy'] = { fps: 24, maxPromptLength: 7000, maxConcurrent: 1, budgetCurrency: 'PTS',
+  reservationQuote: { microUnitsPerSecond: 5000000, basis: 'CompShare MiniMax-H3 / 480P; 5 points per second; fiat cost unknown' } }
 
 export function compShareIdempotencyKey(taskId: string): string {
   return `asd-h3-${z.uuid().parse(taskId)}`
@@ -36,7 +39,7 @@ export class CompShareMiniMaxH3Adapter extends VideoLifecycleAdapter {
   readonly generationEnabled: boolean
   private readonly production: CompShareProductionGate | null
   private readonly productionSubmissions = new Set<string>()
-  constructor(raw: CompShareProfile, credential: () => Promise<string>, transport = new ImageHttpTransport(), production: CompShareProductionGate | null = null) {
+  constructor(raw: CompShareProfile, credential: () => Promise<string>, transport = new ImageHttpTransport(), production: CompShareProductionGate | null = null, historicalBatchPolicy: VideoApiProfile['batchPolicy'] | null = batchPolicy) {
     const stored = compshareProfileSchema.parse(raw)
     const fixture = transport.fixtureOrigin
     if (fixture) {
@@ -50,12 +53,15 @@ export class CompShareMiniMaxH3Adapter extends VideoLifecycleAdapter {
       supportedCapabilities: ['video.textToVideo', 'video.imageToVideo'],
       supportedDurations: Array.from({ length: 27 }, (_, i) => i + 4),
       supportedAspectRatios: Object.keys(dimensions), supportedResolutions: Object.values(dimensions),
-      resolutionMode: 'exact', durationToleranceSeconds: 0.5, supportsLastFrame: true, supportsReferenceImages: false,
+      // Native H3 encodes complete frame groups: real 4/5/6s results measured
+      // 4.458/5.167/6.583s. Preserve actual duration, bounded to one second drift.
+      resolutionMode: 'exact', durationToleranceSeconds: 1, supportsLastFrame: true, supportsReferenceImages: false,
       maxOutputCount: 1, polling: { initialIntervalMs: 1000, maxIntervalMs: 10000, maxWaitMs: 300000 },
       maxDownloadBytes: 256 * 1024 * 1024,
       // Official examples do not specify a production CDN. Fail closed until independently verified.
       allowedDownloadHosts: production?.allowedDownloadHosts ?? [], allowedDownloadHostSuffixes: [],
       currency: 'CNY', estimateSupport: 'unknown', cancelSupport: Boolean(fixture), recoverSupport: true,
+      ...(historicalBatchPolicy ? { batchPolicy: historicalBatchPolicy } : {}),
     }), credential, transport)
     this.storedProfile = immutable(stored)
     this.production = production
@@ -93,7 +99,9 @@ export class CompShareMiniMaxH3Adapter extends VideoLifecycleAdapter {
   }
   override async estimate<C extends VideoCapability>(capability: C, input: CapabilityInput<C>, context: ToolCallContext, signal: AbortSignal) {
     const estimate = await super.estimate(capability, input, context, signal)
-    return { ...estimate, basis: 'CompShare MiniMax-H3 / 480P; points are not a verified monetary quote; cost unknown' }
+    // PTS is the native account unit, not a fiat currency conversion. Actual
+    // settlement remains unknown; approvals reserve points, never invent CNY.
+    return { ...estimate, currency: 'PTS', basis: 'CompShare MiniMax-H3 / 480P; 5 points per second; fiat cost unknown' }
   }
   override async submit<C extends VideoCapability>(capability: C, input: CapabilityInput<C>, context: ToolExecutionContext, signal: AbortSignal): Promise<ToolSubmitResult<CapabilityOutput<C>>> {
     if (!this.generationEnabled) throw transportFailure('authorization', false)
@@ -119,7 +127,7 @@ export class CompShareMiniMaxH3Adapter extends VideoLifecycleAdapter {
     }
     const body = { model: context.model, content, resolution: '480P', duration: input.durationSeconds, ratio: input.aspectRatio, mute_audio: true, use_context_ir: false }
     if (Buffer.byteLength(JSON.stringify(body)) > 72 * 1024 * 1024) throw transportFailure('validation', false)
-    return body
+    return h3RequestBodySchema.parse(body)
   }
   protected override parseAccepted(raw: unknown) { return { taskId: z.object({ task_id: remoteId }).parse(raw).task_id } }
   private task(raw: unknown, id: string) {

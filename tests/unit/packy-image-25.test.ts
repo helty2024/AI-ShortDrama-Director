@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -22,6 +22,7 @@ import { IntelligenceRepository } from '../../electron/main/intelligence/reposit
 import { VisualRepository } from '../../electron/main/visual/repository.js'
 import { MediaStorage } from '../../electron/main/visual/storage.js'
 import { ImageGenerationService } from '../../electron/main/generation/image-service.js'
+import { packyImageModelNames } from '../../src/shared/packy-models.js'
 const profile = packyImage25ProfileSchema.parse({
   adapter: 'packy-image-25',
   toolId: 'packy.image-25',
@@ -91,7 +92,7 @@ test('Flare submits its selected native model once and ingests a decoded PNG', a
     assert.equal(body.n, 1)
   } finally { await f.close() }
 })
-async function fixture(mode = 'ok', generatedBytes?: Buffer) {
+async function fixture(mode = 'ok', generatedBytes?: Buffer, selectedProfile = profile) {
   generatedBytes ??= await sharp({
     create: {
       width: 1024,
@@ -128,7 +129,7 @@ async function fixture(mode = 'ok', generatedBytes?: Buffer) {
       res.end(
         JSON.stringify({
           data: [
-            { id: mode === 'missing' ? 'different-model' : profile.modelId },
+            { id: mode === 'missing' ? 'different-model' : selectedProfile.modelId },
           ],
         }),
       )
@@ -152,7 +153,7 @@ async function fixture(mode = 'ok', generatedBytes?: Buffer) {
   assert.ok(a && typeof a !== 'string')
   const origin = `http://127.0.0.1:${a.port}`
   const adapter = new PackyImage25Adapter(
-    profile,
+    selectedProfile,
     async () => 'FIXTURE_SECRET',
     new ImageHttpTransport({
       fixtureOrigin: origin,
@@ -336,7 +337,8 @@ async function submitOutputFixture(value: Awaited<ReturnType<typeof outputFixtur
   return { result, ingested: captured.ingested ?? null }
 }
 
-test('Packy paid gate prepares one known-cost image attempt in a sparse workspace', async () => {
+for (const modelId of [profile.modelId, 'gpt-image-2'] as const)
+test(`Packy ${modelId} prepares one image candidate without adopting it in a sparse workspace`, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'packy-paid-chain-'))
   const image = await sharp({
     create: {
@@ -348,7 +350,8 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
   })
     .png()
     .toBuffer()
-  const http = await fixture('ok', image)
+  const selectedProfile = packyImage25ProfileSchema.parse({ ...profile, modelId, displayName: packyImageModelNames[modelId], tokenGroup: modelId === 'gpt-image-2' ? 'sora' : 'image' })
+  const http = await fixture('ok', image, selectedProfile)
   const database = new ProjectDatabase(join(dir, 'workspace.sqlite'))
   try {
     const project = database.create({
@@ -370,7 +373,7 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
     database.insertEntities(project.id, [target])
     const gate: PackyPaidValidationGate = { consume: async () => {} }
     const adapter = new PackyImage25Adapter(
-      profile,
+      selectedProfile,
       async () => 'FIXTURE_SECRET',
       new ImageHttpTransport({
         fixtureOrigin: http.origin,
@@ -408,12 +411,23 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
     assert.equal(refreshed.id, preview.id)
     assert.equal(refreshed.prompt, exactPrompt)
     assert.equal(refreshed.estimate, preview.estimate)
-    const task = service.confirm(project.id, preview.id, 400_000, false)
+    assert.throws(() => service.confirm(project.id, preview.id, 0, true), /正数费用/)
+    assert.equal(http.calls.filter(call => call.method === 'POST').length, 0)
+    const task = service.confirm(project.id, preview.id, 400_000, modelId === 'gpt-image-2')
     await service.wait(task.id)
     const result = service.query(project.id, task.id)
     assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
     assert.equal(result.record.outcome, 'succeeded')
     assert.equal(result.versions.length, 1)
+    assert.equal(result.versions[0].status, 'draft')
+    assert.deepEqual(database.workspace(project.id).entities.find(e => e.id === target.id), target)
+    if (modelId === 'gpt-image-2') {
+      assert.equal(result.record.costStatus, 'unknown')
+      assert.equal(result.record.actualCost, null)
+      assert.deepEqual(adapter.describe().capabilities.map(c => c.capability), ['image.generate', 'image.referenceGenerate'])
+      const denied = await adapter.validate('image.referenceGenerate', { ...input, references: [] }, context('image.generate', input, modelId), AbortSignal.timeout(1000))
+      assert.equal(denied.valid, false)
+    }
     assert.equal(result.reservationStatus, 'submitted')
     const promptPackage = service.generation.get(
       'prompt_packages',
@@ -424,12 +438,15 @@ test('Packy paid gate prepares one known-cost image attempt in a sparse workspac
     assert.equal(promptPackage.compiledPrompt.positivePrompt, exactPrompt)
     assert.equal(promptPackage.compiledPrompt.negativePrompt, '')
     assert.equal(promptPackage.targetToolId, profile.toolId)
-    assert.equal(promptPackage.targetModel, profile.modelId)
+    assert.equal(promptPackage.targetModel, modelId)
     const generation = http.calls.find(
       (call) => call.path === '/v1/images/generations',
     )
     assert.ok(generation)
     assert.equal(JSON.parse(generation.body.toString()).prompt, exactPrompt)
+    assert.deepEqual(JSON.parse(generation.body.toString()), { model: modelId, prompt: exactPrompt, n: 1, ...(modelId === 'gpt-image-2' ? { size: '1024x1024', quality: 'high', output_format: 'png', response_format: 'url' } : {}) })
+    assert.equal(http.calls.filter(call => call.method === 'POST').length, 1)
+    assert.throws(() => service.confirm(project.id, preview.id, 400_000, true), /预览已失效/)
   } finally {
     database.close()
     await http.close()
@@ -952,4 +969,67 @@ test('Packy profile factory selects a standalone native adapter and never expose
     }).success,
     false,
   )
+})
+
+
+test('gpt-image-2 edits uses sora profile and one real multipart image; decoded output follows ingestion, not adoption', async () => {
+  const p = packyImage25ProfileSchema.parse({ ...profile, modelId: 'gpt-image-2', displayName: packyImageModelNames['gpt-image-2'], tokenGroup: 'sora' })
+  assert.equal(packyImage25ProfileSchema.safeParse({ ...p, tokenGroup: 'image' }).success, false)
+  const f = await fixture('ok', undefined, p)
+  try {
+    const a = new PackyImage25Adapter(p, async () => 'FIXTURE_SECRET', new ImageHttpTransport({ fixtureOrigin: f.origin, timeoutMs: 1000 }))
+    const referenceId = randomUUID(), data = { ...input, references: [{ assetVersionId: referenceId, role: 'identity' as const, weight: 1 }] }
+    const bytes = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#abcdef' } }).png().toBuffer()
+    const ctx = context('image.referenceGenerate', data, p.modelId)
+    let ingested = 0
+    a.authorizeInputs(ctx, { references: [{ assetVersionId: referenceId, mime: 'image/png', bytes }], billing: () => assert.fail('unknown fee'), ingest: async (b, mime) => {
+      ingested++; assert.equal(mime, 'image/png'); assert.equal((await sharp(b).metadata()).width, 1024)
+      return { handle: 'local-test-ingestion', mime: 'image/png', resolution: input.resolution }
+    } })
+    assert.equal((await a.submit('image.referenceGenerate', data, ctx, AbortSignal.timeout(2000))).state, 'completed')
+    assert.equal(ingested, 1); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].path, '/v1/images/edits')
+    const call = f.calls[0]; assert.match(call.mime, /^multipart\/form-data; boundary=/)
+    assert(call.body.includes(bytes)); const body = call.body.toString()
+    for (const field of ['model', 'prompt', 'n', 'size', 'quality', 'output_format', 'response_format', 'input_fidelity', 'image']) assert(body.includes('name="' + field + '"'))
+    assert(body.includes('gpt-image-2')); assert(!body.includes('FIXTURE_SECRET')); assert(!body.includes(referenceId))
+    await assert.rejects(a.submit('image.referenceGenerate', data, ctx, AbortSignal.timeout(2000)))
+    assert.equal(f.calls.length, 1)
+    const invalid = context('image.referenceGenerate', data, p.modelId)
+    a.authorizeInputs(invalid, { references: [{ assetVersionId: referenceId, mime: 'image/png', bytes: Buffer.from('not an image') }], billing: () => assert.fail(), ingest: async () => { throw new Error('not reached') } })
+    await assert.rejects(a.submit('image.referenceGenerate', data, invalid, AbortSignal.timeout(2000)))
+    assert.equal(f.calls.length, 1)
+  } finally { await f.close() }
+})
+
+
+test('gpt-image-2 local edits pipeline uploads a registered image and commits exactly one pending candidate with provenance', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'packy-edit-pipeline-'))
+  const p = packyImage25ProfileSchema.parse({ ...profile, modelId: 'gpt-image-2', displayName: packyImageModelNames['gpt-image-2'], tokenGroup: 'sora' })
+  const http = await fixture('ok', undefined, p), database = new ProjectDatabase(join(dir, 'workspace.sqlite'))
+  try {
+    const project = database.create({ name: 'Offline edit contract', description: '', genre: 'test', language: 'en', aspectRatio: '1:1' })
+    const target = entitySchema.parse({ ...metadata(), projectId: project.id, kind: 'character', name: 'Offline character', description: 'Preserve identity, reduce background saturation', appearance: '', assetIds: [] })
+    database.insertEntities(project.id, [target])
+    const visual = new VisualRepository(new IntelligenceRepository(database), new MediaStorage(join(dir, 'media')))
+    const inputPath = join(dir, 'input.png')
+    await writeFile(inputPath, await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#987654' } }).png().toBuffer())
+    const reference = await visual.importFile(project.id, inputPath, 'Input candidate', null)
+    const adapter = new PackyImage25Adapter(p, async () => 'FIXTURE_SECRET', new ImageHttpTransport({ fixtureOrigin: http.origin, timeoutMs: 1000 }), { consume: async () => {} })
+    const service = new ImageGenerationService(visual, [adapter])
+    const preview = await service.preview({ projectId: project.id, targetId: target.id, toolId: p.toolId, resolution: input.resolution, aspectRatio: '1:1', count: 1, references: [{ assetVersionId: reference.id, role: 'identity', weight: 1 }], allowAssetUpload: true, localOnly: false })
+    assert.throws(() => service.confirm(project.id, preview.id, 0, true), /正数费用/)
+    assert.equal(http.calls.filter(c => c.method === 'POST').length, 0)
+    const task = service.confirm(project.id, preview.id, 1000000, true)
+    await service.wait(task.id)
+    const result = service.query(project.id, task.id)
+    assert.equal(result.task.status, 'succeeded', JSON.stringify(result.task.error))
+    assert.equal(result.record.generationType, 'image.referenceGenerate')
+    assert.deepEqual(result.record.inputAssetVersionIds, [reference.id])
+    assert.equal(result.record.actualCost, null); assert.equal(result.record.costStatus, 'unknown')
+    assert.equal(result.versions.length, 1); assert.equal(result.versions[0].status, 'draft')
+    assert.deepEqual(result.versions[0].sourceAssetIds, [reference.assetId])
+    assert.equal(visual.asset(project.id, result.versions[0].assetId).approvedVersionId, null)
+    assert.deepEqual(visual.repo.entity(project.id, target.id), target)
+    assert.equal(http.calls.filter(c => c.method === 'POST' && c.path === '/v1/images/edits').length, 1)
+  } finally { database.close(); await http.close(); await rm(dir, { recursive: true, force: true }) }
 })

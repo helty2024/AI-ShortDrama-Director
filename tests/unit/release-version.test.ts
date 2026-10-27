@@ -7,7 +7,7 @@ import { ProjectDatabase } from '../../electron/main/database.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
-test('Alpha package metadata stays aligned while database schema remains 10', async () => {
+test('Alpha package metadata stays aligned while database schema advances to 11', async () => {
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
     version: string
   }
@@ -32,7 +32,7 @@ test('Alpha package metadata stays aligned while database schema remains 10', as
       Number(
         database.connection.prepare('PRAGMA user_version').get()?.user_version,
       ),
-      10,
+      11,
     )
   } finally {
     database.close()

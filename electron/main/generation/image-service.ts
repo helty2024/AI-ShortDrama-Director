@@ -1,3 +1,5 @@
+import { isAlphaTestTool } from '../../../src/shared/alpha.js'
+import { ExecutionBindings, configurationHash, type ServiceIdentity } from './execution-binding.js'
 import { randomUUID, createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { z } from 'zod'
@@ -34,6 +36,7 @@ import {
   type ImageApiPreview,
 } from '../../../src/shared/image-api.js'
 interface Preview {
+  configurationHash: string
   public: ImageApiPreview
   request: BrokerRequest
   preflight: PreflightResult
@@ -52,12 +55,14 @@ export class ImageGenerationService {
   readonly visual: VisualRepository
   readonly generation: GenerationRepository
   readonly approvals: GenerationApprovalService
+  readonly bindings: ExecutionBindings<ImageApiTool>
   private readonly imageTools = new Map<string, ImageApiTool>()
   private readonly previews = new Map<string, Preview>()
   private readonly pending = new Map<string, Promise<void>>()
   constructor(visual: VisualRepository, adapters: ImageApiTool[]) {
     this.visual = visual
     this.generation = new GenerationRepository(visual.repo.database)
+    this.bindings = new ExecutionBindings(this.generation)
     this.approvals = new GenerationApprovalService(
       new ApprovalRepository(visual.repo.database),
     )
@@ -80,7 +85,7 @@ export class ImageGenerationService {
             r.generationRecordId,
             'failed',
           )
-        } else if (task.providerTaskId && this.imageTools.get(this.generation.findByTask(p.id, task.id)?.toolId ?? '')?.authorizeRecovery && this.generation.findByTask(p.id, task.id)?.outcome === 'pending') {
+        } else if (task.providerTaskId && this.generation.findByTask(p.id, task.id)?.outcome === 'pending') {
           // A known accepted job remains recoverable without another submit.
         } else if (['submitted', 'pending-unknown'].includes(r.status))
           this.approvals.markUnknownSubmission(p.id, r.id)
@@ -92,9 +97,10 @@ export class ImageGenerationService {
           )
       }
   }
-  register(adapter: ImageApiTool) {
+  register(adapter: ImageApiTool, identity?: ServiceIdentity) {
     this.registry.register(adapter)
     this.imageTools.set(adapter.profile.toolId, adapter)
+    this.bindings.register(adapter, identity)
   }
   profiles() {
     return this.registry
@@ -348,6 +354,7 @@ export class ImageGenerationService {
     if (this.previews.size >= 100)
       throw new DomainError('CONFLICT', '预览数量过多')
     this.previews.set(result.id, {
+      configurationHash: configurationHash(this.bindings.describe(adapter)),
       public: result,
       request,
       preflight,
@@ -387,6 +394,7 @@ export class ImageGenerationService {
       decision.selectedToolId !== priorDecision.selectedToolId ||
       decision.selectedToolVersion !== priorDecision.selectedToolVersion ||
       decision.selectedModel !== priorDecision.selectedModel ||
+      this.imageTools.get(decision.selectedToolId) !== v.adapter ||
       decision.requestedCapability !== priorDecision.requestedCapability ||
       JSON.stringify(estimate.cost) !== JSON.stringify(v.record.estimatedCost) ||
       estimate.currency !== v.public.currency
@@ -428,8 +436,11 @@ export class ImageGenerationService {
     const v = this.previews.get(previewId)
     if (!v || v.public.projectId !== projectId)
       throw new DomainError('CONFLICT', '预览已失效或不属于此项目')
+    if (!Number.isSafeInteger(maxCostMicro) || maxCostMicro < 0 || (maxCostMicro === 0 && !isAlphaTestTool(v.record.toolId) && !(v.preflight.estimate?.billingRisk === 'free' && v.preflight.estimate.cost.status === 'known' && v.preflight.estimate.cost.estimatedCost.amountMicros === 0)))
+      throw new DomainError('FORBIDDEN', '收费提交必须有合法的正数费用上限')
     this.previews.delete(previewId)
     const prepared = this.approvals.repository.atomic(() => {
+      if (configurationHash(this.bindings.describe(v.adapter)) !== v.configurationHash) throw new DomainError('CONFLICT', '原图像配置已变化，请重新预检和授权')
       this.broker.assertCurrent(v.request, v.preflight)
       const approval = this.approvals.createApproval({
         confirmed: true,
@@ -455,6 +466,7 @@ export class ImageGenerationService {
         v.record,
         approval.itemIds[0],
       )
+      this.bindings.capture(this.generation.getRecord(projectId, v.record.id), v.adapter, prepared.reservation.id)
       onPrepared?.(this.generation.task(projectId, v.task.id), this.generation.getRecord(projectId, v.record.id))
       return prepared
     })
@@ -525,8 +537,9 @@ export class ImageGenerationService {
     if (this.pending.has(taskId)) { await this.wait(taskId); return }
     const { task, record } = this.query(p, taskId)
     if (task.executionAllowed === false || task.status === 'succeeded' || record.outcome !== 'pending') return
-    const adapter = this.imageTools.get(record.toolId)
-    if (!task.providerTaskId || !adapter?.authorizeRecovery) return
+    if (!task.providerTaskId) return
+    const adapter = await this.bindings.resolve(record)
+    if (!adapter.authorizeRecovery) throw new DomainError('CONFLICT', '原适配器不支持任务恢复')
     if (adapter.workflowIdentity?.version !== record.workflowVersion || adapter.profile.modelId !== record.modelId)
       throw new DomainError('CONFLICT', '原 Image Tool 模型或模板版本已改变')
     const reservation = this.approvals.repository.list('approval_reservations', p).find(r => r.taskId === taskId)
@@ -539,7 +552,7 @@ export class ImageGenerationService {
     this.pending.set(taskId, work)
     await work
   }
-  private async run(v: Omit<Preview, 'request' | 'public' | 'preflight'> & {
+  private async run(v: Omit<Preview, 'request' | 'public' | 'preflight' | 'configurationHash'> & {
     request: Pick<BrokerRequest, 'snapshot'>; public: Pick<ImageApiPreview, 'target'>
     preflight?: PreflightResult; originalRequest?: BrokerRequest
   }, reservationId: string, recovery?: ToolTaskHandle): Promise<void> {
@@ -564,6 +577,7 @@ export class ImageGenerationService {
         }),
       )
       if (!recovery) {
+        if (configurationHash(this.bindings.describe(v.adapter)) !== this.bindings.get(v.record).configurationHash) throw new DomainError('CONFLICT', '原图像执行配置已变化')
         this.approvals.markSubmissionIntent(p, reservationId)
         this.generation.supplement(p, v.record.id, { startedAt: new Date().toISOString() })
       }
@@ -580,12 +594,13 @@ export class ImageGenerationService {
       if (v.originalRequest && v.preflight) this.broker.assertCurrent(v.originalRequest, v.preflight)
       const providerSelectedResolution =
         v.adapter.outputResolutionPolicy === 'provider-auto'
-      const execution = recovery ? this.broker.restoreExecution(v.record.parameters, ctx, v.record.toolId, v.record.toolVersion, recovery, { allowProviderSelectedResolution: providerSelectedResolution }) : this.broker.openExecution(
+      this.bindings.get(v.record)
+      const execution = recovery ? this.broker.restoreExecution(v.record.parameters, ctx, v.record.toolId, v.record.toolVersion, recovery, { allowProviderSelectedResolution: providerSelectedResolution, boundEntry: this.bindings.entry(v.adapter) }) : this.broker.openExecution(
         v.originalRequest!,
         v.preflight!,
         ctx,
         null,
-        { allowProviderSelectedResolution: providerSelectedResolution },
+        { allowProviderSelectedResolution: providerSelectedResolution, boundEntry: this.bindings.entry(v.adapter) },
       )
       const authorize = recovery
         ? (access: import('../tools/adapters/image-api.js').ImageExecutionAccess) => v.adapter.authorizeRecovery!(ctx, recovery, access)

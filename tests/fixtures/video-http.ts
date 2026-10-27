@@ -51,7 +51,7 @@ async function makeVideo(path: string, size: string, duration: number) {
   return readFile(path)
 }
 
-export async function videoServer(initial: VideoFixtureMode = 'ok') {
+export async function videoServer(initial: VideoFixtureMode = 'ok', uniqueTasks = false) {
   const directory = await mkdtemp(join(tmpdir(), 'video-api-fixture-'))
   const valid = await makeVideo(join(directory, 'valid.mp4'), '32x32', 1)
   const wrongDuration = await makeVideo(join(directory, 'duration.mp4'), '32x32', 2)
@@ -64,6 +64,7 @@ export async function videoServer(initial: VideoFixtureMode = 'ok') {
   const counts = { submit: 0, status: 0, result: 0, download: 0, cancel: 0 }
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', origin || 'http://127.0.0.1')
+    const path = uniqueTasks ? url.pathname.replace(/\/tasks\/remote-video-\d+(?=\/|$)/, '/tasks/remote-video-1') : url.pathname
     if (request.method === 'POST' && url.pathname === '/tasks') {
       counts.submit++
       let text = ''
@@ -75,16 +76,16 @@ export async function videoServer(initial: VideoFixtureMode = 'ok') {
         return
       }
       response.writeHead(202, { 'Content-Type': 'application/json' })
-      response.end(JSON.stringify({ taskId: 'remote-video-1' }))
+      response.end(JSON.stringify({ taskId: uniqueTasks ? `remote-video-${counts.submit}` : 'remote-video-1' }))
       return
     }
-    if (request.method === 'DELETE' && url.pathname === '/tasks/remote-video-1') {
+    if (request.method === 'DELETE' && path === '/tasks/remote-video-1') {
       counts.cancel++
       response.writeHead(200, { 'Content-Type': 'application/json' })
       response.end('{}')
       return
     }
-    if (request.method === 'GET' && url.pathname === '/tasks/remote-video-1') {
+    if (request.method === 'GET' && path === '/tasks/remote-video-1') {
       counts.status++
       statusReads++
       if (!taskExists || mode === 'missing-remote') {
@@ -116,7 +117,7 @@ export async function videoServer(initial: VideoFixtureMode = 'ok') {
     }
     if (
       request.method === 'GET' &&
-      url.pathname === '/tasks/remote-video-1/result'
+      path === '/tasks/remote-video-1/result'
     ) {
       counts.result++
       response.writeHead(200, { 'Content-Type': 'application/json' })

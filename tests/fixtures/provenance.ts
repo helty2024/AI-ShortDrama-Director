@@ -75,6 +75,7 @@ export function createV6(path: string) {
 
 // Only existing downgrade-style tests need to remove newly added empty v7 structures.
 export function removeEmptyV7(db: DatabaseSync) {
+  db.exec('DROP TABLE IF EXISTS execution_bindings')
   for (const table of ['step_runs','workflow_runs']) db.exec('DROP TABLE IF EXISTS ' + table)
   for (const table of ['approval_reservations','approval_items','generation_approvals']) db.exec('DROP TABLE IF EXISTS ' + table)
   for (const table of ['generation_outputs', 'import_provenance', 'task_generation_links', 'generation_records', 'prompt_packages', 'generation_estimates', 'routing_decisions']) db.exec(`DROP TABLE ${table}`)

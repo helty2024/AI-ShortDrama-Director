@@ -42,7 +42,7 @@ export async function compshareServer() {
       for await (const chunk of request) chunks.push(Buffer.from(chunk))
       body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       if (mode === 'unknown-submit') { request.socket.destroy(); return }
-      json(mode === 'malformed-submit' ? { task_id: null, secret: 'SECRET' } : { task_id: 'remote-h3-1' })
+      json(mode === 'malformed-submit' ? { task_id: null, secret: 'SECRET' } : { task_id: `remote-h3-${counts.submit}` })
       return
     }
     if (request.method === 'DELETE' && url.pathname === '/minimax/v2/video_generation/remote-h3-1') {
@@ -50,12 +50,12 @@ export async function compshareServer() {
       json({ task_id: 'remote-h3-1', action: 'delete', status: mode === 'cancel-running' ? 'running' : 'cancelled' })
       return
     }
-    if (request.method === 'GET' && url.pathname === '/minimax/v2/query/video_generation/remote-h3-1') {
+    if (request.method === 'GET' && /^\/minimax\/v2\/query\/video_generation\/remote-h3-\d+$/.test(url.pathname)) {
       counts.query++
       if (mode.startsWith('status-')) { json({ secret: 'SECRET' }, Number(mode.slice(7))); return }
       if (mode === 'malformed-status') { json({ task: { status: 'running', secret: 'SECRET' } }); return }
       const status = ['queued', 'running', 'failed', 'cancelled'].includes(mode) ? mode : 'succeeded'
-      json({ task: { id: mode === 'wrong-id' ? 'outsider' : 'remote-h3-1', model: 'MiniMax-H3', status,
+      json({ task: { id: mode === 'wrong-id' ? 'outsider' : url.pathname.split('/').at(-1), model: 'MiniMax-H3', status,
         ...(mode === 'missing-url' ? {} : { content: { url: mode === 'unsafe-url' ? 'http://127.0.0.1:1/private' : `${origin}/output.mp4?signature=SECRET` } }),
         usage: { total_seconds: 4, output_seconds: 4, points: 20 }, error: { code: 'remote', message: 'SECRET' },
       } })

@@ -4,6 +4,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import sharp from 'sharp'
+import { randomUUID } from 'node:crypto'
+import { videoApiProfileSchema } from '../../src/shared/video-tool-profile.js'
+import { backupProject, restoreProject } from '../../electron/main/operations/backup.js'
 import { ProjectDatabase } from '../../electron/main/database.js'
 import { buildSeed } from '../../electron/main/seed.js'
 import { IntelligenceRepository } from '../../electron/main/intelligence/repository.js'
@@ -48,7 +51,7 @@ async function fixture(mode: VideoFixtureMode = 'ok') {
     projectId: project.id,
     targetId: target.id,
     toolId: server.profile.toolId,
-    mode: 'text-to-video' as const,
+    purpose: 'technical-test' as const, mode: 'text-to-video' as const,
     prompt: 'A locked-off shot of rain on a window',
     durationSeconds: 1,
     fps: 12,
@@ -190,6 +193,7 @@ test('image-to-video uploads only controlled AssetVersion bytes after explicit c
       'frame',
       null,
     )
+    value.visual.review(value.project.id, frame.id, frame.revision, 'approved', value.target.id, value.target.revision)
     const input = {
       ...value.input,
       mode: 'image-to-video' as const,
@@ -390,4 +394,81 @@ test('remote cancel is separate from local wait and does not release the submitt
   } finally {
     await value.close()
   }
+})
+
+test('P0 execution binding survives default/model/key/endpoint change and DB reopen; new model gets separate approval', async () => {
+  const f = await fixture('status-500'), replacement = await videoServer('ok')
+  let reopened: ProjectDatabase | undefined
+  try {
+    const serviceId = randomUUID(), originalKey = randomUUID(), replacementKey = randomUUID(), reads: string[] = []
+    const originalProfile = { ...f.server.profile, credentialRef: originalKey }
+    const original = new VideoApiAdapter(originalProfile, async () => { reads.push(originalKey); return 'FIXTURE_OLD' }, new ImageHttpTransport({ fixtureOrigin: f.server.origin }))
+    f.service.registry.unregister(original.describe().id, original.describe().version)
+    f.service.register(original, { provider: 'fixture', serviceId, serviceRevision: 1, endpoint: f.server.origin })
+    const preview = await f.service.preview(f.input), task = f.service.confirm(f.project.id, preview.id, 100, true)
+    await f.service.wait(task.id)
+    const record = f.service.generation.findByTask(f.project.id, task.id)!, frozen = f.service.bindings.get(record)
+    assert.equal(frozen.configuration.serviceId, serviceId); assert.equal(frozen.configuration.serviceRevision, 1)
+    assert.equal(frozen.configuration.profile.credentialRef, originalKey)
+    assert.equal(frozen.authorization.approvalId, record.approvalId)
+    assert.throws(() => f.database.connection.prepare('UPDATE execution_bindings SET data=data WHERE id=?').run(frozen.id), /Immutable/)
+    f.server.setMode('ok')
+    reopened = new ProjectDatabase(f.path)
+    const visual = new VisualRepository(new IntelligenceRepository(reopened), new MediaStorage(join(f.directory, 'media')))
+    const other = new VideoApiAdapter({ ...replacement.profile, modelId: 'replacement-v2', credentialRef: replacementKey }, async () => { reads.push(replacementKey); return 'FIXTURE_NEW' }, new ImageHttpTransport({ fixtureOrigin: replacement.origin }))
+    const next = new VideoApiGenerationService(visual, [other])
+    next.register(other, { provider: 'fixture', serviceId, serviceRevision: 2, endpoint: replacement.origin })
+    assert.throws(() => next.bindings.capture(record, other, frozen.authorization.reservationId), /适配器与原执行配置不一致/)
+    next.bindings.resolver = async config => {
+      assert.equal(config.serviceId, serviceId); assert.equal(config.serviceRevision, 1)
+      return new VideoApiAdapter(videoApiProfileSchema.parse(config.profile), async () => { reads.push(String(config.profile.credentialRef)); return 'FIXTURE_OLD' }, new ImageHttpTransport({ fixtureOrigin: f.server.origin }))
+    }
+    const recovered = await next.query(f.project.id, task.id)
+    assert.equal(recovered.task.status, 'succeeded'); assert.equal(recovered.versions.length, 1)
+    assert.equal(f.server.counts.submit, 1); assert.equal(f.server.counts.download, 1)
+    assert.equal(replacement.counts.submit, 0); assert.equal(replacement.counts.status, 0); assert.equal(replacement.counts.download, 0)
+    assert(reads.every(key => key === originalKey))
+    const secondPreview = await next.preview(f.input), second = next.confirm(f.project.id, secondPreview.id, 200, true)
+    await next.wait(second.id)
+    const generated = await next.query(f.project.id, second.id)
+    assert.equal(generated.record.modelId, 'replacement-v2'); assert.notEqual(generated.record.approvalId, record.approvalId)
+    assert.equal(replacement.counts.submit, 1); assert.equal(f.server.counts.submit, 1)
+    assert.notEqual(next.bindings.get(generated.record).configurationHash, frozen.configurationHash)
+    assert.equal(next.bindings.get(generated.record).configuration.serviceRevision, 2)
+    assert.equal(next.bindings.get(generated.record).configuration.serviceId, serviceId)
+    const folder = await backupProject(visual, f.project.id, f.directory), restored = await restoreProject(visual, folder)
+    const historical = next.generation.history(restored.id, reopened.workspace(restored.id).entities.find(e => e.kind === 'shot')!.id)[0]!
+    assert.equal(next.bindings.get(historical).recoveryAllowed, false)
+  } finally { reopened?.close(); await replacement.close(); await f.close() }
+})
+
+test('P0 unavailable or mismatched original binding blocks recovery without calling the replacement provider', async () => {
+  const f = await fixture('status-500'), replacement = await videoServer('ok')
+  try {
+    const p = await f.service.preview(f.input), task = f.service.confirm(f.project.id, p.id, 100, true)
+    await f.service.wait(task.id)
+    const other = new VideoApiAdapter(replacement.profile, async () => 'NEW_FIXTURE', new ImageHttpTransport({ fixtureOrigin: replacement.origin }))
+    const next = new VideoApiGenerationService(f.visual, [other])
+    const before = JSON.stringify(next.generation.findByTask(f.project.id, task.id))
+    await assert.rejects(next.query(f.project.id, task.id), /原执行配置/)
+    next.bindings.resolver = async () => other
+    await assert.rejects(next.query(f.project.id, task.id), /原执行配置/)
+    assert.equal(JSON.stringify(next.generation.findByTask(f.project.id, task.id)), before)
+    assert.deepEqual(replacement.counts, { submit: 0, status: 0, result: 0, download: 0, cancel: 0 })
+    assert.equal(f.server.counts.submit, 1)
+  } finally { await replacement.close(); await f.close() }
+})
+
+test('P0 unknown submission never consults or submits through a newly selected model', async () => {
+  const f = await fixture('unknown-submit'), replacement = await videoServer('ok')
+  try {
+    const p = await f.service.preview(f.input), task = f.service.confirm(f.project.id, p.id, 100, true)
+    await f.service.wait(task.id)
+    const other = new VideoApiAdapter({ ...replacement.profile, modelId: 'replacement-v2' }, async () => 'NEW_FIXTURE', new ImageHttpTransport({ fixtureOrigin: replacement.origin }))
+    const next = new VideoApiGenerationService(f.visual, [other]); let resolves = 0
+    next.bindings.resolver = async () => { resolves++; return other }
+    const result = await next.query(f.project.id, task.id)
+    assert.equal(result.record.outcome, 'unknown-submission'); assert.equal(resolves, 0)
+    assert.equal(f.server.counts.submit, 1); assert.equal(replacement.counts.submit, 0)
+  } finally { await replacement.close(); await f.close() }
 })

@@ -44,7 +44,7 @@ async function fixture() {
   const target = database.workspace(project.id).entities.find(e => e.kind === 'shot')!
   const visual = new VisualRepository(new IntelligenceRepository(database), new MediaStorage(join(directory, 'media')))
   const service = new VideoApiGenerationService(visual, [adapter])
-  const previewInput = { projectId: project.id, targetId: target.id, toolId: profile.toolId, mode: 'text-to-video' as const, prompt: input.prompt, durationSeconds: 4, fps: 24, resolution: input.resolution, aspectRatio: input.aspectRatio, seed: null, firstFrameAssetVersionId: null, lastFrameAssetVersionId: null, allowAssetUpload: true, localOnly: false }
+  const previewInput = { projectId: project.id, targetId: target.id, toolId: profile.toolId, purpose: 'technical-test' as const, mode: 'text-to-video' as const, prompt: input.prompt, durationSeconds: 4, fps: 24, resolution: input.resolution, aspectRatio: input.aspectRatio, seed: null, firstFrameAssetVersionId: null, lastFrameAssetVersionId: null, allowAssetUpload: true, localOnly: false }
   return { server, adapter, directory, path, database, closeDatabase, project, target, visual, service, previewInput, close: async () => { closeDatabase(); await server.close(); await rm(directory, { recursive: true, force: true }) } }
 }
 const signal = () => AbortSignal.timeout(10000)
@@ -130,6 +130,8 @@ test('image input maps only owned first/last frames to native Data URLs', async 
     const path = join(f.directory, 'frame.png'); await writeFile(path, image)
     const first = await f.visual.importFile(f.project.id, path, 'first', null)
     const last = await f.visual.importFile(f.project.id, path, 'last', null)
+    f.visual.review(f.project.id, last.id, last.revision, 'approved', f.target.id, f.target.revision)
+    f.visual.review(f.project.id, first.id, first.revision, 'approved', f.target.id, f.visual.repo.entity(f.project.id, f.target.id).revision)
     const value = { ...f.previewInput, mode: 'image-to-video' as const, firstFrameAssetVersionId: first.id, lastFrameAssetVersionId: last.id }
     await assert.rejects(f.service.preview({ ...value, allowAssetUpload: false }))
     assert.equal(f.server.counts.submit, 0)

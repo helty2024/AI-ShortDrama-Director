@@ -45,6 +45,8 @@ import {
 import { jobSchema } from '../../../src/shared/operations.js'
 import { provenanceTables } from '../../../src/shared/provenance.js'
 import { GenerationRepository } from '../generation/repository.js'
+import { executionBindingSchema } from '../../../src/shared/execution-binding.js'
+import { bindingHistoryCopy } from '../generation/execution-binding.js'
 const tables: Record<string, z.ZodType> = {
   projects: projectSchema,
   entities: entitySchema,
@@ -66,6 +68,7 @@ const tables: Record<string, z.ZodType> = {
   ...provenanceTables,
   ...approvalTables,
   ...workflowTables,
+  execution_bindings: executionBindingSchema,
 }
 // Omit transient paid previews and recovery capabilities. Never export the global settings/credential store.
 export function publicCopy(value: unknown, field = ''): unknown {
@@ -118,7 +121,7 @@ type Row = Record<string, string | number | null>
 function rows(db: DatabaseSync, table: string, projectId: string): Row[] {
   return db
     .prepare(
-      `SELECT ${table in provenanceTables || table in approvalTables || table in workflowTables ? 'id,project_id,data' : '*'} FROM ${table} WHERE ${table === 'projects' ? 'id' : 'project_id'}=?`,
+      `SELECT ${table in provenanceTables || table in approvalTables || table in workflowTables || table === 'execution_bindings' ? 'id,project_id,data' : '*'} FROM ${table} WHERE ${table === 'projects' ? 'id' : 'project_id'}=?`,
     )
     .all(projectId)
     .map((row) => {
@@ -159,6 +162,7 @@ const manifestSchema = z.discriminatedUnion('format', [
   z.strictObject({ ...manifestFields, format: z.literal(3), schema: z.literal(8) }),
   z.strictObject({ ...manifestFields, format: z.literal(4), schema: z.literal(9) }),
   z.strictObject({ ...manifestFields, format: z.literal(5), schema: z.literal(10) }),
+  z.strictObject({ ...manifestFields, format: z.literal(6), schema: z.literal(11) }),
 ])
 export async function backupProject(
   visual: VisualRepository,
@@ -194,7 +198,7 @@ export async function backupProject(
       for (const [table, schema] of Object.entries(tables))
         for (const row of captured[table]!) {
           row.data = JSON.stringify(
-            schema.parse(workflowHistoryCopy(table, approvalHistoryCopy(table, JSON.parse(String(row.data)), publicCopy(JSON.parse(String(row.data)))))),
+            schema.parse(table === 'execution_bindings' ? bindingHistoryCopy(JSON.parse(String(row.data)), publicCopy) : workflowHistoryCopy(table, approvalHistoryCopy(table, JSON.parse(String(row.data)), publicCopy(JSON.parse(String(row.data)))))),
           )
           insert(snapshot.connection, table, row)
         }
@@ -232,7 +236,7 @@ export async function backupProject(
     }
   await writeFile(
     join(folder, 'manifest.json'),
-    JSON.stringify({ format: 5, projectId: p, schema: 10, files }, null, 2),
+    JSON.stringify({ format: 6, projectId: p, schema: 11, files }, null, 2),
     { flag: 'wx' },
   )
   return folder
@@ -271,7 +275,7 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
     if (source.prepare('SELECT id FROM projects').all().length !== 1)
       throw new Error('One project required')
     for (const table of [...Object.keys(tables), 'entity_refs']) {
-      if ((manifest.schema === 6 && table in provenanceTables) || (manifest.schema < 8 && table in approvalTables) || (manifest.schema < 9 && table in workflowTables)) { data[table] = []; continue }
+      if ((manifest.schema === 6 && table in provenanceTables) || (manifest.schema < 8 && table in approvalTables) || (manifest.schema < 9 && table in workflowTables) || (manifest.schema < 11 && table === 'execution_bindings')) { data[table] = []; continue }
       if (
         source.prepare('SELECT type FROM sqlite_master WHERE name=?').get(table)
           ?.type !== 'table'
@@ -354,6 +358,7 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
             row[key] = typeof value === 'string' ? remap(value) : value
           if (tables[table]) {
             let parsed = workflowHistoryCopy(table, approvalHistoryCopy(table, JSON.parse(String(row.data)), publicCopy(JSON.parse(String(row.data)))))
+            if (table === 'execution_bindings') parsed = bindingHistoryCopy(JSON.parse(String(row.data)), publicCopy)
             if (table === 'ai_tasks') {
               const task = aiTaskSchema.parse(parsed)
               if (['queued', 'running'].includes(task.status)) {
@@ -402,6 +407,11 @@ export async function restoreProject(visual: VisualRepository, folder: string) {
 
 /** Restored workflows are audit-only; spending confirmations never transfer. */
 function workflowHistoryCopy(table: string, value: unknown): unknown {
+  if (table === 'production_batches') {
+    const batch = batchSchema.parse(value)
+    if (batch.nativeVideo) return { ...batch, status: 'paused', nativeVideo: { ...batch.nativeVideo, state: 'paused', executionAllowed: false } }
+    return batch
+  }
   if (!(table in workflowTables) || !value || typeof value !== 'object') return value
   const data = { ...value } as Record<string, unknown>
   if (table === 'workflow_runs') data.executionAllowed = false

@@ -10,6 +10,7 @@ export const videoApiPreviewInputSchema = z.strictObject({
   projectId: z.uuid(),
   targetId: z.uuid(),
   toolId: toolIdSchema,
+  purpose: z.enum(['narrative-production', 'technical-test']).default('narrative-production'),
   mode: z.enum(['text-to-video', 'image-to-video']),
   prompt: z.string().trim().min(1).max(32000).nullable(),
   durationSeconds: z.number().positive().max(600),
@@ -22,6 +23,8 @@ export const videoApiPreviewInputSchema = z.strictObject({
   allowAssetUpload: z.boolean(),
   localOnly: z.boolean(),
 })
+
+export type VideoApiPreviewInput = z.infer<typeof videoApiPreviewInputSchema>
 
 export const videoApiCommandSchema = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('profiles') }),

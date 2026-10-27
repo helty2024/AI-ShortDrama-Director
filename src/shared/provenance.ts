@@ -12,7 +12,10 @@ export const persistedDecisionSchema = routingDecisionSchema.safeExtend({ workfl
 export const persistedEstimateSchema = generationEstimateSchema.safeExtend({ routingDecisionId: z.uuid() })
 export const provenancePromptSchema = z.strictObject({
   id: z.uuid(), projectId: z.uuid(), targetObjectId: z.uuid(), targetObjectType: targetType,
-  semanticInputSnapshot: z.strictObject({ target: entitySchema, context: z.array(entitySchema).max(1000) }),
+  semanticInputSnapshot: z.strictObject({ target: entitySchema, context: z.array(entitySchema).max(1000),
+    productionPurpose: z.enum(['narrative-production', 'technical-test']).optional(),
+    productionEvidence: z.strictObject({ revisions: z.record(z.uuid(), z.number().int().positive()), digest: z.string().regex(/^[a-f0-9]{64}$/) }).optional(),
+  }),
   compiledPrompt: z.union([imagePromptSchema, videoPromptSchema]),
   compilerVersion: z.string().min(1).max(100),
   skillId: toolIdSchema.nullable(), skillVersion: toolVersionSchema.nullable(),

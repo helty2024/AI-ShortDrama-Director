@@ -1,4 +1,5 @@
 import { loadComfySettings, saveComfySettings, validateComfySettings } from './generation/comfy-settings.js'
+import { configureExecutionRecovery } from './generation/execution-recovery.js'
 import { WorkflowRepository, terminalWorkflow } from './workflow/repository.js'
 import { builtinTemplates } from './visual/workflows.js'
 import { AIServiceManager } from './generation/ai-services.js'
@@ -162,7 +163,7 @@ app
           throw new DomainError('CONFLICT', '请等待正在执行的任务结束，并取消待确认预览后修改服务；历史任务与凭据保留')
       },
       apply: async (catalog) => {
-        const identity=JSON.stringify([catalog.mode,catalog.localEnabled,catalog.localArchived,catalog.services.filter(s=>s.kind!=='text').map(s=>[s.id,s.revision,s.connection,s.enabled,s.deleted])])
+        const identity=JSON.stringify([catalog.mode,catalog.localEnabled,catalog.localArchived,catalog.defaults['packy-image'],catalog.defaults['compshare-video'],catalog.services.filter(s=>s.kind!=='text').map(s=>[s.id,s.revision,s.connection,s.enabled,s.deleted])])
         if(identity===runtimeIdentity)return
         runtimeIdentity=identity
         for (const registry of [imageApi.registry, videoApi.registry]) {
@@ -176,14 +177,14 @@ app
           alphaRuntime ??= await startAlphaReferenceRuntime(join(app.getPath('userData'), 'alpha-reference'))
           imageApi.register(alphaRuntime.imageAdapter); videoApi.register(alphaRuntime.videoAdapter)
         }
-        for(const s of catalog.services.filter(s=>s.kind!=='text' && s.enabled && !s.deleted)) {
-          if(s.kind==='packy-image')imageApi.register(new ProductionPackyAdapter(s,credentials,nativeGate))
+        for(const s of catalog.services.filter(s=>s.kind!=='text' && s.enabled && !s.deleted && s.id === (catalog.defaults[s.kind] ?? catalog.services.find(v => v.kind === s.kind && v.enabled && !v.deleted)?.id))) {
+          if(s.kind==='packy-image')imageApi.register(new ProductionPackyAdapter(s,credentials,nativeGate), { provider: 'packy', serviceId: s.id, serviceRevision: s.revision, endpoint: s.baseUrl })
           else {
             const hosts=await nativeGate.hosts(s)
             videoApi.register(new CompShareMiniMaxH3Adapter({adapter:'compshare-minimax-h3',toolId:'compshare.minimax-h3',modelId:'MiniMax-H3',credentialRef:s.credentialRef},async()=>credentials.get(s.credentialRef!),new ImageHttpTransport(),await nativeGate.available(s) || await nativeGate.pending(s)?{
               allowedDownloadHosts:hosts,canExecute:cap=>nativeGate.available(s,cap),consume:(cap,input,context)=>nativeGate.consume(s,cap,context,input.durationSeconds),
               downloadHostsForTask:(taskId,url,context)=>nativeGate.taskDownloadHosts(s,taskId,url,context),outputVerified:(url,context,bytes,duration)=>nativeGate.noteVerifiedOutput(s,url,context,bytes,duration),
-            }:null))
+            }:null), { provider: 'compshare', serviceId: s.id, serviceRevision: s.revision, endpoint: s.baseUrl })
           }
         }
       },
@@ -206,7 +207,7 @@ app
         }
         const model = packyImageModels.find(m => m === service.model)
         if (!model) throw new DomainError('INVALID_INPUT', '不支持此 Packy 模型')
-        const adapter = new PackyImage25Adapter({ adapter: 'packy-image-25', toolId: 'packy.image-25', displayName: packyImageModelNames[model], modelId: model, tokenGroup: 'image', credentialRef: service.credentialRef, currency: 'USD' }, async () => credentials.get(service.credentialRef!))
+        const adapter = new PackyImage25Adapter({ adapter: 'packy-image-25', toolId: 'packy.image-25', displayName: packyImageModelNames[model], modelId: model, tokenGroup: model === 'gpt-image-2' ? 'sora' : 'image', credentialRef: service.credentialRef, currency: 'USD' }, async () => credentials.get(service.credentialRef!))
         const report = await adapter.probeConnectivity(AbortSignal.timeout(15000))
         return { accepted: report.authentication === 'accepted' && report.modelVisible === true, reason: report.authentication === 'accepted' && report.modelVisible ? '连接检测通过。目标模型可见；真实生成响应仍需单独验证。' : '密钥无效或模型不可见，请重新设置并检查模型权限。' }
       },
@@ -278,6 +279,7 @@ app
     if (existingPacky) await services.retainExisting({ kind: 'packy-image', name: 'Packy Image', model: existingPacky.modelId, baseUrl: 'https://cf.api.fan/v1' }, existingPacky.credentialRef)
     const videoApi = new VideoApiGenerationService(visual, compshareProfile ? [createCompShareAdapter(compshareProfile, credentials)] : [])
     nativeGate=new NativeProductionGate(join(app.getPath('userData'),'production-validation'),credentials,imageApi.generation,visual)
+    configureExecutionRecovery(imageApi, videoApi, services, credentials, nativeGate)
     imageApi.preferredTool=()=>services.defaultImageTool
     imageApi.broker.autoEligible=async(toolId,cap)=>{
       if(toolId.startsWith('alpha.reference.'))return services.mode==='test'

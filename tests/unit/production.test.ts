@@ -701,7 +701,7 @@ test('v4 upgrades to v5 without altering images, video pins or old task provider
     try {
       assert.equal(
         db.connection.prepare('PRAGMA user_version').get()?.user_version,
-        10,
+        11,
       )
       const restored = db
         .workspace(a.project.id)
@@ -827,7 +827,7 @@ test('router refuses unmet end-frame and text-to-video requirements instead of s
     null,
   )
 })
-test('quoted cloud costs persist on Task and AssetVersion without converting unknown actual charges to zero', async () => {
+test('legacy cloud quote remains offline and cannot bypass fingerprint-bound paid authorization', async () => {
   const a = await setup()
   try {
     await keyframe(a)
@@ -874,17 +874,11 @@ test('quoted cloud costs persist on Task and AssetVersion without converting unk
       expectedRevision: 1,
       costAccepted: true,
     })
-    const group = (await a.pilot.snapshot(p)).batches.at(-1)!,
-      task = await settled(a, group.entries[0]!.taskId!)
-    assert.equal(task.status, 'succeeded')
-    assert.equal(task.costMetadata.estimatedCost, 0.4)
-    assert.equal(task.costMetadata.actualCost, null)
-    const v = a.visual.version(p, task.resultIds[0]!)
-    assert.equal(v.cost.estimatedCost, 0.4)
-    assert.equal(v.cost.actualCost, null)
-    const snapshot = await a.pilot.snapshot(p)
-    assert.equal(snapshot.categoryCosts.video.unknownActual, 1)
-    assert.equal(snapshot.categoryCosts.video.currencies[0]!.estimatedMin, 0.2)
+    const group = (await a.pilot.snapshot(p)).batches.at(-1)!
+    assert.equal(group.entries[0]!.taskId, null)
+    assert.match(group.entries[0]!.error!, /指纹绑定/)
+    assert.equal(a.repo.list(p, 'ai_tasks', aiTaskSchema).filter(t => t.input.type === 'shot-video').length, 0)
+
   } finally {
     await a.close()
   }

@@ -68,8 +68,17 @@ export class NativeProductionGate {
     if(!s.enabled || s.deleted || s.connection!=='accepted' || !s.credentialRef)return false
     const state=await this.state(s)
     const caps: NativeCapability[] = cap ? [cap] : s.kind==='packy-image' ? ['image.generate','image.referenceGenerate'] : ['video.imageToVideo','video.textToVideo']
-    for(const c of caps)if(await this.validated(s,c) || await this.trialAvailable(s,state,c))return true
+    for(const c of caps)if(await this.productionReady(s,c) || await this.trialAvailable(s,state,c))return true
     return false
+  }
+  // H3 text/first-frame modes share one verified native submit/poll/download protocol.
+  // Reuse that integration evidence; validated(cap) still reports only actual results
+  // of that capability. Image/reference-image capabilities remain separate gates.
+  async productionReady(s: StoredAIService, cap: NativeCapability) {
+    if (await this.validated(s, cap)) return true
+    return s.kind === 'compshare-video' && cap.startsWith('video.') &&
+      (await this.hosts(s)).length > 0 &&
+      (await this.validated(s, 'video.imageToVideo') || await this.validated(s, 'video.textToVideo'))
   }
   async status(s: StoredAIService) {
     const caps: NativeCapability[]=s.kind==='packy-image'?['image.generate','image.referenceGenerate']:['video.imageToVideo','video.textToVideo']
@@ -142,7 +151,10 @@ export class NativeProductionGate {
     if(!context.approvalId || !await this.available(s,cap))throw transportFailure('authorization',false)
     const record=this.generation.findByTask(context.projectId,context.taskId)
     if(!record || record.taskId!==context.taskId || record.toolId!==this.tool(s) || record.modelId!==s.model || record.generationType!==cap || record.approvalId!==context.approvalId || record.requestFingerprint!==context.requestFingerprint)throw transportFailure('authorization',false)
-    const state=await this.state(s), verified=await this.validated(s,cap)
+    if (s.kind === 'compshare-video' && this.generation.database.list().some(p => this.generation.list('generation_records', p.id).some(r =>
+      r.taskId !== context.taskId && r.toolId === this.tool(s) && r.approvalId && ['pending', 'unknown', 'unknown-submission'].includes(r.outcome))))
+      throw transportFailure('authorization', false)
+    const state=await this.state(s), verified=await this.productionReady(s,cap)
     if(!verified && (state.trial?.capability!==cap || Date.parse(state.trial.expiresAt)<=Date.now() || s.kind==='compshare-video' && (duration!==4 || duration*5>state.trial.maxPoints)))throw transportFailure('authorization',false)
     const directory=this.directory(s);await mkdir(directory,{recursive:true})
     if(!verified && state.trial) {

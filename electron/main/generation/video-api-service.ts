@@ -1,5 +1,8 @@
+import { videoProductionEvidence } from './video-production-gate.js'
+import { ExecutionBindings, configurationHash, type ServiceIdentity } from './execution-binding.js'
 import { assertTargetPromptCompatibility } from '../skills/seedance-20.js'
-import { randomUUID } from 'node:crypto'
+import { isAlphaTestTool } from '../../../src/shared/alpha.js'
+import { createHash, randomUUID } from 'node:crypto'
 import { DomainError, metadata } from '../database.js'
 import { VisualRepository } from '../visual/repository.js'
 import type { StoredImage } from '../visual/storage.js'
@@ -28,6 +31,7 @@ import type {
 } from '../../../src/shared/tools.js'
 import {
   persistedRecordSchema,
+  provenanceTables,
   type ProvenanceRecord,
 } from '../../../src/shared/provenance.js'
 import { aiTaskSchema, type AITask } from '../../../src/shared/intelligence.js'
@@ -35,9 +39,13 @@ import {
   videoApiPreviewInputSchema,
   videoApiPreviewSchema,
   type VideoApiPreview,
+  type VideoApiPreviewInput,
 } from '../../../src/shared/video-api.js'
 
 interface Preview {
+  configurationHash: string
+  input: VideoApiPreviewInput
+  evidenceDigest: string
   public: VideoApiPreview
   request: BrokerRequest
   preflight: PreflightResult
@@ -80,6 +88,7 @@ export class VideoApiGenerationService {
   readonly visual: VisualRepository
   readonly generation: GenerationRepository
   readonly approvals: GenerationApprovalService
+  readonly bindings: ExecutionBindings<VideoApiTool>
   private readonly tools = new Map<string, VideoApiTool>()
   private readonly previews = new Map<string, Preview>()
   private readonly pending = new Map<string, Promise<void>>()
@@ -97,6 +106,7 @@ export class VideoApiGenerationService {
   constructor(visual: VisualRepository, adapters: VideoApiTool[]) {
     this.visual = visual
     this.generation = new GenerationRepository(visual.repo.database)
+    this.bindings = new ExecutionBindings(this.generation)
     this.approvals = new GenerationApprovalService(
       new ApprovalRepository(visual.repo.database),
     )
@@ -130,9 +140,10 @@ export class VideoApiGenerationService {
       }
   }
 
-  register(adapter: VideoApiTool) {
+  register(adapter: VideoApiTool, identity?: ServiceIdentity) {
     this.registry.register(adapter)
     this.tools.set(adapter.profile.toolId, adapter)
+    this.bindings.register(adapter, identity)
   }
 
   profiles() {
@@ -150,12 +161,44 @@ export class VideoApiGenerationService {
   configuration() {
     return this.registry.list().map(entry => ({ toolId: entry.descriptor.id, displayName: entry.descriptor.name, generationEnabled: this.tools.get(entry.descriptor.id)?.generationEnabled !== false }))
   }
+  configurationIdentity(toolId: string) {
+    const tool = this.tools.get(toolId)
+    if (!tool) throw new DomainError('CONFLICT', '原视频服务不存在')
+    return configurationHash(this.bindings.describe(tool))
+  }
+  async planBatch(requirements: Omit<VideoApiPreviewInput, 'toolId' | 'fps' | 'resolution'>[]) {
+    const proposals = [...this.tools.values()].filter(a => a.generationEnabled !== false && a.profile.batchPolicy).flatMap(adapter => {
+      const inputs = requirements.map(r => adapter.planBatchInput?.(r))
+      if (inputs.some(i => !i)) return []
+      const parsed = inputs.map(i => videoApiPreviewInputSchema.parse(i))
+      const descriptor = adapter.describe()
+      const requests = parsed.map(input => brokerRequestSchema.parse({ projectId: input.projectId, requestId: randomUUID(),
+        snapshot: { capability: input.mode === 'image-to-video' ? 'video.imageToVideo' : 'video.textToVideo', contractVersion: '1.0.0', input: {
+          prompt: input.prompt, negativePrompt: '', durationSeconds: input.durationSeconds, fps: input.fps, resolution: input.resolution,
+          aspectRatio: input.aspectRatio, seed: input.seed, outputMime: 'video/mp4', audio: 'none',
+          ...(input.mode === 'image-to-video' ? { firstFrameAssetVersionId: input.firstFrameAssetVersionId, lastFrameAssetVersionId: input.lastFrameAssetVersionId } : {}),
+        } }, policy: { version: '1.0.0', selection: { mode: 'fixed', toolId: descriptor.id, toolVersion: descriptor.version, model: adapter.profile.modelId },
+          hardConstraints: { locality: input.localOnly ? 'local-only' : 'either', allowAssetUpload: input.allowAssetUpload, budget: null, requiredAvailability: 'available', availableMemoryMB: null, availableGpuMemoryMB: null, networkAvailable: true },
+          preferences: { order: [], quality: { status: 'unknown' } }, unknown: { cost: 'allow', duration: 'allow', quality: 'allow', resources: 'allow' } } }))
+      return [{ adapter, inputs: parsed, requests }]
+    })
+    const index = await this.broker.selectPlan(proposals.map(p => p.requests), new AbortController().signal)
+    if (index === null) throw new DomainError('CONFLICT', '没有满足整批视频能力、参数及参考模式的可用适配器')
+    const selected = proposals[index], policy = selected.adapter.profile.batchPolicy!
+    const quotes = selected.inputs.map(input => selected.adapter.batchReservation?.(input))
+    if (quotes.some(q => !q || q.currency !== policy.budgetCurrency || (q.amountMicro !== null && (!Number.isSafeInteger(q.amountMicro) || q.amountMicro < 0))))
+      throw new DomainError('CONFLICT', '适配器未提供合法且单位一致的批量预算依据')
+    return { inputs: selected.inputs, quotes: quotes.map(q => q!), configuration: this.bindings.describe(selected.adapter), policy,
+      model: selected.adapter.profile.modelId, toolId: selected.adapter.profile.toolId }
+  }
   hasAnyUnconfirmedPreview() {
     return [...this.previews.values()].some(preview => Date.parse(preview.public.expiresAt) > Date.now())
   }
 
   async preview(raw: unknown): Promise<VideoApiPreview> {
     const input = videoApiPreviewInputSchema.parse(raw)
+    const evidence = videoProductionEvidence(this.visual, input)
+    await this.assertProductionFiles(input)
     const target = this.generation.entity(input.projectId, input.targetId)
     if (target.kind !== 'shot')
       throw new DomainError('INVALID_INPUT', 'Video API 目标必须是 Shot')
@@ -200,6 +243,8 @@ export class VideoApiGenerationService {
       targetObjectType: target.kind,
       semanticInputSnapshot: {
         target,
+        productionPurpose: input.purpose,
+        productionEvidence: evidence,
         context: this.visual.repo.database.workspace(input.projectId).entities,
       },
       compiledPrompt: {
@@ -231,7 +276,9 @@ export class VideoApiGenerationService {
       attempt: 1,
       error: null,
       resultIds: [],
-      sourceRevisions: { [target.id]: target.revision },
+      sourceRevisions: Object.fromEntries(this.visual.repo.database.workspace(input.projectId).entities
+        .filter(entity => [target.id, target.sceneId, target.locationId, ...target.characterIds, ...target.propIds].includes(entity.id))
+        .map(entity => [entity.id, entity.revision])),
     })
     const common = {
       prompt: promptText,
@@ -329,7 +376,7 @@ export class VideoApiGenerationService {
       approvalId: null,
       estimatedCost: estimate.cost,
       actualCost: null,
-      currency: adapter.profile.currency,
+      currency: estimate.currency ?? adapter.profile.currency,
       costStatus: 'unknown',
       taskId: task.id,
       parentGenerationRecordId: null,
@@ -356,16 +403,19 @@ export class VideoApiGenerationService {
       durationSeconds: input.durationSeconds,
       aspectRatio: input.aspectRatio,
       resolution: input.resolution,
-      currency: adapter.profile.currency,
+      currency: estimate.currency ?? adapter.profile.currency,
       estimate:
         estimate.cost.status === 'known'
           ? `预估费用 ${estimate.cost.estimatedCost.currency} ${(estimate.cost.estimatedCost.amountMicros / 1_000_000).toFixed(4)}`
           : '费用未知，必须明确授权单次费用上限',
       expiresAt: estimate.validUntil,
       disclosure:
-        'Cloud：确认后会上传生成描述及所选首尾帧。预览不提交、不上传、不产生费用。',
+        `${input.purpose === 'technical-test' ? '独立技术测试，不代表叙事一致性验收通过。' : '叙事生产：已核验角色主参考与分镜关键帧。'}Cloud：确认后上传描述及所选首尾帧；预览不提交、不上传、不收费。`,
     })
     this.previews.set(publicPreview.id, {
+      configurationHash: configurationHash(this.bindings.describe(adapter)),
+      input,
+      evidenceDigest: evidence.digest,
       public: publicPreview,
       request,
       preflight,
@@ -384,10 +434,16 @@ export class VideoApiGenerationService {
     onPrepared?: (task: AITask, record: ProvenanceRecord) => void,
   ): AITask {
     const preview = this.previews.get(previewId)
+    if (!Number.isSafeInteger(maxCostMicro) || maxCostMicro < 0)
+      throw new DomainError('FORBIDDEN', '收费提交必须有合法的正数费用上限')
     if (!preview || preview.public.projectId !== projectId)
       throw new DomainError('CONFLICT', '预览已失效或不属于此项目')
+    if (maxCostMicro === 0 && !isAlphaTestTool(preview.record.toolId) && !(preview.preflight.estimate?.billingRisk === 'free' && preview.preflight.estimate.cost.status === 'known' && preview.preflight.estimate.cost.estimatedCost.amountMicros === 0))
+      throw new DomainError('FORBIDDEN', '收费提交必须有合法的正数费用上限')
     this.previews.delete(previewId)
+    this.assertProductionEvidence(preview)
     const prepared = this.approvals.repository.atomic(() => {
+      if (configurationHash(this.bindings.describe(preview.adapter)) !== preview.configurationHash) throw new DomainError('CONFLICT', '原视频配置已变化，请重新预检和授权')
       this.broker.assertCurrent(preview.request, preview.preflight)
       const approval = this.approvals.createApproval({
         confirmed: true,
@@ -413,6 +469,7 @@ export class VideoApiGenerationService {
         preview.record,
         approval.itemIds[0],
       )
+      this.bindings.capture(this.generation.getRecord(projectId, preview.record.id), preview.adapter, prepared.reservation.id)
       onPrepared?.(this.generation.task(projectId, preview.task.id), this.generation.getRecord(projectId, preview.record.id))
       return prepared
     })
@@ -428,6 +485,20 @@ export class VideoApiGenerationService {
     })
     this.pending.set(preview.task.id, running)
     return this.generation.task(projectId, preview.task.id)
+  }
+
+  private assertProductionEvidence(preview: Preview) {
+    if (videoProductionEvidence(this.visual, preview.input).digest !== preview.evidenceDigest)
+      throw new DomainError('CONFLICT', '角色、关键帧或批准版本已变化，请重新预检并授权')
+  }
+
+  private async assertProductionFiles(input: VideoApiPreviewInput) {
+    const evidence = videoProductionEvidence(this.visual, input)
+    for (const version of this.visual.versions(input.projectId).filter(v => evidence.revisions[v.id])) {
+      const bytes = await this.visual.storage.read(version.storageKey)
+      if (createHash('sha256').update(bytes).digest('hex') !== version.hash)
+        throw new DomainError('CONFLICT', '角色或关键帧素材完整性校验失败')
+    }
   }
 
   private reservation(projectId: string, taskId: string) {
@@ -452,10 +523,13 @@ export class VideoApiGenerationService {
         const version = this.visual.version(record.projectId, id)
         if (!version.mimeType.startsWith('image/'))
           throw new DomainError('INVALID_INPUT', '视频输入帧必须是图片版本')
+        const bytes = await this.visual.storage.read(version.storageKey)
+        if (createHash('sha256').update(bytes).digest('hex') !== version.hash)
+          throw new DomainError('CONFLICT', '输入素材完整性校验失败')
         return {
           assetVersionId: id,
           mime: version.mimeType,
-          bytes: await this.visual.storage.read(version.storageKey),
+          bytes,
         }
       }),
     ).then((frames) => ({
@@ -565,6 +639,10 @@ export class VideoApiGenerationService {
         context,
         executionRef,
       )
+      this.assertProductionEvidence(preview)
+      await this.assertProductionFiles(preview.input)
+      this.assertProductionEvidence(preview)
+      if (configurationHash(this.bindings.describe(preview.adapter)) !== this.bindings.get(record).configurationHash) throw new DomainError('CONFLICT', '原视频执行配置已变化')
       this.approvals.markSubmissionIntent(record.projectId, reservationId)
       intent = true
       this.generation.supplement(
@@ -578,6 +656,7 @@ export class VideoApiGenerationService {
         context,
         null,
         {
+          boundEntry: this.bindings.entry(preview.adapter),
           allowProviderSelectedResolution:
             preview.adapter.profile.resolutionMode === 'provider-auto',
           durationToleranceSeconds:
@@ -715,7 +794,8 @@ export class VideoApiGenerationService {
           runtime.record.id,
           'malformed-output',
         )
-        this.runtimes.delete(runtime.record.taskId)
+        // Keep ownership of the accepted identity for an explicit query-only
+        // output reconciliation. No submit path can consume this runtime twice.
         return
       }
       this.commit(runtime)
@@ -759,6 +839,9 @@ export class VideoApiGenerationService {
           metadata: {
             targetId: runtime.record.targetObjectId,
             generationRecordId: runtime.record.id,
+            ...(this.generation.task(p, runtime.record.taskId).error?.code === 'output-reconciliation' ? {
+              outputReconciliation: this.generation.task(p, runtime.record.taskId).error?.message ?? '',
+            } : {}),
           },
         }),
       )
@@ -789,8 +872,7 @@ export class VideoApiGenerationService {
       record.outcome !== 'pending'
     )
       return null
-    const adapter = this.tools.get(record.toolId)
-    if (!adapter) throw new DomainError('CONFLICT', '原 Video Tool 版本未注册')
+    const adapter = await this.bindings.resolve(record)
     const reservation = this.reservation(projectId, taskId)
     if (!['submitted', 'pending-unknown', 'consumed', 'requires-review'].includes(reservation.status))
       throw new DomainError('CONFLICT', '远端任务的预算状态不可恢复')
@@ -828,6 +910,7 @@ export class VideoApiGenerationService {
       record.toolVersion,
       handle,
       {
+        boundEntry: this.bindings.entry(adapter),
         allowProviderSelectedResolution: adapter.profile.resolutionMode === 'provider-auto',
         durationToleranceSeconds: adapter.profile.durationToleranceSeconds,
       },
@@ -855,6 +938,26 @@ export class VideoApiGenerationService {
 
   async wait(taskId: string) {
     await this.pending.get(taskId)
+  }
+  /** Re-query only an already accepted H3 identity after a local output-validation
+   * fix. No approval, reservation, task, or remote POST is created. The old
+   * validation failure remains attached to the recovered candidate's metadata. */
+  async reconcileExistingOutput(projectId: string, taskId: string) {
+    this.visual.repo.database.transaction(() => {
+      const task = this.generation.task(projectId, taskId)
+      const record = this.generation.findByTask(projectId, taskId)
+      if (!record || record.toolId !== 'compshare.minimax-h3' || record.modelId !== 'MiniMax-H3' || record.outcome !== 'malformed-output' ||
+        task.status !== 'failed' || task.executionAllowed === false || !task.providerTaskId || record.outputAssetVersionIds.length || !record.approvalId)
+        throw new DomainError('CONFLICT', '只能查询本机已接受但本地输出校验失败的原 H3 任务；禁止重新提交')
+      const now = new Date().toISOString()
+      const recovered = persistedRecordSchema.parse({ ...record, outcome: 'pending', completedAt: null, actualDuration: null, updatedAt: now })
+      const recoveredTask = aiTaskSchema.parse({ ...task, status: 'running', updatedAt: now, error: {
+        code: 'output-reconciliation', message: `原 ${record.outcome} / ${record.completedAt}；仅查询原任务 ${task.providerTaskId}，无重新生成；原错误：${task.error?.code ?? 'output-validation'}`,
+      } })
+      this.visual.repo.database.connection.prepare('UPDATE generation_records SET data=? WHERE project_id=? AND id=?').run(JSON.stringify(provenanceTables.generation_records.parse(recovered)), projectId, record.id)
+      this.visual.repo.database.connection.prepare('UPDATE ai_tasks SET data=? WHERE project_id=? AND id=?').run(JSON.stringify(recoveredTask), projectId, taskId)
+    })
+    return this.query(projectId, taskId)
   }
 
   async query(projectId: string, taskId: string) {

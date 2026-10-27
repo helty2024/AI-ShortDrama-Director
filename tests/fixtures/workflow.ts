@@ -31,7 +31,7 @@ export async function workflowFixture(video = false) {
   }
   let current = services()
   const input: WorkflowInput = video && videos ? { workflowType: 'shot-video', generation: {
-    projectId: project.id, targetId: target.id, toolId: videos.profile.toolId, mode: 'text-to-video', prompt: 'rain on a window',
+    projectId: project.id, targetId: target.id, toolId: videos.profile.toolId, purpose: 'technical-test', mode: 'text-to-video', prompt: 'rain on a window',
     durationSeconds: 1, fps: 12, resolution: { width: 32, height: 32 }, aspectRatio: '1:1', seed: 42,
     firstFrameAssetVersionId: null, lastFrameAssetVersionId: null, allowAssetUpload: true, localOnly: false,
   } } : { workflowType: 'shot-keyframe', generation: {
