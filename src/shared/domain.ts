@@ -1,4 +1,5 @@
 import { directionSchema, emptyDirection } from './video.js'
+import { sequenceDraftSchema } from './video-sequence.js'
 import { visualReferenceSchema } from './visual.js'
 import { z } from 'zod'
 import {
@@ -37,6 +38,7 @@ export const projectInputSchema = z.strictObject({
 export const projectSchema = projectInputSchema.extend({
   ...base,
   lastOpenedAt: timestamp.nullable(),
+  sequenceDraft: sequenceDraftSchema.nullable().optional(),
 })
 export const projectUpdateSchema = z.strictObject({
   id: idSchema,

@@ -7,6 +7,31 @@ import type { VisualRepository } from '../visual/repository.js'
 import { runMediaTool, probeVideo } from './ffmpeg.js'
 import { videoTimelineClipSchema, type VideoTimelineClip } from '../../../src/shared/video-batch.js'
 import { orderedShots } from '../../../src/shared/shot-order.js'
+import { sequenceDraftClipsSchema, sequenceDraftSchema } from '../../../src/shared/video-sequence.js'
+
+export function saveSequenceDraft(visual: VisualRepository, projectId: string, expectedRevision: number, raw: VideoTimelineClip[]) {
+  const clips = sequenceDraftClipsSchema.parse(raw)
+  const db = visual.repo.database
+  return db.transaction(() => {
+    const project = db.get(projectId)
+    if ((project.sequenceDraft?.revision ?? 0) !== expectedRevision)
+      throw new DomainError('CONFLICT', '时间线草稿已在其他窗口更新，请重新进入页面后编辑')
+    if (new Set(clips.map(c => c.shotId)).size !== clips.length)
+      throw new DomainError('INVALID_INPUT', '时间线不能包含重复镜头')
+    for (const clip of clips) {
+      const shot = visual.repo.entity(projectId, clip.shotId)
+      const version = visual.version(projectId, clip.versionId)
+      if (shot.kind !== 'shot' || version.mimeType !== 'video/mp4')
+        throw new DomainError('INVALID_INPUT', '草稿只能引用项目内的镜头和 MP4 视频版本')
+    }
+    const draft = sequenceDraftSchema.parse({ schemaVersion: 1, revision: expectedRevision + 1, updatedAt: new Date().toISOString(), clips })
+    // Keep project editing revisions independent; normal project updates spread
+    // the stored record and therefore preserve this project-owned draft too.
+    db.connection.prepare("UPDATE projects SET data=json_set(data,'$.sequenceDraft',json(?)) WHERE id=?")
+      .run(JSON.stringify(draft), projectId)
+    return draft
+  })
+}
 
 export function validateTimeline(visual: VisualRepository, projectId: string, shotIds: string[], raw: VideoTimelineClip[]) {
   const clips = raw.map(c => videoTimelineClipSchema.parse(c))

@@ -334,7 +334,7 @@ test('Shot Videos Creator handles empty project and broken confirmed binding wit
   } finally { await brokenApp.close(); await rm(brokenDirectory, { recursive: true, force: true }) }
 })
 
-test('formal project offline candidates → confirmed shots → trimmed timeline → MP4 survives restart without generation', async () => {
+test('formal project offline candidates → confirmed shots → draft survives navigation and cold relaunch → MP4 without generation', async () => {
   test.setTimeout(120000)
   const directory = await mkdtemp(join(tmpdir(), 'director-formal-sequence-'))
   const f = await sequenceFixture(directory)
@@ -381,7 +381,40 @@ test('formal project offline candidates → confirmed shots → trimmed timeline
     await timeline.getByLabel('镜 1 出点', { exact: true }).fill('0.75')
     await timeline.getByLabel('镜 2 出点', { exact: true }).fill('2')
     await expect(timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' })).toBeDisabled()
+    // Even an invalid edit is retained; reopening must not resurrect old trims.
+    await nav.getByRole('button', { name: '分镜', exact: true }).click()
+    await expect(sequence).toHaveCount(0)
+    await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
+    await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('2')
+    await expect(timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' })).toBeDisabled()
     await timeline.getByLabel('镜 2 出点', { exact: true }).fill('0.5')
+    // Navigate immediately after editing, without waiting for a save indicator.
+    await nav.getByRole('button', { name: '分镜', exact: true }).click()
+    await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
+    await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
+    await expect(timeline.getByLabel('镜 1 出点', { exact: true })).toHaveValue('0.75')
+    await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
+    await expect(sequence.getByTestId('sequence-draft-status')).toContainText('已恢复本地时间线草稿')
+    await expect(sequence.locator('.project-sequence-history')).toHaveCount(0)
+    await application.close()
+    application = await launch(directory)
+    page = await application.firstWindow()
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    nav = page.getByRole('navigation', { name: '创作阶段' })
+    await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
+    await page.getByRole('button', { name: '关闭检查器' }).click()
+    sequence = page.getByRole('region', { name: '项目成片', exact: true })
+    timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
+    await expect(sequence.getByTestId('sequence-draft-status')).toContainText('已恢复本地时间线草稿')
+    await expect(timeline.locator('tbody tr')).toHaveCount(2)
+    for (const [i, versionId] of versionIds.entries()) {
+      expect((await currentShot(f.shots[i].id)).confirmedVideoAssetVersionId).toBe(versionId)
+      await expect(timeline.locator('tbody tr').nth(i)).toContainText(versionId!)
+    }
+    await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
+    await expect(timeline.getByLabel('镜 1 出点', { exact: true })).toHaveValue('0.75')
+    await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
+    await page.screenshot({ path: 'test-results/formal-project-draft-restored-1920.png', fullPage: true })
     await timeline.getByRole('button', { name: '连续预览时间线' }).click()
     await expect.poll(() => timeline.locator('video').getAttribute('aria-label')).toBe('时间线镜 2')
     const output = join(directory, 'formal-sequence.mp4')

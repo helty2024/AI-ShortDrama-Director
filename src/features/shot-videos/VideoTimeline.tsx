@@ -5,9 +5,10 @@ import type { VideoTimelineClip } from '../../shared/video-batch'
 import { videoTimelineClipSchema } from '../../shared/video-batch'
 import { ShotVideoPlayer } from './ShotVideoPlayer'
 
-export function VideoTimeline({ shots, versions, initial, onSave, onExport, busy }: {
+export function VideoTimeline({ shots, versions, initial, onSave, onExport, onEdit, busy }: {
   shots: Shot[]; versions: AssetVersion[]; initial?: VideoTimelineClip[];
   onSave?: (clips: VideoTimelineClip[]) => Promise<unknown>;
+  onEdit?: (clips: VideoTimelineClip[]) => void;
   onExport?: (clips: VideoTimelineClip[]) => Promise<unknown>; busy: boolean
 }) {
   const ordered = shots
@@ -17,7 +18,11 @@ export function VideoTimeline({ shots, versions, initial, onSave, onExport, busy
   const total = clips.reduce((sum, c) => sum + c.outSeconds - c.inSeconds, 0)
   const currentBindings = clips.every((c, i) => ordered[i]?.id === c.shotId && ordered[i]?.confirmedVideoAssetVersionId === c.versionId && versions.some(v => v.id === c.versionId && v.assetId === ordered[i]?.confirmedVideoAssetId && v.status === 'approved'))
   const valid = currentBindings && clips.length > 0 && clips.length <= 100 && total <= 600 && clips.every(c => videoTimelineClipSchema.safeParse(c).success && c.outSeconds <= (versions.find(v => v.id === c.versionId)?.duration ?? 0))
-  const edit = (i: number, field: 'inSeconds' | 'outSeconds', value: number) => { setPlaying(false); setClips(clips.map((c, n) => n === i ? { ...c, [field]: value } : c)) }
+  const edit = (i: number, field: 'inSeconds' | 'outSeconds', value: number) => {
+    setPlaying(false)
+    const next = clips.map((c, n) => n === i ? { ...c, [field]: value } : c)
+    setClips(next); onEdit?.(next)
+  }
   return <section aria-label="成片时间线"><h3>成片时间线</h3>
     <p>仅使用已确认视频，固定正式镜头顺序。剪辑不会覆盖源素材。当前输出无声，最多 100 镜头、600 秒。合计 {total.toFixed(3)} 秒。</p>
     {!currentBindings && <p role="alert" className="error">已确认视频已变化或镜头已移除，请重新建立时间线。</p>}

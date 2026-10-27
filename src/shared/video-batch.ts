@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { videoApiPreviewInputSchema } from './video-api.js'
 import { toolIdSchema } from './tools.js'
 import { executionConfigurationSchema } from './execution-binding.js'
+import { sequenceDraftClipsSchema } from './video-sequence.js'
 
 const money = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 export const videoTimelineClipSchema = z.strictObject({
@@ -49,6 +50,8 @@ export const nativeVideoBatchSchema = z.strictObject({
   if (batch.state === 'active' && !batch.authorizedAt) invalid()
 })
 export const videoBatchCommandSchema = z.discriminatedUnion('op', [
+  z.strictObject({ op: z.literal('getSequenceDraft'), projectId: z.uuid() }),
+  z.strictObject({ op: z.literal('saveSequenceDraft'), projectId: z.uuid(), expectedRevision: z.number().int().nonnegative(), clips: sequenceDraftClipsSchema }),
   // Local assembly of confirmed project assets needs no generation batch or provider.
   z.strictObject({ op: z.literal('exportSequence'), projectId: z.uuid(), clips: z.array(videoTimelineClipSchema).min(1).max(100) }),
   z.strictObject({ op: z.literal('list'), projectId: z.uuid() }),

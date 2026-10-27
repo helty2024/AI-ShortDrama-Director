@@ -10,7 +10,7 @@ import type { VideoApiGenerationService } from './generation/video-api-service.j
 import { OperationsService } from './operations/service.js'
 import { app } from 'electron'
 import { VideoBatchService } from './generation/video-batch.js'
-import { exportVideoSequence } from './video/sequence-export.js'
+import { exportVideoSequence, saveSequenceDraft } from './video/sequence-export.js'
 import { copyFile } from 'node:fs/promises'
 import { ProductionService } from './video/service.js'
 import { AIError } from './intelligence/provider.js'
@@ -168,6 +168,8 @@ export function registerWorkspaceIPC(
           }
           case 'videoBatch': {
             const c = request.command
+            if (c.op === 'getSequenceDraft') return { ok: true, data: z.json().parse(database.get(c.projectId).sequenceDraft ?? null) }
+            if (c.op === 'saveSequenceDraft') return { ok: true, data: z.json().parse(saveSequenceDraft(visual.visual, c.projectId, c.expectedRevision, c.clips)) }
             if (c.op === 'exportSequence') {
               const version = await exportVideoSequence(visual.visual, c.projectId, c.clips.map(clip => clip.shotId), c.clips)
               const save = await dialog.showSaveDialog({ title: '导出已选镜头连续成片', defaultPath: '短剧成片.mp4', filters: [{ name: 'MP4 无声视频', extensions: ['mp4'] }] })

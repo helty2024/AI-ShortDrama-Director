@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { sequenceFixture } from '../fixtures/sequence.js'
-import { exportVideoSequence, validateTimeline } from '../../electron/main/video/sequence-export.js'
+import { exportVideoSequence, saveSequenceDraft, validateTimeline } from '../../electron/main/video/sequence-export.js'
+import { ProjectDatabase } from '../../electron/main/database.js'
+import { IntelligenceRepository } from '../../electron/main/intelligence/repository.js'
+import { VisualRepository } from '../../electron/main/visual/repository.js'
 import { probeVideo, runMediaTool } from '../../electron/main/video/ffmpeg.js'
 import { videoBatchCommandSchema } from '../../src/shared/video-batch.js'
 
@@ -46,4 +49,52 @@ test('formal sequence exports confirmed local candidates in story order with cur
     f.repo.updateEntity(f.project.id, shot.id, shot.revision, { confirmedVideoAssetId: null, confirmedVideoAssetVersionId: null })
     await assert.rejects(exportVideoSequence(f.visual, f.project.id, ids, clips), /采用/)
   } finally { f.db.close(); await rm(root, { recursive: true, force: true }) }
+})
+
+test('project draft survives reopen, isolates projects, preserves invalid edits and rejects concurrent overwrites', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'director-sequence-draft-'))
+  const f = await sequenceFixture(root)
+  let db = f.db
+  try {
+    assert.equal(db.get(f.project.id).sequenceDraft, undefined, 'old projects need no migration')
+    for (const [i, shot] of f.shots.entries()) f.visual.review(f.project.id, f.versions[i].id, 1, 'approved', shot.id, shot.revision)
+    const clips = f.shots.map((shot, i) => ({ shotId: shot.id, versionId: f.versions[i].id, inSeconds: i ? 0 : 0.25, outSeconds: i ? 0.5 : 0.75 }))
+    const saved = saveSequenceDraft(f.visual, f.project.id, 0, clips)
+    assert.equal(saved.revision, 1)
+    assert.throws(() => saveSequenceDraft(f.visual, f.project.id, 0, clips), /其他窗口/)
+    const other = db.create({ name: '独立项目', description: '', genre: 'drama', language: 'zh-CN', aspectRatio: '1:1' })
+    assert.equal(db.get(other.id).sequenceDraft, undefined)
+    assert.throws(() => saveSequenceDraft(f.visual, other.id, 0, clips), /当前项目|不属于|不存在/)
+    const asset = db.createDraft({ projectId: other.id, kind: 'asset', name: '跨项目视频' })
+    f.repo.updateEntity(other.id, asset.id, asset.revision, { mediaType: 'video' })
+    const stored = await f.visual.storage.storeVideo(other.id, asset.id, await f.visual.storage.read(f.versions[0].storageKey))
+    const foreign = f.visual.commitVersion(other.id, asset.id, stored, { sourceType: 'imported', provider: null, model: null, prompt: '', negativePrompt: '', generationTaskId: null, sourceAssetIds: [], metadata: {} })
+    assert.throws(() => saveSequenceDraft(f.visual, f.project.id, 1, [{ ...clips[0], versionId: foreign.id }]))
+    assert.throws(() => saveSequenceDraft(f.visual, f.project.id, 1, [clips[0], clips[0]]), /重复/)
+    assert.equal(videoBatchCommandSchema.safeParse({ op: 'saveSequenceDraft', projectId: f.project.id, expectedRevision: 1, clips, path: 'unsafe' }).success, false)
+    assert.equal(videoBatchCommandSchema.safeParse({ op: 'saveSequenceDraft', projectId: f.project.id, expectedRevision: 1, clips: Array(101).fill(clips[0]) }).success, false)
+    // A temporarily invalid edit must survive as-is, but cannot export.
+    const invalid = [{ ...clips[0], outSeconds: 2 }, clips[1]]
+    saveSequenceDraft(f.visual, f.project.id, 1, invalid)
+    assert.throws(() => validateTimeline(f.visual, f.project.id, clips.map(c => c.shotId), invalid), /区间/)
+    assert.deepEqual(db.get(f.project.id).sequenceDraft?.clips, invalid)
+    saveSequenceDraft(f.visual, f.project.id, 2, clips)
+    db.update({ id: f.project.id, expectedRevision: db.get(f.project.id).revision, changes: { name: '草稿仍在' } })
+    db.close()
+    db = new ProjectDatabase(join(root, 'workspace.sqlite'))
+    const restored = db.get(f.project.id).sequenceDraft!
+    assert.deepEqual(restored.clips, clips)
+    assert.equal(restored.revision, 3)
+    const visual = new VisualRepository(new IntelligenceRepository(db), f.visual.storage)
+    const result = await exportVideoSequence(visual, f.project.id, restored.clips.map(c => c.shotId), restored.clips)
+    assert(Math.abs(result.duration! - 1) < 0.05)
+    // Reordered or replaced formal selections never silently change a draft.
+    const shot = visual.repo.entity(f.project.id, clips[0].shotId)
+    visual.repo.updateEntity(f.project.id, shot.id, shot.revision, { sceneId: f.shots[1].sceneId, order: 100 })
+    await assert.rejects(exportVideoSequence(visual, f.project.id, clips.map(c => c.shotId), restored.clips), /顺序/)
+    assert.deepEqual(db.get(f.project.id).sequenceDraft?.clips, clips)
+    assert.equal(db.connection.prepare('SELECT count(*) AS count FROM generation_records').get()?.count, 0)
+    db.delete(f.project.id)
+    assert.throws(() => db.get(f.project.id), /不存在/)
+  } finally { db.close(); await rm(root, { recursive: true, force: true }) }
 })
