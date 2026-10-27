@@ -49,6 +49,8 @@ export const nativeVideoBatchSchema = z.strictObject({
   if (batch.state === 'active' && !batch.authorizedAt) invalid()
 })
 export const videoBatchCommandSchema = z.discriminatedUnion('op', [
+  // Local assembly of confirmed project assets needs no generation batch or provider.
+  z.strictObject({ op: z.literal('exportSequence'), projectId: z.uuid(), clips: z.array(videoTimelineClipSchema).min(1).max(100) }),
   z.strictObject({ op: z.literal('list'), projectId: z.uuid() }),
   z.strictObject({ op: z.literal('prepare'), projectId: z.uuid(), shotIds: z.array(z.uuid()).min(1).max(100), referenceVersionId: z.uuid().nullable(), purpose: z.enum(['narrative-production', 'technical-test']).default('narrative-production') }),
   z.strictObject({ op: z.literal('authorize'), projectId: z.uuid(), batchId: z.uuid(), expectedRevision: z.number().int().positive(), maxPoints: z.number().finite().nonnegative(), maxCostMicro: money.positive().nullable(), allowUnknownCost: z.literal(true) }),

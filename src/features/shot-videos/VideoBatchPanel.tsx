@@ -71,11 +71,11 @@ export function VideoBatchPanel({ projectId, shots, entities, versions, onShot, 
         <div className="actions">{n.state === 'awaiting-budget' && n.executionAllowed && <button disabled={busy} onClick={() => { setBudgetId(batch.id); setPoints(n.quoteKnown === false ? '' : String(total)); setMoney(''); setAccepted(false) }}>审核整批范围与预算</button>}
           {n.state === 'active' && <button disabled={busy} onClick={() => void act(() => command({ op: 'pause', projectId, batchId: batch.id }))}>暂停后续提交</button>}
           {n.state === 'paused' && n.authorizedAt && n.executionAllowed && <button disabled={busy} onClick={() => void act(() => command({ op: 'resume', projectId, batchId: batch.id }))}>恢复原批次</button>}
-          <button disabled={busy || !adopted} onClick={() => void act(async () => setExportVersion(assetVersionSchema.parse(await command({ op: 'export', projectId, batchId: batch.id }))))}>按已采用镜头合成并导出 MP4</button>
+          <button disabled={busy || !adopted || timelineId === batch.id} onClick={() => void act(async () => setExportVersion(assetVersionSchema.parse(await command({ op: 'export', projectId, batchId: batch.id }))))}>按已保存区间合成并导出 MP4</button>
           <button disabled={busy || !adopted} onClick={() => setTimelineId(timelineId === batch.id ? '' : batch.id)}>编辑/预览成片时间线</button>
           {n.exportVersionIds.length > 0 && <button disabled={busy} onClick={() => { const v = versions.find(v => v.id === n.exportVersionIds.at(-1)); if (v) setExportVersion(v) }}>预览已导出成片</button>}
         </div>
-        {timelineId === batch.id && adopted && <VideoTimeline key={`${batch.id}:${JSON.stringify(n.timeline)}`} shots={n.items.map(i => shots.find(s => s.id === i.shotId)!)} versions={versions} initial={n.timeline} busy={busy} onSave={clips => act(() => command({ op: 'saveTimeline', projectId, batchId: batch.id, expectedRevision: n.revision, clips }))} />}
+        {timelineId === batch.id && adopted && <VideoTimeline key={`${batch.id}:${JSON.stringify(n.timeline)}`} shots={shots.filter(s => n.items.some(i => i.shotId === s.id))} versions={versions} initial={n.timeline} busy={busy} onSave={clips => act(() => command({ op: 'saveTimeline', projectId, batchId: batch.id, expectedRevision: n.revision, clips }))} onExport={clips => act(async () => { await command({ op: 'saveTimeline', projectId, batchId: batch.id, expectedRevision: n.revision, clips }); setExportVersion(assetVersionSchema.parse(await command({ op: 'export', projectId, batchId: batch.id }))) })} />}
       </article>
     })}
     {quote && <section className="video-batch-budget" aria-label="整批收费授权"><h3>一次确认整批预算</h3>

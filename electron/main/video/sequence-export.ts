@@ -6,19 +6,21 @@ import { DomainError, metadata } from '../database.js'
 import type { VisualRepository } from '../visual/repository.js'
 import { runMediaTool, probeVideo } from './ffmpeg.js'
 import { videoTimelineClipSchema, type VideoTimelineClip } from '../../../src/shared/video-batch.js'
+import { orderedShots } from '../../../src/shared/shot-order.js'
 
 export function validateTimeline(visual: VisualRepository, projectId: string, shotIds: string[], raw: VideoTimelineClip[]) {
   const clips = raw.map(c => videoTimelineClipSchema.parse(c))
   if (clips.length !== shotIds.length || new Set(clips.map(c => c.shotId)).size !== clips.length || clips.some(c => !shotIds.includes(c.shotId)))
-    throw new DomainError('CONFLICT', '时间线必须完整且仅包含此批次的镜头')
-  let previous = -Infinity
+    throw new DomainError('CONFLICT', '时间线必须完整且仅包含所选镜头')
+  const ordered = orderedShots(visual.repo.database.workspace(projectId).entities).filter(shot => shotIds.includes(shot.id))
+  if (ordered.length !== clips.length || clips.some((clip, i) => clip.shotId !== ordered[i].id))
+    throw new DomainError('CONFLICT', '时间线顺序必须与正式分镜一致')
   for (const clip of clips) {
     const shot = visual.repo.entity(projectId, clip.shotId)
     const version = visual.version(projectId, clip.versionId)
     const asset = visual.asset(projectId, version.assetId)
-    if (shot.kind !== 'shot' || shot.order <= previous || shot.confirmedVideoAssetVersionId !== version.id || shot.confirmedVideoAssetId !== asset.id || asset.approvedVersionId !== version.id || version.status !== 'approved' || version.mimeType !== 'video/mp4' || !version.duration || clip.outSeconds > version.duration)
+    if (shot.kind !== 'shot' || shot.confirmedVideoAssetVersionId !== version.id || shot.confirmedVideoAssetId !== asset.id || asset.approvedVersionId !== version.id || version.status !== 'approved' || version.mimeType !== 'video/mp4' || !version.duration || clip.outSeconds > version.duration)
       throw new DomainError('CONFLICT', '时间线顺序、采用版本、批准状态或剪辑区间无效')
-    previous = shot.order
   }
   return clips
 }
@@ -33,7 +35,9 @@ export async function exportVideoSequence(visual: VisualRepository, projectId: s
     if (shot.kind !== 'shot' || !shot.confirmedVideoAssetVersionId || !shot.confirmedVideoAssetId)
       throw new DomainError('CONFLICT', '请先人工审核并采用每个镜头的视频')
     return shot
-  }).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  })
+  const formalOrder = orderedShots(visual.repo.database.workspace(projectId).entities).map(shot => shot.id)
+  shots.sort((a, b) => formalOrder.indexOf(a.id) - formalOrder.indexOf(b.id))
   const versions = shots.map(shot => {
     const version = visual.version(projectId, shot.confirmedVideoAssetVersionId!)
     if (version.assetId !== shot.confirmedVideoAssetId || version.status !== 'approved' || version.mimeType !== 'video/mp4' || !version.duration)
@@ -63,15 +67,12 @@ export async function exportVideoSequence(visual: VisualRepository, projectId: s
     if (Math.abs(media.duration - duration) > inputs.length / 24 + 0.1)
       throw new DomainError('CONFLICT', '成片实际时长与选片不一致，未入库')
     // Detect a concurrent human selection change before committing an obsolete assembly.
-    for (const [i, shot] of shots.entries()) {
-      const current = visual.repo.entity(projectId, shot.id)
-      if (current.kind !== 'shot' || current.confirmedVideoAssetVersionId !== versions[i].id || visual.version(projectId, versions[i].id).status !== 'approved')
-        throw new DomainError('CONFLICT', '选片已变化，请重新导出')
-    }
+    validateTimeline(visual, projectId, shotIds, clips)
     const assetId = metadata().id
     const stored = await visual.storage.storeVideo(projectId, assetId, await readFile(path))
     return visual.repo.database.transaction(() => {
-      visual.repo.database.insertEntities(projectId, [{ ...metadata(), id: assetId, projectId, kind: 'asset', name: '批量成片 · 已采用镜头', description: '按所选素材实际时长顺序合成；H3 基线为无声视频', mediaType: 'video', uri: null, status: 'placeholder', source: null, previousVersionId: null }])
+      validateTimeline(visual, projectId, shotIds, clips)
+      visual.repo.database.insertEntities(projectId, [{ ...metadata(), id: assetId, projectId, kind: 'asset', name: '成片 · 已确认镜头', description: '按正式镜头顺序与剪辑区间合成的无声视频', mediaType: 'video', uri: null, status: 'placeholder', source: null, previousVersionId: null }])
       return visual.commitVersion(projectId, assetId, stored, { sourceType: 'imported', provider: null, model: null, prompt: '', negativePrompt: '', generationTaskId: null,
         sourceAssetIds: [...new Set(versions.map(v => v.assetId))], metadata: { localAssembly: true, audio: 'none', expectedDuration: duration,
           sequence: shots.map((shot, i) => ({ ...clips[i], shotNumber: shot.plan?.shotNumber ?? shot.order, duration: clips[i].outSeconds - clips[i].inSeconds })) } })

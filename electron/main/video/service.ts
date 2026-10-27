@@ -352,6 +352,8 @@ export class ProductionService {
         })
       }
       case 'video.import': {
+        if (c.shotId && this.visual.repo.entity(p, c.shotId).kind !== 'shot')
+          throw new DomainError('INVALID_INPUT', '视频候选只能导入到本项目镜头')
         const path = await this.picker.video()
         if (!path) return null
         if ((await stat(path)).size > 256 * 1024 * 1024)
@@ -362,11 +364,13 @@ export class ProductionService {
           assetId,
           await readFile(path),
         )
-        const existing = this.visual
+        const existing = !c.shotId && this.visual
           .versions(p)
           .find((v) => v.hash === stored.hash)
         if (existing) return existing
         return this.visual.repo.database.transaction(() => {
+          if (c.shotId && this.visual.repo.entity(p, c.shotId).kind !== 'shot')
+            throw new DomainError('CONFLICT', '目标镜头已变化，请重新导入')
           this.visual.repo.database.insertEntities(p, [
             {
               ...metadata(),
@@ -390,7 +394,7 @@ export class ProductionService {
             negativePrompt: '',
             generationTaskId: null,
             sourceAssetIds: [],
-            metadata: {},
+            metadata: c.shotId ? { targetId: c.shotId } : {},
           })
         })
       }

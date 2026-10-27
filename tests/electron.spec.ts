@@ -23,6 +23,8 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { readFile } from 'node:fs/promises'
+import { sequenceFixture } from './fixtures/sequence.js'
+import { probeVideo } from '../electron/main/video/ffmpeg.js'
 
 test('standalone CompShare probe encrypts credentials, preserves database and reuses credentials after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-compshare-probe-'))
@@ -330,6 +332,91 @@ test('Shot Videos Creator handles empty project and broken confirmed binding wit
     await page.getByRole('button', { name: '查看来源' }).click()
     await expect(page.locator('.shot-videos-source')).toBeVisible()
   } finally { await brokenApp.close(); await rm(brokenDirectory, { recursive: true, force: true }) }
+})
+
+test('formal project offline candidates → confirmed shots → trimmed timeline → MP4 survives restart without generation', async () => {
+  test.setTimeout(120000)
+  const directory = await mkdtemp(join(tmpdir(), 'director-formal-sequence-'))
+  const f = await sequenceFixture(directory)
+  // Start with empty slots; exercise the native local-file import through the formal UI.
+  for (const version of f.versions) f.visual.deleteAsset(f.project.id, version.assetId, f.visual.asset(f.project.id, version.assetId).revision)
+  f.db.close()
+  let application = await launch(directory)
+  try {
+    let page = await application.firstWindow()
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    let nav = page.getByRole('navigation', { name: '创作阶段' })
+    await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
+    await page.getByRole('button', { name: '关闭检查器' }).click()
+    let sequence = page.getByRole('region', { name: '项目成片', exact: true })
+    await expect(sequence.getByRole('button', { name: '用已确认视频建立时间线' })).toBeDisabled()
+    const currentShot = async (shotId: string) => {
+      const r = await page.evaluate(id => window.desktop!.workspace.request({ action: 'workspace.get', id }), f.project.id)
+      if (!r.ok) throw new Error(r.message)
+      const shot = workspaceSchema.parse(r.data).entities.find(e => e.id === shotId)
+      if (shot?.kind !== 'shot') throw new Error('fixture shot missing')
+      return shot
+    }
+    for (const [i, shot] of f.shots.entries()) {
+      await page.locator('.shot-videos-list-item').filter({ hasText: shot.name }).click()
+      if (await page.getByRole('dialog', { name: '上下文检查器', exact: true }).count()) await page.keyboard.press('Escape')
+      await application.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }) }, f.files[i])
+      await page.getByRole('button', { name: '导入本地 MP4 候选' }).click()
+      const candidate = page.locator('.shot-videos-candidate').first()
+      await expect(candidate.getByRole('button', { name: '批准', exact: true })).toBeVisible()
+      expect((await currentShot(shot.id)).confirmedVideoAssetVersionId).toBeNull()
+      await candidate.getByRole('button', { name: '批准', exact: true }).click()
+      await expect(candidate.getByRole('button', { name: '设为当前镜头视频' })).toBeVisible()
+      expect((await currentShot(shot.id)).confirmedVideoAssetVersionId).toBeNull()
+      await candidate.getByRole('button', { name: '设为当前镜头视频' }).click()
+      await expect.poll(async () => (await currentShot(shot.id)).confirmedVideoAssetVersionId).toBeTruthy()
+    }
+    await expect(sequence).toContainText('2 / 6 镜头可用于成片')
+    await sequence.getByRole('button', { name: '用已确认视频建立时间线' }).click()
+    let timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
+    await expect(timeline.locator('tbody tr')).toHaveCount(2)
+    const versionIds = await Promise.all(f.shots.map(async s => (await currentShot(s.id)).confirmedVideoAssetVersionId))
+    await expect(timeline.locator('tbody tr').first()).toContainText(versionIds[0]!)
+    await timeline.getByLabel('镜 1 入点', { exact: true }).fill('0.25')
+    await timeline.getByLabel('镜 1 出点', { exact: true }).fill('0.75')
+    await timeline.getByLabel('镜 2 出点', { exact: true }).fill('2')
+    await expect(timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' })).toBeDisabled()
+    await timeline.getByLabel('镜 2 出点', { exact: true }).fill('0.5')
+    await timeline.getByRole('button', { name: '连续预览时间线' }).click()
+    await expect.poll(() => timeline.locator('video').getAttribute('aria-label')).toBe('时间线镜 2')
+    const output = join(directory, 'formal-sequence.mp4')
+    await application.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }) }, output)
+    await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
+    await expect(sequence.getByRole('status')).toContainText('MP4 已保存', { timeout: 30000 })
+    expect(Math.abs((await probeVideo(output)).duration - 1)).toBeLessThan(0.05)
+    const snapshot = await page.evaluate(projectId => window.desktop!.workspace.request({ action: 'visual', command: { operation: 'snapshot', projectId } }), f.project.id)
+    expect(snapshot.ok && JSON.stringify(snapshot.data)).toContain('"localAssembly":true')
+    await page.screenshot({ path: 'test-results/formal-project-sequence-1920.png', fullPage: true })
+    expect(await page.locator('.creator-main').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await application.close()
+    application = await launch(directory)
+    page = await application.firstWindow()
+    nav = page.getByRole('navigation', { name: '创作阶段' })
+    await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
+    await page.getByRole('button', { name: '关闭检查器' }).click()
+    sequence = page.getByRole('region', { name: '项目成片', exact: true })
+    await sequence.getByText('已导出成片（1）', { exact: true }).click()
+    await sequence.getByRole('button', { name: '载入此成片时间线' }).click()
+    timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
+    await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
+    await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
+    await application.evaluate(({ dialog }) => { dialog.showSaveDialog = async () => ({ canceled: true, filePath: '' }) })
+    await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
+    await expect(sequence.getByRole('status')).toContainText('已取消文件保存', { timeout: 30000 })
+    const batches = await page.evaluate(projectId => window.desktop!.workspace.request({ action: 'videoBatch', command: { op: 'list', projectId } }), f.project.id)
+    expect(batches).toEqual({ ok: true, data: [] })
+    await application.close()
+    const check = new ProjectDatabase(join(directory, 'workspace.sqlite'))
+    try {
+      expect(check.connection.prepare('SELECT count(*) AS count FROM generation_records').get()?.count).toBe(0)
+      expect(check.connection.prepare('SELECT count(*) AS count FROM ai_tasks').get()?.count).toBe(0)
+    } finally { check.close() }
+  } finally { await application.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
 test('Shot Videos Creator reviews pinned media, preserves context and opens 1920 overlay', async () => {

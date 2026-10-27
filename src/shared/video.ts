@@ -222,7 +222,7 @@ export const productionCommandSchema = z.discriminatedUnion('operation', [
   }),
   z.strictObject({ ...generation, operation: z.literal('video.compile') }),
   z.strictObject({ ...generation, operation: z.literal('video.generate') }),
-  z.strictObject({ ...scope, operation: z.literal('video.import') }),
+  z.strictObject({ ...scope, operation: z.literal('video.import'), shotId: id.optional() }),
 ])
 export type ShotDirection = z.infer<typeof directionSchema>
 export type CostMetadata = z.infer<typeof costSchema>

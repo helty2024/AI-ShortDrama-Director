@@ -67,3 +67,14 @@
 .video-batch-budget { padding: 20px; margin-top: 16px; border: 2px solid #b78340; border-radius: 8px; }
 .video-batch-budget label { display: block; margin: 12px 0; }
 .video-batch-budget pre { white-space: pre-wrap; max-height: 300px; overflow: auto; }
+.project-video-sequence { min-width: 0; padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-2); }
+.project-video-sequence h2 { margin: 0; font-size: 16px; }
+.project-video-sequence p { color: var(--text-secondary); }
+.project-video-sequence .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.video-timeline-table { max-width: 100%; overflow-x: auto; }
+.video-timeline-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.video-timeline-table td, .video-timeline-table th { padding: 8px; border-bottom: 1px solid var(--border-default); }
+.video-timeline-table small { display: block; max-width: 220px; overflow-wrap: anywhere; color: var(--text-muted); }
+.video-timeline-table input { width: 100px; }
+.shot-videos-main-head .actions { flex-wrap: wrap; }
+.project-sequence-history, .shot-videos-batch { min-width: 0; margin-top: 12px; }

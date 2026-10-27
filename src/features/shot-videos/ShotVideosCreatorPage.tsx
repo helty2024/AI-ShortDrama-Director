@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AssetVersion, } from '../../shared/visual'
+import { assetVersionSchema, type AssetVersion } from '../../shared/visual'
+import { productionService } from '../../services/production'
 import type { Shot } from '../../shared/domain'
 import { useCreator } from '../../components/creator-shell/creator-context'
 import { useToast } from '../../components/creator-shell/toast-context'
@@ -15,12 +16,13 @@ import { AssetImage } from '../visual/AssetImage'
 import { shotVideoThumbnail, shotVideoView } from './shot-video-model'
 import { ShotVideoPlayer } from './ShotVideoPlayer'
 import { VideoBatchPanel } from './VideoBatchPanel'
+import { ProjectVideoSequence } from './ProjectVideoSequence'
 import './shot-videos-creator.css'
 import { isAlphaTestTool } from '../../shared/alpha'
 
 function shotLabel(shot: Shot, index: number) { return `镜头 ${String(shot.plan?.shotNumber ?? index + 1).padStart(2, '0')}` }
 function versionState(version: AssetVersion, confirmedId: string | null) {
-  return version.id === confirmedId ? '已确认' : version.status === 'approved' ? '可以生成' : '等待选择'
+  return version.id === confirmedId ? '已确认' : version.status === 'approved' ? '已批准，待采用' : '等待选择'
 }
 
 export function ShotVideosCreatorPage() {
@@ -64,6 +66,21 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
   }
   const toGenerate = () => shot && creator.navigateCreator('generation', { shotId: shot.id, sceneId: shot.sceneId, generationMode: 'video', targetKind: undefined, targetId: undefined, assetId: undefined })
   const toStoryboard = () => shot && creator.navigateCreator('storyboard', { shotId: shot.id, sceneId: shot.sceneId })
+  const importVideo = async () => {
+    if (!shot || busyId) return
+    const target = shot
+    setBusyId('import'); setError('')
+    try {
+      const result = await productionService.command({ operation: 'video.import', projectId, shotId: target.id })
+      if (result) {
+        const version = assetVersionSchema.parse(result)
+        await Promise.all([reload(), visual.refresh()])
+        if (visibleShotId.current === target.id) setPreviewId(version.id)
+        toast('success', '已导入视频候选，请审看后批准并采用')
+      }
+    } catch (cause) { if (visibleShotId.current === target.id) setError(cause instanceof Error ? cause.message : '导入失败') }
+    finally { setBusyId('') }
+  }
   const act = async (version: AssetVersion, action: CandidateAction) => {
     if (!shot || busyId) return
     const target = shot
@@ -79,11 +96,12 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
   return <section className="shot-videos-creator" aria-label="分镜视频工作区">
     <header className="page-heading shot-videos-heading"><div><small>审看与确认</small><h1>分镜视频</h1><p>沿着故事顺序审看镜头，批准候选后再明确采用。</p></div><span className="creator-status">{shots.filter((item) => shotVideoView(item, entities, versions, ai.snapshot.tasks).confirmed).length} / {shots.length} 已确认</span></header>
     {(visual.error || ai.error || workflows.error || error) && <p role="alert" className="error">{error || visual.error || ai.error || workflows.error}</p>}
-    <VideoBatchPanel projectId={projectId} shots={shots} entities={entities} versions={versions} onShot={chooseShot} onChange={async () => { await Promise.all([reload(), visual.refresh(), ai.refresh()]) }} />
+    <ProjectVideoSequence projectId={projectId} shots={shots} entities={entities} versions={versions} onChange={async () => { await Promise.all([reload(), visual.refresh()]) }} />
+    <details className="shot-videos-batch"><summary>批量生成与批次历史</summary><VideoBatchPanel projectId={projectId} shots={shots} entities={entities} versions={versions} onShot={chooseShot} onChange={async () => { await Promise.all([reload(), visual.refresh(), ai.refresh()]) }} /></details>
     {!shot ? <div className="shot-videos-empty"><h2>还没有分镜视频</h2><p>先在“分镜”中创建镜头。</p><button className="primary" onClick={() => creator.navigateCreator('storyboard')}>前往分镜</button></div> : <>
       <div className="shot-videos-layout">
         <aside className="shot-videos-list" aria-label="镜头视频列表"><div className="shot-videos-list-head"><h2>镜头序列</h2><small>{shots.length} 个镜头</small></div>{shots.map((item, index) => <button key={item.id} className="shot-videos-list-item" aria-pressed={shot.id === item.id} onClick={() => chooseShot(item)}><span className="shot-videos-number">{shotLabel(item, index)}</span><strong>{item.description || item.plan?.action || item.name}</strong><small>{item.durationSeconds}s <span className="creator-status" data-status={status(item)}>{status(item)}</span></small></button>)}</aside>
-        <div className="shot-videos-main"><div className="shot-videos-main-head"><div><small>当前镜头 / {shotLabel(shot, shots.indexOf(shot))}</small><h2>{shot.description || shot.plan?.action || shot.name}</h2></div><div className="actions"><button onClick={toStoryboard}>查看分镜</button><button onClick={toGenerate}>去生成</button></div></div>
+        <div className="shot-videos-main"><div className="shot-videos-main-head"><div><small>当前镜头 / {shotLabel(shot, shots.indexOf(shot))}</small><h2>{shot.description || shot.plan?.action || shot.name}</h2></div><div className="actions"><button disabled={Boolean(busyId)} onClick={() => void importVideo()}>导入本地 MP4 候选</button><button onClick={toStoryboard}>查看分镜</button><button onClick={toGenerate}>去生成</button></div></div>
           <section className="shot-videos-screen" aria-label="镜头视频播放器"><div className="shot-videos-screen-top"><span>{preview ? '候选预览 · 尚未采用' : view?.confirmed ? '当前确认视频' : '当前镜头视频'}</span><span>{playerVersion ? `${playerVersion.width} × ${playerVersion.height}` : state.workspace?.project.aspectRatio}</span></div>
             {playerVersion && isAlphaTestTool(playerVersion.provider ?? '') && <p className="alpha-test-notice">测试视频 / 模拟生成 · 仅用于 Alpha 流程验证</p>}
             {playerVersion ? <ShotVideoPlayer key={`${shot.id}:${playerVersion.id}`} version={playerVersion} label={preview ? '候选视频' : '当前确认视频'} onSource={() => setShowSource(true)} /> : <div className="shot-videos-screen-empty"><span>▶</span><strong>{view?.bindingBroken ? '当前确认视频不可用' : '尚未确认当前镜头视频'}</strong><p>{view?.bindingBroken ? '原绑定的版本无法解析；不会自动使用候选替代。' : '当前还没有确认的视频。生成并批准候选后，可将其设为当前镜头视频。'}</p><button onClick={toGenerate}>前往生成</button></div>}

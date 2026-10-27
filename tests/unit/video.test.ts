@@ -38,7 +38,7 @@ import {
 import type { VideoInputs } from '../../electron/main/video/providers.js'
 import { EncryptedCredentialStore } from '../../electron/main/video/credentials.js'
 import type { CredentialStore } from '../../electron/main/video/credentials.js'
-import { probeVideo } from '../../electron/main/video/ffmpeg.js'
+import { probeVideo, runMediaTool } from '../../electron/main/video/ffmpeg.js'
 import { compileShotVideoPrompt } from '../../electron/main/video/compiler.js'
 import { diagnoseComfy } from '../../electron/main/visual/diagnostics.js'
 import { builtinTemplates } from '../../electron/main/visual/workflows.js'
@@ -49,7 +49,7 @@ import {
   batchSchema,
 } from '../../src/shared/video.js'
 import type { VideoGenerationRequest } from '../../src/shared/video.js'
-import { defaultProviderSettings } from '../../src/shared/visual.js'
+import { defaultProviderSettings, assetVersionSchema } from '../../src/shared/visual.js'
 import { aiTaskSchema } from '../../src/shared/intelligence.js'
 import { migrateIntelligence } from '../../electron/main/intelligence/migration.js'
 import { migrateVisual } from '../../electron/main/visual/migration.js'
@@ -62,6 +62,37 @@ const memorySecrets: CredentialStore = {
     return true
   },
 }
+test('local MP4 import creates shot-owned drafts, keeps duplicate bytes distinct, and never adopts or generates', async () => {
+  let file: string | null = null, picks = 0
+  const app = await setup(async () => { picks++; return file })
+  try {
+    file = join(app.dir, 'offline.mp4')
+    await runMediaTool('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=green:s=32x32:r=24:d=1', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', file])
+    const shots = app.db.workspace(app.project.id).entities.filter(e => e.kind === 'shot')
+    const versions = []
+    for (const shot of shots.slice(0, 2)) {
+      const version = assetVersionSchema.parse(await app.service.execute({ operation: 'video.import', projectId: app.project.id, shotId: shot.id }))
+      assert.equal(version.metadata.targetId, shot.id)
+      assert.equal(version.status, 'draft')
+      assert.equal(version.sourceType, 'imported')
+      const current = app.repo.entity(app.project.id, shot.id)
+      assert.equal(current.kind === 'shot' && current.confirmedVideoAssetVersionId, null)
+      assert.equal(current.revision, shot.revision)
+      versions.push(version)
+    }
+    assert.equal(versions[0].hash, versions[1].hash)
+    assert.notEqual(versions[0].assetId, versions[1].assetId)
+    await assert.rejects(app.service.execute({ operation: 'video.import', projectId: app.project.id, shotId: randomUUID() }))
+    const nonShot = app.db.workspace(app.project.id).entities.find(e => e.kind === 'scene')!
+    await assert.rejects(app.service.execute({ operation: 'video.import', projectId: app.project.id, shotId: nonShot.id }), /本项目镜头/)
+    assert.equal(picks, 2, 'invalid targets never open a file picker')
+    file = null
+    assert.equal(await app.service.execute({ operation: 'video.import', projectId: app.project.id, shotId: shots[0].id }), null)
+    assert.equal(app.visual.versions(app.project.id).length, 2)
+    assert.equal(app.provider.submissions, 0)
+  } finally { await app.close() }
+})
+
 class CountingProvider extends MockVideoProvider {
   submissions = 0
   uncertain = false
@@ -71,7 +102,7 @@ class CountingProvider extends MockVideoProvider {
     return super.submit(r, i, s)
   }
 }
-async function setup() {
+async function setup(video: () => Promise<string | null> = async () => null) {
   const dir = await mkdtemp(join(tmpdir(), 'director-video-')),
     db = new ProjectDatabase(join(dir, 'workspace.sqlite')),
     project = db.seed(buildSeed),
@@ -98,7 +129,7 @@ async function setup() {
       queue,
       memorySecrets,
       factory,
-      { credential: async () => null, video: async () => null },
+      { credential: async () => null, video },
     )
   return {
     dir,

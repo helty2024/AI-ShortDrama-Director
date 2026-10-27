@@ -1,20 +1,12 @@
-import type { Asset, Entity, Episode, Scene, Shot } from '../../shared/domain.js'
+import type { Asset, Entity, Scene, Shot } from '../../shared/domain.js'
+import { orderedShots } from '../../shared/shot-order.js'
+export { orderedShots } from '../../shared/shot-order.js'
 import type { AITask } from '../../shared/intelligence.js'
 import type { AssetVersion } from '../../shared/visual.js'
 import type { WorkflowRun } from '../../shared/workflow.js'
 import type { CreatorStatus } from '../../components/creator-shell/status.js'
 
 export interface ShotGroup { scene: Scene | undefined; shots: Shot[] }
-
-export function orderedShots(entities: Entity[]): Shot[] {
-  const episodes = new Map(entities.filter((e): e is Episode => e.kind === 'episode').map((e) => [e.id, e]))
-  const scenes = new Map(entities.filter((e): e is Scene => e.kind === 'scene').map((e) => [e.id, e]))
-  return entities.filter((e): e is Shot => e.kind === 'shot').toSorted((a, b) => {
-    const sa = scenes.get(a.sceneId), sb = scenes.get(b.sceneId)
-    const ea = sa && episodes.get(sa.episodeId), eb = sb && episodes.get(sb.episodeId)
-    return (ea?.order ?? 0) - (eb?.order ?? 0) || (sa?.order ?? 0) - (sb?.order ?? 0) || a.order - b.order || a.createdAt.localeCompare(b.createdAt)
-  })
-}
 
 export function shotGroups(entities: Entity[]): ShotGroup[] {
   const shots = orderedShots(entities)
