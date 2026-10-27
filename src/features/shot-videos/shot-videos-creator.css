@@ -57,3 +57,13 @@
 .shot-videos-sequence-scroll small { color: var(--text-muted); font-size: 10px; }
 @media (max-width: 2199px) { .shot-videos-layout { grid-template-columns: minmax(195px, 220px) minmax(0, 1fr); } }
 @media (max-width: 850px) { .shot-videos-layout { grid-template-columns: 1fr; } .shot-videos-list { max-height: 220px; } }
+.video-batch-panel { padding: 20px; border: 1px solid var(--border, #444); border-radius: 12px; margin-bottom: 24px; }
+.video-batch-selection { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.video-batch-selection label { padding: 8px; border: 1px solid var(--border, #444); border-radius: 6px; }
+.video-batch-panel small { display: block; overflow-wrap: anywhere; opacity: .75; }
+.video-batch-card { margin-top: 20px; padding: 16px; border: 1px solid var(--border, #444); border-radius: 8px; overflow: auto; }
+.video-batch-card table { width: 100%; text-align: left; border-collapse: collapse; margin: 12px 0; }
+.video-batch-card td, .video-batch-card th { padding: 8px; border-bottom: 1px solid var(--border, #444); vertical-align: top; }
+.video-batch-budget { padding: 20px; margin-top: 16px; border: 2px solid #b78340; border-radius: 8px; }
+.video-batch-budget label { display: block; margin: 12px 0; }
+.video-batch-budget pre { white-space: pre-wrap; max-height: 300px; overflow: auto; }

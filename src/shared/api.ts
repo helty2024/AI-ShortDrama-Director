@@ -1,9 +1,10 @@
-import { skillExperimentCommandSchema } from './skill-experiment.js'
 import { serviceSettingsCommandSchema } from './service-settings.js'
+import { skillExperimentCommandSchema } from './skill-experiment.js'
 import { workflowCommandSchema } from './workflow.js'
 import { compatibilityCommandSchema } from './compatibility.js'
 import { imageApiCommandSchema } from './image-api.js'
 import { videoApiCommandSchema } from './video-api.js'
+import { videoBatchCommandSchema } from './video-batch.js'
 import { compshareCommandSchema } from './compshare-minimax-h3.js'
 import { operationsCommandSchema } from './operations.js'
 import { pilotCommandSchema } from './production.js'
@@ -29,6 +30,7 @@ import type { Entity, Project, Workspace } from './domain.js'
 
 export const requestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('skillExperiment'), command: skillExperimentCommandSchema }),
+  z.strictObject({ action: z.literal('videoBatch'), command: videoBatchCommandSchema }),
   z.strictObject({ action: z.literal('serviceSettings'), command: serviceSettingsCommandSchema }),
   z.strictObject({ action: z.literal('workflow'), command: workflowCommandSchema }),
   z.strictObject({ action: z.literal('compatibility'), command: compatibilityCommandSchema }),

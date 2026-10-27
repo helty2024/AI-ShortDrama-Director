@@ -14,6 +14,7 @@ import { orderedShots, shotStatus } from '../storyboard/storyboard-model'
 import { AssetImage } from '../visual/AssetImage'
 import { shotVideoThumbnail, shotVideoView } from './shot-video-model'
 import { ShotVideoPlayer } from './ShotVideoPlayer'
+import { VideoBatchPanel } from './VideoBatchPanel'
 import './shot-videos-creator.css'
 import { isAlphaTestTool } from '../../shared/alpha'
 
@@ -78,6 +79,7 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
   return <section className="shot-videos-creator" aria-label="分镜视频工作区">
     <header className="page-heading shot-videos-heading"><div><small>审看与确认</small><h1>分镜视频</h1><p>沿着故事顺序审看镜头，批准候选后再明确采用。</p></div><span className="creator-status">{shots.filter((item) => shotVideoView(item, entities, versions, ai.snapshot.tasks).confirmed).length} / {shots.length} 已确认</span></header>
     {(visual.error || ai.error || workflows.error || error) && <p role="alert" className="error">{error || visual.error || ai.error || workflows.error}</p>}
+    <VideoBatchPanel projectId={projectId} shots={shots} entities={entities} versions={versions} onShot={chooseShot} onChange={async () => { await Promise.all([reload(), visual.refresh(), ai.refresh()]) }} />
     {!shot ? <div className="shot-videos-empty"><h2>还没有分镜视频</h2><p>先在“分镜”中创建镜头。</p><button className="primary" onClick={() => creator.navigateCreator('storyboard')}>前往分镜</button></div> : <>
       <div className="shot-videos-layout">
         <aside className="shot-videos-list" aria-label="镜头视频列表"><div className="shot-videos-list-head"><h2>镜头序列</h2><small>{shots.length} 个镜头</small></div>{shots.map((item, index) => <button key={item.id} className="shot-videos-list-item" aria-pressed={shot.id === item.id} onClick={() => chooseShot(item)}><span className="shot-videos-number">{shotLabel(item, index)}</span><strong>{item.description || item.plan?.action || item.name}</strong><small>{item.durationSeconds}s <span className="creator-status" data-status={status(item)}>{status(item)}</span></small></button>)}</aside>

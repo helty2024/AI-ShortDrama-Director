@@ -1,7 +1,7 @@
+import type { ServiceSettingsCommand } from '../../src/shared/service-settings.js'
 import { SkillExperimentService, type SkillTextBinding } from './skills/experiment.js'
 import { Seedance20Loader } from './skills/seedance-20.js'
 import { join } from 'node:path'
-import type { ServiceSettingsCommand } from '../../src/shared/service-settings.js'
 import { WorkflowService } from './workflow/service.js'
 import { LineageService } from './generation/lineage.js'
 import { toolReadiness } from './tools/readiness.js'
@@ -9,6 +9,8 @@ import type { ImageGenerationService } from './generation/image-service.js'
 import type { VideoApiGenerationService } from './generation/video-api-service.js'
 import { OperationsService } from './operations/service.js'
 import { app } from 'electron'
+import { VideoBatchService } from './generation/video-batch.js'
+import { copyFile } from 'node:fs/promises'
 import { ProductionService } from './video/service.js'
 import { AIError } from './intelligence/provider.js'
 import { VisualService } from './visual/service.js'
@@ -59,6 +61,12 @@ export function registerWorkspaceIPC(
   let configuringComfy = false
   let activeImageCommands = 0
   const workflows = imageApi && videoApi ? new WorkflowService(imageApi, videoApi) : null
+  const videoBatches = videoApi ? new VideoBatchService(videoApi) : null
+  if (videoBatches) {
+    const timer = setInterval(() => { void videoBatches.tick().catch(() => { /* Batch/task records retain the actionable state. */ }) }, 2000)
+    timer.unref()
+    app.once('will-quit', () => clearInterval(timer))
+  }
   workflows?.runner.recoverUnfinished()
   const pilot = new ProductionIntelligenceService(
     production,
@@ -156,6 +164,29 @@ export function registerWorkspaceIPC(
             }
             return {ok:true,data:z.json().parse(data??null)}
             } finally { activeImageCommands-- }
+          }
+          case 'videoBatch': {
+            if (!videoBatches || !videoApi) throw new DomainError('CONFLICT', '视频服务未配置')
+            const c = request.command
+            let data: unknown
+            switch (c.op) {
+              case 'list': data = videoBatches.list(c.projectId); break
+              case 'prepare': data = await videoBatches.prepare(c.projectId, c.shotIds, c.referenceVersionId, c.purpose); break
+              case 'authorize': data = videoBatches.authorize(c.projectId, c.batchId, c.expectedRevision, c.maxPoints, c.maxCostMicro); break
+              case 'pause': data = videoBatches.pause(c.projectId, c.batchId); break
+              case 'resume': data = videoBatches.resume(c.projectId, c.batchId); break
+              case 'rework': data = await videoBatches.rework(c.projectId, c.batchId, c.shotId); break
+              case 'recoverOutput': data = await videoBatches.recoverOutput(c.projectId, c.batchId, c.shotId); break
+              case 'saveTimeline': data = videoBatches.saveTimeline(c.projectId, c.batchId, c.expectedRevision, c.clips); break
+              case 'export': {
+                const version = await videoBatches.export(c.projectId, c.batchId)
+                const save = await dialog.showSaveDialog({ title: '导出已选镜头连续成片', defaultPath: '短剧成片.mp4', filters: [{ name: 'MP4 无声视频', extensions: ['mp4'] }] })
+                if (!save.canceled && save.filePath) await copyFile(await videoApi.visual.storage.resolveRegisteredFile(version.storageKey), save.filePath)
+                data = version
+                break
+              }
+            }
+            return { ok: true, data: z.json().parse(data ?? null) }
           }
           case 'videoApi': {
             if (!videoApi) throw new DomainError('CONFLICT', 'Video API 未配置')
