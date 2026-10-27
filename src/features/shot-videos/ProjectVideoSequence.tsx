@@ -6,7 +6,7 @@ import { videoTimelineClipSchema, type VideoTimelineClip } from '../../shared/vi
 import { VideoTimeline } from './VideoTimeline'
 import { ShotVideoPlayer } from './ShotVideoPlayer'
 import { sequenceDraftSchema } from '../../shared/video-sequence'
-import { sequenceClipLabel } from './shot-video-model'
+import { pruneSequenceTrims, rememberRemovedSequenceClips, sequenceClipForBuild, sequenceClipLabel } from './shot-video-model'
 
 // Navigation can remount this view before its last IPC reply. Read only after
 // the previous instance has drained its writes for the same project.
@@ -19,6 +19,7 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null)
   const [ready, setReady] = useState(false), [saveStatus, setSaveStatus] = useState(''), [saveError, setSaveError] = useState('')
   const revision = useRef(0), queue = useRef(Promise.resolve()), mounted = useRef(false), saveNumber = useRef(0)
+  const removedTrims = useRef(new Map<string, VideoTimelineClip>())
   const [previewId, setPreviewId] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const confirmed = shots.filter(s => versions.some(v => v.id === s.confirmedVideoAssetVersionId && v.assetId === s.confirmedVideoAssetId && v.status === 'approved' && v.mimeType === 'video/mp4' && v.duration && entities.some(e => e.kind === 'asset' && e.id === v.assetId && e.approvedVersionId === v.id)))
@@ -26,7 +27,10 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
   const selectionChanged = draft && (selected.length !== draft.clips.length || selected.some((s, i) => s.id !== draft.clips[i]?.shotId))
   const exports = versions.filter(v => v.metadata.localAssembly === true && v.mimeType === 'video/mp4').toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
   const preview = exports.find(v => v.id === previewId)
+  useEffect(() => { pruneSequenceTrims(removedTrims.current, shots) }, [shots])
   useEffect(() => {
+    const cache = removedTrims.current
+    cache.clear()
     mounted.current = true
     let active = true
     void (async () => {
@@ -41,7 +45,7 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
         setReady(true)
       } catch (cause) { if (active) setSaveError(cause instanceof Error ? cause.message : '读取草稿失败，请重新进入页面') }
     })()
-    return () => { active = false; mounted.current = false }
+    return () => { active = false; mounted.current = false; cache.clear() }
   }, [projectId])
   const persist = (clips: VideoTimelineClip[]) => {
     const number = ++saveNumber.current
@@ -63,7 +67,9 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
     pendingSequenceSaves.set(projectId, pending)
     void pending.then(() => { if (pendingSequenceSaves.get(projectId) === pending) pendingSequenceSaves.delete(projectId) })
   }
-  const replaceDraft = (clips: VideoTimelineClip[]) => {
+  const replaceDraft = (clips: VideoTimelineClip[], rememberRemoved = true) => {
+    if (rememberRemoved) rememberRemovedSequenceClips(removedTrims.current, draft?.clips ?? [], clips)
+    pruneSequenceTrims(removedTrims.current, shots)
     setDraft(previous => ({ key: (previous?.key ?? 0) + 1, clips }))
     setSelectedIds(clips.map(c => c.shotId))
     persist(clips)
@@ -72,14 +78,16 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
     setError(''); setNotice('')
     if (!selected.length) { setError('请至少选择一个已确认镜头，再建立时间线。'); return }
     if (selected.length > 100) { setError('最多选择 100 个镜头，请减少勾选。'); return }
-    replaceDraft(selected.map(s => draft?.clips.find(c => c.shotId === s.id && c.versionId === s.confirmedVideoAssetVersionId) ?? { shotId: s.id, versionId: s.confirmedVideoAssetVersionId!, inSeconds: 0, outSeconds: versions.find(v => v.id === s.confirmedVideoAssetVersionId)!.duration! }))
+    pruneSequenceTrims(removedTrims.current, shots)
+    replaceDraft(selected.map(s => sequenceClipForBuild(s.id, s.confirmedVideoAssetVersionId!, versions.find(v => v.id === s.confirmedVideoAssetVersionId)!.duration!, draft?.clips ?? [], removedTrims.current)))
   }
   const restore = (version: AssetVersion) => {
     const sequence = version.metadata.sequence
     const parsed = z.array(videoTimelineClipSchema).min(1).max(100).safeParse(Array.isArray(sequence) ? sequence.map(c => c && typeof c === 'object' && !Array.isArray(c) ? { shotId: c.shotId, versionId: c.versionId, inSeconds: c.inSeconds, outSeconds: c.outSeconds } : c) : null)
     if (!parsed.success) { setError('此成片没有可载入的剪辑记录'); return }
     setError(''); setNotice('')
-    replaceDraft(parsed.data)
+    removedTrims.current.clear()
+    replaceDraft(parsed.data, false)
   }
   const exportSequence = async (clips: VideoTimelineClip[]) => {
     if (busy) return
@@ -110,6 +118,7 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
         return <label key={s.id}><input type="checkbox" checked={selected.some(item => item.id === s.id)} onChange={e => setSelectedIds(e.target.checked ? [...selected.map(item => item.id), s.id] : selected.filter(item => item.id !== s.id).map(item => item.id))} /><span>{episode?.name ?? '未命名集'} / {scene?.name ?? '未命名场'} / 镜 {s.plan?.shotNumber ?? s.order + 1} · {s.name}</span></label>
       })}</div>
       <p>勾选后点击建立或重新建立，才会应用并保存选择。重新建立会替换草稿，保留仍选用同一视频的已有区间；导出使用下方时间线。</p>
+      <p>本次停留页面期间，移出后重新加入同一视频可恢复有效剪辑区间；离开页面或载入历史后，不再保留已移出镜头的区间。</p>
     </fieldset>}
     <button disabled={!ready || busy || !selected.length || selected.length > 100} onClick={build}>{draft ? '按当前已确认视频重新建立时间线' : '用已确认视频建立时间线'}</button>
     {selectionChanged && <p>镜头选择尚未应用，请点击“按当前已确认视频重新建立时间线”。</p>}

@@ -5,8 +5,57 @@ import { ProjectDatabase } from '../../electron/main/database.js'
 import { buildSeed } from '../../electron/main/seed.js'
 import { assetVersionSchema } from '../../src/shared/visual.js'
 import { aiTaskSchema } from '../../src/shared/intelligence.js'
-import { shotVideoCandidates, shotVideoThumbnail, shotVideoView } from '../../src/features/shot-videos/shot-video-model.js'
+import { pruneSequenceTrims, rememberRemovedSequenceClips, sequenceClipForBuild, shotVideoCandidates, shotVideoThumbnail, shotVideoView } from '../../src/features/shot-videos/shot-video-model.js'
 import { orderedShots } from '../../src/features/storyboard/storyboard-model.js'
+import type { VideoTimelineClip } from '../../src/shared/video-batch.js'
+
+test('removed sequence trims return for the same shot/version and update on repeated removal', () => {
+  const clips = Array.from({ length: 3 }, () => ({ shotId: randomUUID(), versionId: randomUUID(), inSeconds: 0.2, outSeconds: 0.7 }))
+  const cache = new Map<string, VideoTimelineClip>()
+  const remaining = [clips[0], clips[2]]
+  rememberRemovedSequenceClips(cache, clips, remaining)
+  assert.deepEqual([...cache.values()], [clips[1]])
+  const restored = sequenceClipForBuild(clips[1].shotId, clips[1].versionId, 1, remaining, cache)
+  assert.deepEqual(restored, clips[1])
+  assert.notEqual(restored, cache.get(clips[1].shotId))
+  rememberRemovedSequenceClips(cache, remaining, [clips[0], restored, clips[2]])
+  assert.equal(cache.size, 0, 'returning clips consume their cache entry')
+  const edited = { ...restored, inSeconds: 0.3 }
+  rememberRemovedSequenceClips(cache, [edited], [])
+  assert.deepEqual(sequenceClipForBuild(edited.shotId, edited.versionId, 1, [], cache), edited)
+  const invalidCurrent = { ...edited, outSeconds: 2 }
+  assert.deepEqual(sequenceClipForBuild(edited.shotId, edited.versionId, 1, [invalidCurrent], cache), invalidCurrent, 'current invalid edits keep existing draft behavior')
+})
+
+test('invalid removed trims and changed/deleted bindings fall back without reviving an old version', () => {
+  const clip = { shotId: randomUUID(), versionId: randomUUID(), inSeconds: 0.2, outSeconds: 0.7 }
+  const cache = new Map<string, VideoTimelineClip>()
+  const full = { ...clip, inSeconds: 0, outSeconds: 1 }
+  for (const range of [{ inSeconds: -1 }, { inSeconds: 0.8 }, { inSeconds: NaN }, { outSeconds: 0 }, { outSeconds: 2 }, { outSeconds: Infinity }]) {
+    cache.set(clip.shotId, { ...clip, ...range })
+    assert.deepEqual(sequenceClipForBuild(clip.shotId, clip.versionId, 1, [], cache), full)
+  }
+  cache.set(clip.shotId, clip)
+  assert.deepEqual(sequenceClipForBuild(clip.shotId, clip.versionId, 0.5, [], cache), { ...full, outSeconds: 0.5 })
+  const newVersion = randomUUID()
+  assert.deepEqual(sequenceClipForBuild(clip.shotId, newVersion, 1, [], cache), { ...full, versionId: newVersion })
+  pruneSequenceTrims(cache, [{ id: clip.shotId, confirmedVideoAssetVersionId: newVersion }])
+  pruneSequenceTrims(cache, [{ id: clip.shotId, confirmedVideoAssetVersionId: clip.versionId }])
+  assert.deepEqual(sequenceClipForBuild(clip.shotId, clip.versionId, 1, [], cache), full, 'A → B → A does not revive the previous A trim')
+  cache.set(clip.shotId, clip)
+  pruneSequenceTrims(cache, [])
+  assert.equal(cache.size, 0)
+})
+
+test('removed sequence trim cache is bounded and supports removing the last clip', () => {
+  const cache = new Map<string, VideoTimelineClip>()
+  const clips = Array.from({ length: 101 }, () => ({ shotId: randomUUID(), versionId: randomUUID(), inSeconds: 0.2, outSeconds: 0.7 }))
+  for (const clip of clips) rememberRemovedSequenceClips(cache, [clip], [])
+  assert.equal(cache.size, 100)
+  assert.equal(cache.has(clips[0].shotId), false)
+  const last = clips.at(-1)!
+  assert.deepEqual(sequenceClipForBuild(last.shotId, last.versionId, 1, [], cache), last)
+})
 
 test('Shot Videos resolves only explicit MP4 ownership and exact confirmed pin', () => {
   const db = new ProjectDatabase(':memory:')

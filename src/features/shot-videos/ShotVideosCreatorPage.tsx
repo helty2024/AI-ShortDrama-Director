@@ -96,7 +96,7 @@ function ShotVideosWorkspace({ projectId }: { projectId: string }) {
   return <section className="shot-videos-creator" aria-label="分镜视频工作区">
     <header className="page-heading shot-videos-heading"><div><small>审看与确认</small><h1>分镜视频</h1><p>沿着故事顺序审看镜头，批准候选后再明确采用。</p></div><span className="creator-status">{shots.filter((item) => shotVideoView(item, entities, versions, ai.snapshot.tasks).confirmed).length} / {shots.length} 已确认</span></header>
     {(visual.error || ai.error || workflows.error || error) && <p role="alert" className="error">{error || visual.error || ai.error || workflows.error}</p>}
-    <ProjectVideoSequence projectId={projectId} shots={shots} entities={entities} versions={versions} onChange={async () => { await Promise.all([reload(), visual.refresh()]) }} />
+    <ProjectVideoSequence key={projectId} projectId={projectId} shots={shots} entities={entities} versions={versions} onChange={async () => { await Promise.all([reload(), visual.refresh()]) }} />
     <details className="shot-videos-batch"><summary>批量生成与批次历史</summary><VideoBatchPanel projectId={projectId} shots={shots} entities={entities} versions={versions} onShot={chooseShot} onChange={async () => { await Promise.all([reload(), visual.refresh(), ai.refresh()]) }} /></details>
     {!shot ? <div className="shot-videos-empty"><h2>还没有分镜视频</h2><p>先在“分镜”中创建镜头。</p><button className="primary" onClick={() => creator.navigateCreator('storyboard')}>前往分镜</button></div> : <>
       <div className="shot-videos-layout">

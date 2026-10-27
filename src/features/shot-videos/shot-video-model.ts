@@ -2,6 +2,30 @@ import type { Shot, Entity } from '../../shared/domain.js'
 import type { AITask } from '../../shared/intelligence.js'
 import type { AssetVersion } from '../../shared/visual.js'
 import { officialVersion } from '../storyboard/storyboard-model.js'
+import { videoTimelineClipSchema, type VideoTimelineClip } from '../../shared/video-batch.js'
+
+// One most-recent version per removed shot, bounded to one timeline's capacity.
+export function rememberRemovedSequenceClips(cache: Map<string, VideoTimelineClip>, before: VideoTimelineClip[], after: VideoTimelineClip[]) {
+  for (const clip of after) cache.delete(clip.shotId)
+  for (const clip of before) if (!after.some(c => c.shotId === clip.shotId && c.versionId === clip.versionId)) {
+    cache.delete(clip.shotId)
+    cache.set(clip.shotId, { ...clip })
+  }
+  while (cache.size > 100) cache.delete(cache.keys().next().value!)
+}
+
+export function pruneSequenceTrims(cache: Map<string, VideoTimelineClip>, shots: Pick<Shot, 'id' | 'confirmedVideoAssetVersionId'>[]) {
+  for (const [id, clip] of cache) if (!shots.some(s => s.id === id && s.confirmedVideoAssetVersionId === clip.versionId)) cache.delete(id)
+}
+
+export function sequenceClipForBuild(shotId: string, versionId: string, duration: number, current: VideoTimelineClip[], cache: ReadonlyMap<string, VideoTimelineClip>): VideoTimelineClip {
+  const existing = current.find(c => c.shotId === shotId && c.versionId === versionId)
+  // Keep current edits, including invalid edits, under the existing draft rules.
+  if (existing) return existing
+  const removed = cache.get(shotId)
+  if (removed?.shotId === shotId && removed.versionId === versionId && videoTimelineClipSchema.safeParse(removed).success && removed.outSeconds <= duration) return { ...removed }
+  return { shotId, versionId, inSeconds: 0, outSeconds: duration }
+}
 
 export function sequenceClipLabel(version: Pick<AssetVersion, 'metadata'>) {
   const sequence = version.metadata.sequence
