@@ -1,5 +1,7 @@
 # PackyAPI Image 2.5 — 07-06.5 / 07-06.6
 
+2026-10-20 V1.1 更新：以下旧验收历史保留。当前 `gpt-image-2` 另有正式官方 Images 编辑协议，使用 `sora` 分组、`/v1/images/edits` 和 multipart 二进制 `image`。本地已支持单图编辑、显式尺寸/PNG/高输入保真度和安全入库，但当前账户图生图尚未真实执行验证；不能因既有文生图成功或目录可见就标为可用。完整边界见 [P0 离线输入方案](p0-v11-input-plan.md)。旧 Sunburst/Flare 的 `image` 分组声明不套用于 `gpt-image-2`，不自动更换凭据。
+
 ## 当前状态
 
 2026-09-17 本机验证：真实 GET `https://cf.api.fan/v1/models` 接受已加密保存的凭据，精确模型 ID `gpt-image-2.5-sunburst` 可见。退出探测进程后再次读取 CredentialStore 探测成功。
