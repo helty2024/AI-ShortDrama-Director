@@ -34,6 +34,22 @@ test('sequence history labels use stored sequence count and tolerate missing or 
     assert.equal(sequenceClipLabel({ metadata: { sequence } }), '镜数未知')
 })
 
+test('sequence shot labels distinguish subsets, compress consecutive positions and safely fall back', () => {
+  const shots = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  const partial = { metadata: { sequence: [{ shotId: 'a', versionId: 'v1' }, { shotId: 'c', versionId: 'v3' }] } }
+  const adjacent = { metadata: { sequence: [{ shotId: 'a', versionId: 'v1' }, { shotId: 'b', versionId: 'v2' }] } }
+  assert.equal(sequenceClipLabel(partial, shots), '2 镜头 · 项目镜序1、3')
+  assert.equal(sequenceClipLabel(adjacent, shots), '2 镜头 · 项目镜序1-2')
+  assert.equal(sequenceClipLabel(partial, [shots[2], shots[1], shots[0]]), '2 镜头 · 项目镜序3、1', 'preserve recorded clip order')
+  assert.equal(sequenceClipLabel(partial, [shots[0]]), '2 镜头')
+  assert.equal(sequenceClipLabel({ metadata: { sequence: [{ shotId: 'a', versionId: 'v1' }, { shotId: 'a', versionId: 'v1' }] } }, shots), '2 镜头')
+  assert.equal(sequenceClipLabel({ metadata: { sequence: [null] } }, shots), '镜数未知')
+  const many = Array.from({ length: 200 }, (_, i) => ({ id: String(i) }))
+  const long = sequenceClipLabel({ metadata: { sequence: many.filter((_, i) => i % 2 === 0).map(s => ({ shotId: s.id, versionId: 'v' })) } }, many)
+  assert.equal(long, '100 镜头 · 项目镜序1、3、5、7、9、11、13、15、…')
+  assert(`成片 · ${long}`.length <= 120)
+})
+
 test('formal sequence exports only selected confirmed candidates in story order with current trims and no generation batch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'director-sequence-unit-'))
   const f = await sequenceFixture(root, true)
@@ -61,7 +77,7 @@ test('formal sequence exports only selected confirmed candidates in story order 
     assert.equal(videoBatchCommandSchema.safeParse({ op: 'exportSequence', projectId: f.project.id, clips, path: 'C:/unsafe.mp4' }).success, false)
     const result = await exportVideoSequence(f.visual, f.project.id, [...ids].reverse(), clips)
     assert.equal(result.metadata.localAssembly, true)
-    assert.equal(f.visual.asset(f.project.id, result.assetId).name, '成片 · 2 镜头')
+    assert.equal(f.visual.asset(f.project.id, result.assetId).name, '成片 · 2 镜头 · 项目镜序2、4')
     assert.equal(sequenceClipLabel(result), '2 镜头')
     const repeat = await exportVideoSequence(f.visual, f.project.id, ids, clips)
     const firstName = sequenceExportFilename(f.project.name, clips.length, result.id)
@@ -81,8 +97,11 @@ test('formal sequence exports only selected confirmed candidates in story order 
     assert.equal(f.db.connection.prepare('SELECT count(*) AS count FROM production_batches').get()?.count, 0)
     assert.equal(f.db.connection.prepare('SELECT count(*) AS count FROM generation_records').get()?.count, 0)
     const full = await exportVideoSequence(f.visual, f.project.id, f.shots.map(s => s.id))
-    assert.equal(f.visual.asset(f.project.id, full.assetId).name, '成片 · 3 镜头')
+    assert.equal(f.visual.asset(f.project.id, full.assetId).name, '成片 · 3 镜头 · 项目镜序2-4')
     assert.equal(sequenceClipLabel(full), '3 镜头')
+    const adjacent = await exportVideoSequence(f.visual, f.project.id, f.shots.slice(0, 2).map(s => s.id))
+    assert.equal(f.visual.asset(f.project.id, adjacent.assetId).name, '成片 · 2 镜头 · 项目镜序2-3')
+    assert.notEqual(f.visual.asset(f.project.id, adjacent.assetId).name, f.visual.asset(f.project.id, result.assetId).name)
     // A stale adoption cannot be silently substituted on a subsequent export.
     const shot = f.repo.entity(f.project.id, ids[0])
     f.repo.updateEntity(f.project.id, shot.id, shot.revision, { confirmedVideoAssetId: null, confirmedVideoAssetVersionId: null })

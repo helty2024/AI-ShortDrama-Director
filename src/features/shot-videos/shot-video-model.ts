@@ -3,6 +3,7 @@ import type { AITask } from '../../shared/intelligence.js'
 import type { AssetVersion } from '../../shared/visual.js'
 import { officialVersion } from '../storyboard/storyboard-model.js'
 import { videoTimelineClipSchema, type VideoTimelineClip } from '../../shared/video-batch.js'
+export { sequenceClipLabel } from '../../shared/sequence-label.js'
 
 // One most-recent version per removed shot, bounded to one timeline's capacity.
 export function rememberRemovedSequenceClips(cache: Map<string, VideoTimelineClip>, before: VideoTimelineClip[], after: VideoTimelineClip[]) {
@@ -25,12 +26,6 @@ export function sequenceClipForBuild(shotId: string, versionId: string, duration
   const removed = cache.get(shotId)
   if (removed?.shotId === shotId && removed.versionId === versionId && videoTimelineClipSchema.safeParse(removed).success && removed.outSeconds <= duration) return { ...removed }
   return { shotId, versionId, inSeconds: 0, outSeconds: duration }
-}
-
-export function sequenceClipLabel(version: Pick<AssetVersion, 'metadata'>) {
-  const sequence = version.metadata.sequence
-  const valid = Array.isArray(sequence) && sequence.length > 0 && sequence.every(c => c && typeof c === 'object' && !Array.isArray(c) && typeof c.shotId === 'string' && typeof c.versionId === 'string')
-  return valid ? `${sequence.length} 镜头` : '镜数未知'
 }
 
 export function shotVideoCandidates(shot: Shot, versions: AssetVersion[], tasks: AITask[]) {

@@ -8,6 +8,7 @@ import { runMediaTool, probeVideo } from './ffmpeg.js'
 import { videoTimelineClipSchema, type VideoTimelineClip } from '../../../src/shared/video-batch.js'
 import { orderedShots } from '../../../src/shared/shot-order.js'
 import { sequenceDraftClipsSchema, sequenceDraftSchema } from '../../../src/shared/video-sequence.js'
+import { sequenceClipLabel } from '../../../src/shared/sequence-label.js'
 
 /** Use the newly committed version UUID; the native dialog chooses the final path. */
 export function sequenceExportFilename(projectName: string, clipCount: number, versionId: string) {
@@ -105,10 +106,12 @@ export async function exportVideoSequence(visual: VisualRepository, projectId: s
     const stored = await visual.storage.storeVideo(projectId, assetId, await readFile(path))
     return visual.repo.database.transaction(() => {
       validateTimeline(visual, projectId, shotIds, clips)
-      visual.repo.database.insertEntities(projectId, [{ ...metadata(), id: assetId, projectId, kind: 'asset', name: `成片 · ${clips.length} 镜头`, description: '按正式镜头顺序与剪辑区间合成的无声视频', mediaType: 'video', uri: null, status: 'placeholder', source: null, previousVersionId: null }])
+      const sequence = shots.map((shot, i) => ({ ...clips[i], shotNumber: shot.plan?.shotNumber ?? shot.order, duration: clips[i].outSeconds - clips[i].inSeconds }))
+      const label = sequenceClipLabel({ metadata: { sequence } }, orderedShots(visual.repo.database.workspace(projectId).entities))
+      visual.repo.database.insertEntities(projectId, [{ ...metadata(), id: assetId, projectId, kind: 'asset', name: `成片 · ${label}`, description: '按正式镜头顺序与剪辑区间合成的无声视频', mediaType: 'video', uri: null, status: 'placeholder', source: null, previousVersionId: null }])
       return visual.commitVersion(projectId, assetId, stored, { sourceType: 'imported', provider: null, model: null, prompt: '', negativePrompt: '', generationTaskId: null,
         sourceAssetIds: [...new Set(versions.map(v => v.assetId))], metadata: { localAssembly: true, audio: 'none', expectedDuration: duration,
-          sequence: shots.map((shot, i) => ({ ...clips[i], shotNumber: shot.plan?.shotNumber ?? shot.order, duration: clips[i].outSeconds - clips[i].inSeconds })) } })
+          sequence } })
     })
   } finally { await rm(folder, { recursive: true, force: true }) }
 }
