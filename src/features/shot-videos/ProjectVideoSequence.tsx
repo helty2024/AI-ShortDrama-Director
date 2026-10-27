@@ -15,11 +15,14 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
   projectId: string; shots: Shot[]; entities: Entity[]; versions: AssetVersion[]; onChange: () => Promise<unknown>
 }) {
   const [draft, setDraft] = useState<{ key: number; clips: VideoTimelineClip[] } | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null)
   const [ready, setReady] = useState(false), [saveStatus, setSaveStatus] = useState(''), [saveError, setSaveError] = useState('')
   const revision = useRef(0), queue = useRef(Promise.resolve()), mounted = useRef(false), saveNumber = useRef(0)
   const [previewId, setPreviewId] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const confirmed = shots.filter(s => versions.some(v => v.id === s.confirmedVideoAssetVersionId && v.assetId === s.confirmedVideoAssetId && v.status === 'approved' && v.mimeType === 'video/mp4' && v.duration && entities.some(e => e.kind === 'asset' && e.id === v.assetId && e.approvedVersionId === v.id)))
+  const selected = confirmed.filter(s => selectedIds === null || selectedIds.includes(s.id))
+  const selectionChanged = draft && (selected.length !== draft.clips.length || selected.some((s, i) => s.id !== draft.clips[i]?.shotId))
   const exports = versions.filter(v => v.metadata.localAssembly === true && v.mimeType === 'video/mp4').toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
   const preview = exports.find(v => v.id === previewId)
   useEffect(() => {
@@ -33,7 +36,7 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
         const saved = sequenceDraftSchema.nullable().parse(response.data)
         if (!active) return
         revision.current = saved?.revision ?? 0
-        if (saved) { setDraft({ key: 1, clips: saved.clips }); setSaveStatus('已恢复本地时间线草稿') }
+        if (saved) { setDraft({ key: 1, clips: saved.clips }); setSelectedIds(saved.clips.map(c => c.shotId)); setSaveStatus('已恢复本地时间线草稿') }
         setReady(true)
       } catch (cause) { if (active) setSaveError(cause instanceof Error ? cause.message : '读取草稿失败，请重新进入页面') }
     })()
@@ -61,11 +64,14 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
   }
   const replaceDraft = (clips: VideoTimelineClip[]) => {
     setDraft(previous => ({ key: (previous?.key ?? 0) + 1, clips }))
+    setSelectedIds(clips.map(c => c.shotId))
     persist(clips)
   }
   const build = () => {
     setError(''); setNotice('')
-    replaceDraft(confirmed.map(s => ({ shotId: s.id, versionId: s.confirmedVideoAssetVersionId!, inSeconds: 0, outSeconds: versions.find(v => v.id === s.confirmedVideoAssetVersionId)!.duration! })))
+    if (!selected.length) { setError('请至少选择一个已确认镜头，再建立时间线。'); return }
+    if (selected.length > 100) { setError('最多选择 100 个镜头，请减少勾选。'); return }
+    replaceDraft(selected.map(s => draft?.clips.find(c => c.shotId === s.id && c.versionId === s.confirmedVideoAssetVersionId) ?? { shotId: s.id, versionId: s.confirmedVideoAssetVersionId!, inSeconds: 0, outSeconds: versions.find(v => v.id === s.confirmedVideoAssetVersionId)!.duration! }))
   }
   const restore = (version: AssetVersion) => {
     const sequence = version.metadata.sequence
@@ -93,10 +99,22 @@ export function ProjectVideoSequence({ projectId, shots, entities, versions, onC
   return <section className="project-video-sequence" aria-label="项目成片">
     <div className="shot-videos-section-head"><h2>项目成片</h2><span>{confirmed.length} / {shots.length} 镜头可用于成片</span></div>
     <p>确认候选 → 建立时间线 → 调整入点、出点 → 导出无声 MP4。本地合成无需生成服务，不上传素材。</p>
-    <p>按集、场、镜头顺序加入全部已确认视频；未确认或绑定失效的镜头会跳过（{shots.length - confirmed.length} 个）。时间线草稿自动保存到本地项目，离开页面或重启后恢复；重新建立会替换当前草稿。</p>
-    <button disabled={!ready || busy || !confirmed.length || confirmed.length > 100} onClick={build}>{draft ? '按当前已确认视频重新建立时间线' : '用已确认视频建立时间线'}</button>
+    <p>按集、场、镜头顺序加入勾选的已确认视频；未确认或绑定失效的镜头会跳过（{shots.length - confirmed.length} 个）。建立后的镜头选择和入点、出点自动保存到本地项目，离开页面或重启后恢复。</p>
+    {confirmed.length > 0 && <fieldset className="project-sequence-selection" disabled={!ready || busy}>
+      <legend>选择成片镜头（已选 {selected.length} / {confirmed.length}）</legend>
+      <div className="actions"><button onClick={() => setSelectedIds(confirmed.map(s => s.id))}>全选镜头</button><button onClick={() => setSelectedIds([])}>清空选择</button></div>
+      <div className="project-sequence-selection-list">{confirmed.map(s => {
+        const scene = entities.find(e => e.kind === 'scene' && e.id === s.sceneId)
+        const episode = scene?.kind === 'scene' ? entities.find(e => e.kind === 'episode' && e.id === scene.episodeId) : undefined
+        return <label key={s.id}><input type="checkbox" checked={selected.some(item => item.id === s.id)} onChange={e => setSelectedIds(e.target.checked ? [...selected.map(item => item.id), s.id] : selected.filter(item => item.id !== s.id).map(item => item.id))} /><span>{episode?.name ?? '未命名集'} / {scene?.name ?? '未命名场'} / 镜 {s.plan?.shotNumber ?? s.order + 1} · {s.name}</span></label>
+      })}</div>
+      <p>勾选后点击建立或重新建立，才会应用并保存选择。重新建立会替换草稿，保留仍选用同一视频的已有区间；导出使用下方时间线。</p>
+    </fieldset>}
+    <button disabled={!ready || busy || !selected.length || selected.length > 100} onClick={build}>{draft ? '按当前已确认视频重新建立时间线' : '用已确认视频建立时间线'}</button>
+    {selectionChanged && <p>镜头选择尚未应用，请点击“按当前已确认视频重新建立时间线”。</p>}
     {!confirmed.length && <p>请在下方审看候选，先“批准”，再“设为当前镜头视频”。也可为当前镜头导入本地 MP4 候选。</p>}
-    {confirmed.length > 100 && <p role="alert" className="error">当前入口最多支持 100 个已确认镜头。</p>}
+    {ready && confirmed.length > 0 && !selected.length && <p role="alert" className="error">请至少选择一个已确认镜头，再建立时间线。</p>}
+    {selected.length > 100 && <p role="alert" className="error">最多选择 100 个镜头，请减少勾选。</p>}
     {error && <p role="alert" className="error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <p aria-live="polite" data-testid="sequence-draft-status">{saveError ? `时间线草稿未保存：${saveError}` : saveStatus || (ready ? '尚未建立时间线草稿' : '正在读取本地时间线草稿…')}</p>

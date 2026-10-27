@@ -11,7 +11,7 @@ import { aiTaskSchema } from '../src/shared/intelligence.js'
 import { assetVersionSchema } from '../src/shared/visual.js'
 import { test, expect, _electron as electron } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { mkdtemp, mkdir, rm, writeFile, readdir } from 'node:fs/promises'
+import { copyFile, mkdtemp, mkdir, rm, writeFile, readdir } from 'node:fs/promises'
 import sharp from 'sharp'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,7 +24,7 @@ import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { readFile } from 'node:fs/promises'
 import { sequenceFixture } from './fixtures/sequence.js'
-import { probeVideo } from '../electron/main/video/ffmpeg.js'
+import { probeVideo, runMediaTool } from '../electron/main/video/ffmpeg.js'
 
 test('standalone CompShare probe encrypts credentials, preserves database and reuses credentials after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'director-compshare-probe-'))
@@ -334,10 +334,11 @@ test('Shot Videos Creator handles empty project and broken confirmed binding wit
   } finally { await brokenApp.close(); await rm(brokenDirectory, { recursive: true, force: true }) }
 })
 
-test('formal project offline candidates → confirmed shots → draft survives navigation and cold relaunch → MP4 without generation', async () => {
+test('formal project offline candidates → partial selection → draft survives navigation and cold relaunch → MP4 without generation', async () => {
   test.setTimeout(120000)
   const directory = await mkdtemp(join(tmpdir(), 'director-formal-sequence-'))
-  const f = await sequenceFixture(directory)
+  const f = await sequenceFixture(directory, true)
+  const selectedShots = [f.shots[0], f.shots[2]]
   // Start with empty slots; exercise the native local-file import through the formal UI.
   for (const version of f.versions) f.visual.deleteAsset(f.project.id, version.assetId, f.visual.asset(f.project.id, version.assetId).revision)
   f.db.close()
@@ -371,11 +372,35 @@ test('formal project offline candidates → confirmed shots → draft survives n
       await candidate.getByRole('button', { name: '设为当前镜头视频' }).click()
       await expect.poll(async () => (await currentShot(shot.id)).confirmedVideoAssetVersionId).toBeTruthy()
     }
-    await expect(sequence).toContainText('2 / 6 镜头可用于成片')
+    await expect(sequence).toContainText('3 / 6 镜头可用于成片')
+    const selection = () => sequence.getByRole('group', { name: /选择成片镜头/ })
+    await selection().scrollIntoViewIfNeeded()
+    await expect(selection().getByRole('checkbox')).toHaveCount(3)
+    for (const [i, shot] of f.shots.entries()) {
+      await expect(selection().getByRole('checkbox').nth(i)).toBeChecked()
+      await expect(selection().getByRole('checkbox').nth(i)).toHaveAccessibleName(new RegExp(shot.name))
+      await expect(selection().locator('label span').nth(i)).toBeInViewport()
+    }
+    expect(await selection().locator('.project-sequence-selection-list').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await sequence.getByRole('button', { name: '清空选择' }).click()
+    await expect(sequence.getByRole('button', { name: '用已确认视频建立时间线' })).toBeDisabled()
+    await expect(sequence.getByRole('alert')).toContainText('请至少选择一个已确认镜头')
+    await expect(sequence.getByRole('region', { name: '成片时间线', exact: true })).toHaveCount(0)
+    await sequence.getByRole('button', { name: '全选镜头' }).click()
+    await selection().getByRole('checkbox').nth(1).focus()
+    await page.keyboard.press('Space')
+    await expect(selection().getByRole('checkbox').nth(1)).not.toBeChecked()
     await sequence.getByRole('button', { name: '用已确认视频建立时间线' }).click()
     let timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
     await expect(timeline.locator('tbody tr')).toHaveCount(2)
-    const versionIds = await Promise.all(f.shots.map(async s => (await currentShot(s.id)).confirmedVideoAssetVersionId))
+    await sequence.getByRole('button', { name: '全选镜头' }).click()
+    await sequence.getByRole('button', { name: '按当前已确认视频重新建立时间线' }).click()
+    await expect(timeline.locator('tbody tr')).toHaveCount(3)
+    await selection().getByRole('checkbox').nth(1).uncheck()
+    await sequence.getByRole('button', { name: '按当前已确认视频重新建立时间线' }).click()
+    await expect(timeline.locator('tbody tr')).toHaveCount(2)
+    await expect(timeline).not.toContainText(f.shots[1].name)
+    const versionIds = await Promise.all(selectedShots.map(async s => (await currentShot(s.id)).confirmedVideoAssetVersionId))
     await expect(timeline.locator('tbody tr').first()).toContainText(versionIds[0]!)
     await timeline.getByLabel('镜 1 入点', { exact: true }).fill('0.25')
     await timeline.getByLabel('镜 1 出点', { exact: true }).fill('0.75')
@@ -388,6 +413,11 @@ test('formal project offline candidates → confirmed shots → draft survives n
     await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('2')
     await expect(timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' })).toBeDisabled()
     await timeline.getByLabel('镜 2 出点', { exact: true }).fill('0.5')
+    // Rebuilding retains trims for selected clips with the same adopted version.
+    await sequence.getByRole('button', { name: '按当前已确认视频重新建立时间线' }).click()
+    await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
+    await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
+    await timeline.getByLabel('镜 2 出点', { exact: true }).fill('0.5')
     // Navigate immediately after editing, without waiting for a save indicator.
     await nav.getByRole('button', { name: '分镜', exact: true }).click()
     await nav.getByRole('button', { name: '分镜视频', exact: true }).click()
@@ -395,6 +425,7 @@ test('formal project offline candidates → confirmed shots → draft survives n
     await expect(timeline.getByLabel('镜 1 出点', { exact: true })).toHaveValue('0.75')
     await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
     await expect(sequence.getByTestId('sequence-draft-status')).toContainText('已恢复本地时间线草稿')
+    await expect(selection().getByRole('checkbox').nth(1)).not.toBeChecked()
     await expect(sequence.locator('.project-sequence-history')).toHaveCount(0)
     await application.close()
     application = await launch(directory)
@@ -407,24 +438,41 @@ test('formal project offline candidates → confirmed shots → draft survives n
     timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
     await expect(sequence.getByTestId('sequence-draft-status')).toContainText('已恢复本地时间线草稿')
     await expect(timeline.locator('tbody tr')).toHaveCount(2)
+    await expect(selection().getByRole('checkbox').nth(0)).toBeChecked()
+    await expect(selection().getByRole('checkbox').nth(1)).not.toBeChecked()
+    await expect(selection().getByRole('checkbox').nth(2)).toBeChecked()
     for (const [i, versionId] of versionIds.entries()) {
-      expect((await currentShot(f.shots[i].id)).confirmedVideoAssetVersionId).toBe(versionId)
+      expect((await currentShot(selectedShots[i].id)).confirmedVideoAssetVersionId).toBe(versionId)
       await expect(timeline.locator('tbody tr').nth(i)).toContainText(versionId!)
     }
     await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
     await expect(timeline.getByLabel('镜 1 出点', { exact: true })).toHaveValue('0.75')
     await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
-    await page.screenshot({ path: 'test-results/formal-project-draft-restored-1920.png', fullPage: true })
+    await page.screenshot({ path: 'test-results/formal-project-partial-restored-1920.png', fullPage: true })
     await timeline.getByRole('button', { name: '连续预览时间线' }).click()
     await expect.poll(() => timeline.locator('video').getAttribute('aria-label')).toBe('时间线镜 2')
     const output = join(directory, 'formal-sequence.mp4')
     await application.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }) }, output)
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
-    await expect(sequence.getByRole('status')).toContainText('MP4 已保存', { timeout: 30000 })
+    await expect(sequence.getByRole('status').filter({ hasText: 'MP4 已保存' })).toBeVisible({ timeout: 30000 })
     expect(Math.abs((await probeVideo(output)).duration - 1)).toBeLessThan(0.05)
+    // Decode every output frame: selected red → blue; no excluded green frame.
+    const frames = join(directory, 'decoded')
+    await mkdir(frames)
+    await runMediaTool('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-i', output, '-vsync', '0', join(frames, '%03d.png')])
+    const frameNames = (await readdir(frames)).sort()
+    expect(frameNames).toHaveLength(24)
+    for (const [i, name] of frameNames.entries()) {
+      const stats = await sharp(join(frames, name)).stats()
+      expect(stats.channels[i < 12 ? 0 : 2].mean).toBeGreaterThan(200)
+      expect(stats.channels[1].mean).toBeLessThan(20)
+    }
+    await copyFile(output, 'test-results/formal-project-partial-sequence.mp4')
+    const savedDraft = await page.evaluate(projectId => window.desktop!.workspace.request({ action: 'videoBatch', command: { op: 'getSequenceDraft', projectId } }), f.project.id)
+    expect(savedDraft.ok && JSON.stringify(savedDraft.data)).not.toContain(f.shots[1].id)
     const snapshot = await page.evaluate(projectId => window.desktop!.workspace.request({ action: 'visual', command: { operation: 'snapshot', projectId } }), f.project.id)
     expect(snapshot.ok && JSON.stringify(snapshot.data)).toContain('"localAssembly":true')
-    await page.screenshot({ path: 'test-results/formal-project-sequence-1920.png', fullPage: true })
+    await page.screenshot({ path: 'test-results/formal-project-partial-sequence-1920.png', fullPage: true })
     expect(await page.locator('.creator-main').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     await application.close()
     application = await launch(directory)
@@ -438,9 +486,10 @@ test('formal project offline candidates → confirmed shots → draft survives n
     timeline = sequence.getByRole('region', { name: '成片时间线', exact: true })
     await expect(timeline.getByLabel('镜 1 入点', { exact: true })).toHaveValue('0.25')
     await expect(timeline.getByLabel('镜 2 出点', { exact: true })).toHaveValue('0.5')
+    await expect(selection().getByRole('checkbox').nth(1)).not.toBeChecked()
     await application.evaluate(({ dialog }) => { dialog.showSaveDialog = async () => ({ canceled: true, filePath: '' }) })
     await timeline.getByRole('button', { name: '合成并导出 MP4（不生成新素材）' }).click()
-    await expect(sequence.getByRole('status')).toContainText('已取消文件保存', { timeout: 30000 })
+    await expect(sequence.getByRole('status').filter({ hasText: '已取消文件保存' })).toBeVisible({ timeout: 30000 })
     const batches = await page.evaluate(projectId => window.desktop!.workspace.request({ action: 'videoBatch', command: { op: 'list', projectId } }), f.project.id)
     expect(batches).toEqual({ ok: true, data: [] })
     await application.close()

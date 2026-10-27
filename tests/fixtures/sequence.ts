@@ -8,7 +8,7 @@ import { buildSeed } from '../../electron/main/seed.js'
 import { runMediaTool } from '../../electron/main/video/ffmpeg.js'
 
 /** Local files only: no provider, credentials or HTTP server. */
-export async function sequenceFixture(root: string) {
+export async function sequenceFixture(root: string, includeMiddleShot = false) {
   const db = new ProjectDatabase(join(root, 'workspace.sqlite'))
   try {
     const project = db.seed(buildSeed)
@@ -16,9 +16,10 @@ export async function sequenceFixture(root: string) {
     const repo = new IntelligenceRepository(db)
     const visual = new VisualRepository(repo, new MediaStorage(join(root, 'media')))
     const shots = db.workspace(project.id).entities.filter(e => e.kind === 'shot')
-    const targets = [shots[0], shots[3]].map((s, i) => {
+    const sources = includeMiddleShot ? [shots[0], shots[2], shots[3]] : [shots[0], shots[3]]
+    const targets = sources.map((s, i) => {
       // Two scenes restart their local order, so sorting only Shot.order is wrong.
-      const updated = repo.updateEntity(project.id, s.id, s.revision, { order: i === 0 ? 2 : 0, name: `离线镜头${i + 1}`, description: `离线镜头${i + 1}` })
+      const updated = repo.updateEntity(project.id, s.id, s.revision, { order: i === 0 ? 2 : includeMiddleShot && i === 1 ? 3 : 0, name: `离线镜头${i + 1}`, description: `离线镜头${i + 1}` })
       if (updated.kind !== 'shot') throw new Error('fixture shot')
       return updated
     })
@@ -27,7 +28,8 @@ export async function sequenceFixture(root: string) {
     for (const [i, shot] of targets.entries()) {
       const file = join(root, `source-${i + 1}.mp4`)
       files.push(file)
-      await runMediaTool('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${i ? 'blue' : 'red'}:s=64x64:r=24:d=1`, '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', file])
+      const color = i === 0 ? 'red' : includeMiddleShot && i === 1 ? 'lime' : 'blue'
+      await runMediaTool('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=64x64:r=24:d=1`, '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', file])
       const asset = db.createDraft({ projectId: project.id, kind: 'asset', name: `离线素材 ${i + 1}` })
       repo.updateEntity(project.id, asset.id, asset.revision, { mediaType: 'video' })
       const stored = await visual.storage.storeVideo(project.id, asset.id, await readFile(file))

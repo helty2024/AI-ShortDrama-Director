@@ -12,11 +12,14 @@ import { VisualRepository } from '../../electron/main/visual/repository.js'
 import { probeVideo, runMediaTool } from '../../electron/main/video/ffmpeg.js'
 import { videoBatchCommandSchema } from '../../src/shared/video-batch.js'
 
-test('formal sequence exports confirmed local candidates in story order with current trims and no generation batch', async () => {
+test('formal sequence exports only selected confirmed candidates in story order with current trims and no generation batch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'director-sequence-unit-'))
-  const f = await sequenceFixture(root)
+  const f = await sequenceFixture(root, true)
   try {
-    const ids = f.shots.map(s => s.id)
+    const selectedShots = [f.shots[0], f.shots[2]]
+    const selectedVersions = [f.versions[0], f.versions[2]]
+    const ids = selectedShots.map(s => s.id)
+    await assert.rejects(exportVideoSequence(f.visual, f.project.id, []), /范围/)
     await assert.rejects(exportVideoSequence(f.visual, f.project.id, ids), /采用/)
     for (const [i, shot] of f.shots.entries()) {
       f.visual.review(f.project.id, f.versions[i].id, 1, 'approved', null, null)
@@ -24,7 +27,10 @@ test('formal sequence exports confirmed local candidates in story order with cur
       assert.equal(approvedOnly.kind === 'shot' && approvedOnly.confirmedVideoAssetVersionId, null)
       f.visual.review(f.project.id, f.versions[i].id, 2, 'approved', shot.id, shot.revision)
     }
-    const clips = ids.map((shotId, i) => ({ shotId, versionId: f.versions[i].id, inSeconds: i ? 0 : 0.25, outSeconds: i ? 0.5 : 0.75 }))
+    const clips = ids.map((shotId, i) => ({ shotId, versionId: selectedVersions[i].id, inSeconds: i ? 0 : 0.25, outSeconds: i ? 0.5 : 0.75 }))
+    const draft = saveSequenceDraft(f.visual, f.project.id, 0, clips)
+    assert.deepEqual(draft.clips, clips)
+    assert(!draft.clips.some(c => c.shotId === f.shots[1].id))
     assert.throws(() => validateTimeline(f.visual, f.project.id, ids, [...clips].reverse()), /顺序/)
     assert.throws(() => validateTimeline(f.visual, f.project.id, ids, clips.map(c => ({ ...c, outSeconds: 2 }))), /区间/)
     const other = f.db.create({ name: '另一项目', description: '', genre: 'drama', language: 'zh-CN', aspectRatio: '1:1' })
@@ -33,7 +39,7 @@ test('formal sequence exports confirmed local candidates in story order with cur
     assert.equal(videoBatchCommandSchema.safeParse({ op: 'exportSequence', projectId: f.project.id, clips, path: 'C:/unsafe.mp4' }).success, false)
     const result = await exportVideoSequence(f.visual, f.project.id, [...ids].reverse(), clips)
     assert.equal(result.metadata.localAssembly, true)
-    assert.deepEqual(result.metadata.sequence, clips.map((c, i) => ({ ...c, shotNumber: f.shots[i].order, duration: 0.5 })))
+    assert.deepEqual(result.metadata.sequence, clips.map((c, i) => ({ ...c, shotNumber: selectedShots[i].order, duration: 0.5 })))
     const file = await f.visual.storage.resolveRegisteredFile(result.storageKey)
     assert(Math.abs((await probeVideo(file)).duration - 1) < 0.05)
     for (const [time, channel] of [[0, 0], [0.7, 2]] as const) {
