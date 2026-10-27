@@ -129,3 +129,25 @@ test('project draft survives reopen, isolates projects, preserves invalid edits 
     assert.throws(() => db.get(f.project.id), /不存在/)
   } finally { db.close(); await rm(root, { recursive: true, force: true }) }
 })
+
+test('removing the final clip persists an empty draft with its revision while empty export remains blocked', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'director-sequence-empty-'))
+  const f = await sequenceFixture(root)
+  let db = f.db
+  try {
+    const clip = { shotId: f.shots[0].id, versionId: f.versions[0].id, inSeconds: 0.25, outSeconds: 0.75 }
+    saveSequenceDraft(f.visual, f.project.id, 0, [clip])
+    const empty = saveSequenceDraft(f.visual, f.project.id, 1, [])
+    assert.deepEqual(empty.clips, [])
+    assert.equal(empty.revision, 2)
+    assert.equal(videoBatchCommandSchema.safeParse({ op: 'saveSequenceDraft', projectId: f.project.id, expectedRevision: 2, clips: [] }).success, true)
+    assert.equal(videoBatchCommandSchema.safeParse({ op: 'exportSequence', projectId: f.project.id, clips: [] }).success, false)
+    db.close()
+    db = new ProjectDatabase(join(root, 'workspace.sqlite'))
+    const visual = new VisualRepository(new IntelligenceRepository(db), f.visual.storage)
+    assert.deepEqual(db.get(f.project.id).sequenceDraft, empty)
+    assert.throws(() => saveSequenceDraft(visual, f.project.id, 1, [clip]), /其他窗口/)
+    await assert.rejects(exportVideoSequence(visual, f.project.id, [], []), /范围/)
+    assert.deepEqual(saveSequenceDraft(visual, f.project.id, 2, [clip]).clips, [clip])
+  } finally { db.close(); await rm(root, { recursive: true, force: true }) }
+})
